@@ -46,6 +46,10 @@ jobs:
               cp .env.production.example .env
             fi
 
+            # Clean any dirty local state and synchronize with origin/main
+            git fetch origin main
+            git reset --hard origin/main
+
             # Ensure deploy.sh is executable and execute deployment
             chmod +x deploy.sh
             ./deploy.sh

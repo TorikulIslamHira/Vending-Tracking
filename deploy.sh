@@ -17,8 +17,9 @@ echo "=========================================="
 echo "🚀 Bee Novelty Vending Deployment Script"
 echo "=========================================="
 
-echo "📥 1/4 Pulling latest changes from GitHub..."
-git pull origin main
+echo "📥 1/4 Synchronizing latest changes from GitHub..."
+git fetch origin main
+git reset --hard origin/main
 
 echo "🐳 2/4 Rebuilding and restarting Docker containers..."
 $COMPOSE_CMD up -d --build
