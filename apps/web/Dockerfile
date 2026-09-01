@@ -23,6 +23,7 @@ RUN --mount=type=cache,id=pnpm,target=/pnpm/store pnpm install --frozen-lockfile
 # Set build-time env
 ENV NEXT_PUBLIC_API_URL=/api/v1
 ENV NODE_ENV=production
+ENV NODE_OPTIONS="--max-old-space-size=1024"
 
 # Build Next.js Web application
 RUN pnpm --filter @vending/web run build
