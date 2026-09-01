@@ -1,0 +1,83 @@
+services:
+  # 1. PostgreSQL Database Service
+  db:
+    image: postgres:16-alpine
+    container_name: vending-db
+    environment:
+      POSTGRES_USER: ${POSTGRES_USER:-vending_user}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-vending_secure_password_2026}
+      POSTGRES_DB: ${POSTGRES_DB:-vending_db}
+    ports:
+      - "5432:5432"
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U ${POSTGRES_USER:-vending_user} -d ${POSTGRES_DB:-vending_db}"]
+      interval: 5s
+      timeout: 5s
+      retries: 5
+    restart: unless-stopped
+    networks:
+      - vending-network
+
+  # 2. Fastify Backend API Service
+  api:
+    build:
+      context: .
+      dockerfile: apps/api/Dockerfile
+    container_name: vending-api
+    environment:
+      DATABASE_URL: postgresql://${POSTGRES_USER:-vending_user}:${POSTGRES_PASSWORD:-vending_secure_password_2026}@db:5432/${POSTGRES_DB:-vending_db}?schema=public
+      JWT_SECRET: ${JWT_SECRET:-vending-saas-production-super-secret-key-change-in-prod-2026}
+      PORT: 3001
+      HOST: 0.0.0.0
+      NODE_ENV: production
+    ports:
+      - "3001:3001"
+    depends_on:
+      db:
+        condition: service_healthy
+    restart: unless-stopped
+    networks:
+      - vending-network
+
+  # 3. Next.js Web Frontend Service
+  web:
+    build:
+      context: .
+      dockerfile: apps/web/Dockerfile
+    container_name: vending-web
+    environment:
+      NEXT_PUBLIC_API_URL: /api/v1
+      PORT: 3000
+      NODE_ENV: production
+    ports:
+      - "3000:3000"
+    depends_on:
+      - api
+    restart: unless-stopped
+    networks:
+      - vending-network
+
+  # 4. Nginx Reverse Proxy Gateway
+  nginx:
+    image: nginx:alpine
+    container_name: vending-nginx
+    ports:
+      - "80:80"
+    volumes:
+      - ./nginx/nginx.conf:/etc/nginx/nginx.conf:ro
+    depends_on:
+      - web
+      - api
+    restart: unless-stopped
+    networks:
+      - vending-network
+
+volumes:
+  postgres_data:
+    driver: local
+
+networks:
+  vending-network:
+    driver: bridge

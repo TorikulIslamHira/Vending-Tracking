@@ -1,0 +1,5 @@
+# Vending SaaS - Global AI Directives
+1. CONTEXT FIRST: Before writing any code, you MUST read `docs/00-System-Map/00-System-Architecture-MoC.md` and `docs/03-Active-Tasks/current-task.md`.
+2. IMPACT ANALYSIS: Before changing existing logic, check the YAML frontmatter (`dependencies`, `impacts`) in the markdown docs. You MUST state the impact of your changes before proceeding.
+3. NO HALLUCINATION: Only use predefined packages (@packages/shared-types, @packages/validation).
+4. LOGGING: Always update the daily log in `docs/04-AI-Changelogs/` after completing a task.

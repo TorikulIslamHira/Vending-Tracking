@@ -1,0 +1,29 @@
+{
+  "name": "bee-novelty",
+  "private": true,
+  "version": "1.0.0",
+  "description": "Enterprise Multi-Tenant Vending Machine SaaS Platform",
+  "scripts": {
+    "dev": "pnpm --parallel --filter @vending/api --filter @vending/web run dev",
+    "dev:api": "pnpm --filter @vending/api run dev",
+    "dev:web": "pnpm --filter @vending/web run dev",
+    "build": "pnpm -r run build",
+    "typecheck": "pnpm -r run typecheck"
+  },
+  "keywords": [
+    "vending",
+    "saas",
+    "multi-tenant"
+  ],
+  "author": "",
+  "license": "ISC",
+  "devEngines": {
+    "packageManager": {
+      "name": "pnpm",
+      "version": "11.23.0",
+      "onFail": "download"
+    }
+  },
+  "packageManager": "pnpm@11.23.0",
+  "type": "module"
+}
