@@ -20,6 +20,9 @@ COPY apps/api ./apps/api
 # Install all workspace dependencies
 RUN --mount=type=cache,id=pnpm,target=/pnpm/store pnpm install --frozen-lockfile
 
+# Set build-time env
+ENV DATABASE_URL="postgresql://vending_user:vending_secure_password_2026@db:5432/vending_db?schema=public"
+
 # Generate Prisma Client
 RUN pnpm --filter @vending/database run db:generate
 
