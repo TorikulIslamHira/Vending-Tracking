@@ -201,25 +201,29 @@ export default function MachineQrDisplayPage() {
         </div>
       </div>
 
-      {/* PRINT-ONLY LABEL STICKER (Visible only during printing: fits 50mm label sticker) */}
-      <div className="hidden print:flex print:flex-col print:items-center print:justify-center print:w-[50mm] print:h-[50mm] print:m-0 print:p-2 print:border print:border-black print:rounded-md print:bg-white print:text-black print:box-border print:mx-auto">
-        <span className="text-[10px] font-black uppercase tracking-wider text-center leading-tight text-black">
-          Bee Novelty Vending
-        </span>
-        <div className="my-1.5 flex items-center justify-center">
-          <QRCodeSVG
-            value={destinationUrl}
-            size={105}
-            level="M"
-            includeMargin={false}
-          />
+      {/* PRINT-ONLY LABEL STICKER (Dynamically adapts to POS thermal rolls, 50mm stickers, or A4 sheets) */}
+      <div className="hidden print:flex print-qr-container">
+        <div className="flex flex-col items-center justify-center w-full max-w-[80mm] p-2 text-center text-black bg-white">
+          <span className="text-[12px] font-black uppercase tracking-wider text-black text-center leading-tight">
+            Bee Novelty Vending
+          </span>
+          <div className="my-2 flex items-center justify-center w-full max-w-[220px] aspect-square">
+            <QRCodeSVG
+              value={destinationUrl}
+              size={256}
+              level="M"
+              includeMargin={false}
+              className="print-qr-svg"
+              style={{ width: "100%", height: "auto", maxWidth: "100%" }}
+            />
+          </div>
+          <span className="text-[14px] font-mono font-black tracking-widest text-center uppercase leading-none text-black">
+            {machineId}
+          </span>
+          <span className="text-[8px] font-bold text-center uppercase tracking-widest text-zinc-700 mt-1">
+            Authorized Field Agent Scan
+          </span>
         </div>
-        <span className="text-[12px] font-mono font-black tracking-widest text-center uppercase leading-none text-black">
-          {machineId}
-        </span>
-        <span className="text-[7px] font-bold text-center uppercase tracking-wider text-zinc-700 mt-1">
-          Authorized Field Agent Scan
-        </span>
       </div>
     </>
   );

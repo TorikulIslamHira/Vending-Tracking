@@ -29,23 +29,31 @@ export const useAuthStore = create<AuthState>()(
       tenantId: null,
       isAuthenticated: false,
 
-      setAuth: (user, token) =>
+      setAuth: (user, token) => {
+        if (typeof document !== "undefined") {
+          document.cookie = `auth-token=${token}; path=/; max-age=604800; SameSite=Lax`;
+        }
         set({
           user,
           token,
           tenantId: user.tenantId,
           isAuthenticated: true,
-        }),
+        });
+      },
 
       setTenantId: (tenantId) => set({ tenantId }),
 
-      logout: () =>
+      logout: () => {
+        if (typeof document !== "undefined") {
+          document.cookie = "auth-token=; path=/; max-age=0; SameSite=Lax";
+        }
         set({
           user: null,
           token: null,
           tenantId: null,
           isAuthenticated: false,
-        }),
+        });
+      },
     }),
     {
       name: "vending-auth-storage",

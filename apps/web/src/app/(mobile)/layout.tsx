@@ -2,7 +2,8 @@
 
 import React from "react";
 import Link from "next/link";
-import { usePathname } from "next/navigation";
+import { usePathname, useRouter } from "next/navigation";
+import { useAuthStore } from "@/store/useAuthStore";
 import { cn } from "@/lib/utils";
 import {
   LayoutDashboard,
@@ -46,10 +47,26 @@ export default function MobileLayout({
   children: React.ReactNode;
 }) {
   const pathname = usePathname();
+  const router = useRouter();
+  const { isAuthenticated, token } = useAuthStore();
+  const [mounted, setMounted] = React.useState(false);
 
-  // Bottom Navigation Bar is displayed on primary and secondary operational list views
+  React.useEffect(() => {
+    setMounted(true);
+  }, []);
+
+  const isAuthPage = pathname === "/login" || pathname === "/forgot-password";
+
+  // Client-side authentication guard
+  React.useEffect(() => {
+    if (mounted && !isAuthPage && (!isAuthenticated || !token)) {
+      const redirectUrl = encodeURIComponent(pathname);
+      router.push(`/login?redirect=${redirectUrl}`);
+    }
+  }, [mounted, isAuthPage, isAuthenticated, token, pathname, router]);
+
+  // Bottom Navigation Bar is displayed on primary and secondary operational list views (never on auth pages)
   const bottomNavRoutes = [
-    "/",
     "/dashboard",
     "/locations",
     "/reports",
@@ -62,7 +79,7 @@ export default function MobileLayout({
     "/users",
   ];
 
-  const showBottomNav = bottomNavRoutes.includes(pathname) || pathname === "/";
+  const showBottomNav = !isAuthPage && bottomNavRoutes.includes(pathname);
 
   // Active tab determination helper
   const getIsActiveTab = (tabHref: string) => {

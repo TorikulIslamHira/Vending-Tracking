@@ -87,14 +87,35 @@
 
 @media print {
   @page {
-    margin: 0;
     size: auto;
+    margin: 0;
   }
   body, html {
-    background: white !important;
-    color: black !important;
+    background: #ffffff !important;
+    color: #000000 !important;
     padding: 0 !important;
     margin: 0 !important;
+    width: 100% !important;
+    height: auto !important;
+  }
+  .print-qr-container {
+    display: flex !important;
+    flex-direction: column !important;
+    align-items: center !important;
+    justify-content: center !important;
+    width: 100% !important;
+    max-width: 100% !important;
+    height: auto !important;
+    margin: 0 auto !important;
+    padding: 8px !important;
+    box-sizing: border-box !important;
+    page-break-inside: avoid !important;
+  }
+  .print-qr-svg {
+    max-width: 100% !important;
+    height: auto !important;
+    width: 100% !important;
+    object-fit: contain !important;
   }
 }
 
