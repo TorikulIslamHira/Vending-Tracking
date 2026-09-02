@@ -25,8 +25,10 @@ ENV NEXT_PUBLIC_API_URL=/api/v1
 ENV NODE_ENV=production
 ENV NODE_OPTIONS="--max-old-space-size=1024"
 
-# Build Next.js Web application
-RUN pnpm --filter @vending/web run build
+# Build workspace packages and Next.js Web application
+RUN pnpm --filter @vending/shared-types run build && \
+    pnpm --filter @vending/validation run build && \
+    pnpm --filter @vending/web run build
 
 # Stage 2: Production Runner
 FROM base AS runner

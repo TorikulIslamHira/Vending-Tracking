@@ -82,7 +82,7 @@ export async function getMachineByIdHandler(
         },
         inventoryLogs: {
           limit: 10,
-          orderBy: (logs, { desc }) => [desc(logs.createdAt)],
+          orderBy: (logs: any, { desc }: any) => [desc(logs.createdAt)],
           with: {
             agent: {
               columns: {
