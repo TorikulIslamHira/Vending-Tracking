@@ -1,5 +1,6 @@
 import { FastifyReply, FastifyRequest } from "fastify";
-import { prisma } from "../../core/prisma";
+import { eq, and, desc } from "drizzle-orm";
+import { db, stores, locations, machines } from "../../core/db";
 
 export async function getStoresByLocationHandler(
   request: FastifyRequest<{ Params: { locationId: string } }>,
@@ -17,18 +18,18 @@ export async function getStoresByLocationHandler(
   }
 
   try {
-    const [location, stores, machines] = await Promise.all([
-      prisma.location.findFirst({
-        where: { id: locationId, tenantId },
+    const [location, storeList, machineList] = await Promise.all([
+      db.query.locations.findFirst({
+        where: and(eq(locations.id, locationId), eq(locations.tenantId, tenantId)),
       }),
-      prisma.store.findMany({
-        where: { locationId, tenantId },
-        orderBy: { createdAt: "desc" },
+      db.query.stores.findMany({
+        where: and(eq(stores.locationId, locationId), eq(stores.tenantId, tenantId)),
+        orderBy: [desc(stores.createdAt)],
       }),
-      prisma.machine.findMany({
-        where: { tenantId },
-        select: { location: true },
-      }),
+      db
+        .select({ location: machines.location })
+        .from(machines)
+        .where(eq(machines.tenantId, tenantId)),
     ]);
 
     if (!location) {
@@ -39,8 +40,8 @@ export async function getStoresByLocationHandler(
       });
     }
 
-    const formattedStores = stores.map((st) => {
-      const machineCount = machines.filter(
+    const formattedStores = storeList.map((st) => {
+      const machineCount = machineList.filter(
         (m) =>
           m.location.toLowerCase() === st.name.toLowerCase() ||
           m.location.toLowerCase().includes(st.name.toLowerCase()) ||
@@ -90,24 +91,22 @@ export async function getAllStoresHandler(
   }
 
   try {
-    const [stores, machines] = await Promise.all([
-      prisma.store.findMany({
-        where: { tenantId },
-        include: {
-          location: {
-            select: { id: true, name: true, address: true },
-          },
+    const [storeList, machineList] = await Promise.all([
+      db.query.stores.findMany({
+        where: eq(stores.tenantId, tenantId),
+        with: {
+          location: true,
         },
-        orderBy: { createdAt: "desc" },
+        orderBy: [desc(stores.createdAt)],
       }),
-      prisma.machine.findMany({
-        where: { tenantId },
-        select: { location: true },
-      }),
+      db
+        .select({ location: machines.location })
+        .from(machines)
+        .where(eq(machines.tenantId, tenantId)),
     ]);
 
-    const formattedStores = stores.map((st) => {
-      const machineCount = machines.filter(
+    const formattedStores = storeList.map((st) => {
+      const machineCount = machineList.filter(
         (m) =>
           m.location.toLowerCase() === st.name.toLowerCase() ||
           m.location.toLowerCase().includes(st.name.toLowerCase()) ||
@@ -156,9 +155,9 @@ export async function getStoreByIdHandler(
   }
 
   try {
-    const store = await prisma.store.findFirst({
-      where: { id, tenantId },
-      include: {
+    const store = await db.query.stores.findFirst({
+      where: and(eq(stores.id, id), eq(stores.tenantId, tenantId)),
+      with: {
         location: true,
       },
     });
@@ -237,8 +236,8 @@ export async function createStoreHandler(
 
   try {
     // Verify location belongs to tenant
-    const location = await prisma.location.findFirst({
-      where: { id: targetLocationId, tenantId },
+    const location = await db.query.locations.findFirst({
+      where: and(eq(locations.id, targetLocationId), eq(locations.tenantId, tenantId)),
     });
 
     if (!location) {
@@ -249,19 +248,21 @@ export async function createStoreHandler(
       });
     }
 
-    const shopCut = typeof shopCutPercent === "number" ? Math.max(0, Math.min(100, shopCutPercent)) : 30;
+    const shopCut =
+      typeof shopCutPercent === "number" ? Math.max(0, Math.min(100, shopCutPercent)) : 30;
     const bizCut = 100 - shopCut;
 
-    const store = await prisma.store.create({
-      data: {
+    const [store] = await db
+      .insert(stores)
+      .values({
         tenantId,
         locationId: targetLocationId,
         name: name.trim(),
         category: category ? category.trim() : "Novelty Vending",
         shopCutPercent: shopCut,
         businessCutPercent: bizCut,
-      },
-    });
+      })
+      .returning();
 
     return reply.status(201).send({
       statusCode: 201,
@@ -310,8 +311,8 @@ export async function updateStoreHandler(
   }
 
   try {
-    const existing = await prisma.store.findFirst({
-      where: { id, tenantId },
+    const existing = await db.query.stores.findFirst({
+      where: and(eq(stores.id, id), eq(stores.tenantId, tenantId)),
     });
 
     if (!existing) {
@@ -335,10 +336,11 @@ export async function updateStoreHandler(
       dataToUpdate.businessCutPercent = 100 - shopCut;
     }
 
-    const updated = await prisma.store.update({
-      where: { id },
-      data: dataToUpdate,
-    });
+    const [updated] = await db
+      .update(stores)
+      .set(dataToUpdate)
+      .where(and(eq(stores.id, id), eq(stores.tenantId, tenantId)))
+      .returning();
 
     return reply.send({
       statusCode: 200,
@@ -376,11 +378,12 @@ export async function deleteStoreHandler(
   }
 
   try {
-    const deleted = await prisma.store.deleteMany({
-      where: { id, tenantId },
-    });
+    const deleted = await db
+      .delete(stores)
+      .where(and(eq(stores.id, id), eq(stores.tenantId, tenantId)))
+      .returning();
 
-    if (deleted.count === 0) {
+    if (deleted.length === 0) {
       return reply.status(404).send({
         statusCode: 404,
         error: "Not Found",

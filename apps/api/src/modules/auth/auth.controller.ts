@@ -1,8 +1,9 @@
 import { FastifyReply, FastifyRequest } from "fastify";
 import bcrypt from "bcryptjs";
+import { eq } from "drizzle-orm";
 import { UserLoginSchema } from "@vending/validation";
 import { UserRole } from "@vending/shared-types";
-import { prisma } from "../../core/prisma";
+import { db, users } from "../../core/db";
 import { JWTPayload } from "../../core/middlewares/tenantHandler";
 
 export async function loginHandler(
@@ -23,10 +24,10 @@ export async function loginHandler(
   const { email, password } = parseResult.data;
 
   try {
-    // Attempt to query User from database
-    const user = await prisma.user.findFirst({
-      where: { email },
-      include: { tenant: true },
+    // Query user with tenant relation using Drizzle
+    const user = await db.query.users.findFirst({
+      where: eq(users.email, email),
+      with: { tenant: true },
     });
 
     if (user) {

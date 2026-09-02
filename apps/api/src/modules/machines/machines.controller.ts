@@ -1,6 +1,7 @@
 import { FastifyReply, FastifyRequest } from "fastify";
+import { eq, and, or, desc, count } from "drizzle-orm";
 import { MachineCreateSchema } from "@vending/validation";
-import { prisma } from "../../core/prisma";
+import { db, machines, inventoryLogs } from "../../core/db";
 
 /**
  * Fetch all machines scoped to the authenticated tenant, optionally filtered by storeId
@@ -13,29 +14,26 @@ export async function getMachinesHandler(
   const { storeId } = (request.query as any) || {};
 
   try {
-    const whereClause: any = { tenantId };
-    if (storeId && storeId !== "all") {
-      whereClause.storeId = storeId;
-    }
+    const whereCondition =
+      storeId && storeId !== "all"
+        ? and(eq(machines.tenantId, tenantId), eq(machines.storeId, storeId))
+        : eq(machines.tenantId, tenantId);
 
-    const machines = await prisma.machine.findMany({
-      where: whereClause,
-      include: {
+    const machineList = await db.query.machines.findMany({
+      where: whereCondition,
+      with: {
         store: {
-          select: {
-            id: true,
-            name: true,
-            locationId: true,
-            location: { select: { id: true, name: true } },
+          with: {
+            location: true,
           },
         },
       },
-      orderBy: { createdAt: "desc" },
+      orderBy: [desc(machines.createdAt)],
     });
 
     return reply.send({
       statusCode: 200,
-      data: machines.map((m) => ({
+      data: machineList.map((m) => ({
         id: m.id,
         serialNumber: m.serialNumber,
         location: m.location,
@@ -52,7 +50,7 @@ export async function getMachinesHandler(
         createdAt: m.createdAt,
       })),
     });
-  } catch (error: any) {
+  } catch {
     return reply.send({
       statusCode: 200,
       data: [],
@@ -71,26 +69,34 @@ export async function getMachineByIdHandler(
   const { id } = request.params;
 
   try {
-    const machine = await prisma.machine.findFirst({
-      where: {
-        tenantId,
-        OR: [{ id }, { qrCode: id }, { serialNumber: id }],
-      },
-      include: {
+    const machine = await db.query.machines.findFirst({
+      where: and(
+        eq(machines.tenantId, tenantId),
+        or(eq(machines.id, id), eq(machines.qrCode, id), eq(machines.serialNumber, id))
+      ),
+      with: {
         store: {
-          select: {
-            id: true,
-            name: true,
-            locationId: true,
-            location: { select: { id: true, name: true } },
+          with: {
+            location: true,
           },
         },
         inventoryLogs: {
-          take: 10,
-          orderBy: { createdAt: "desc" },
-          include: {
-            agent: { select: { id: true, name: true } },
-            packet: { select: { id: true, name: true, brand: true } },
+          limit: 10,
+          orderBy: (logs, { desc }) => [desc(logs.createdAt)],
+          with: {
+            agent: {
+              columns: {
+                id: true,
+                name: true,
+              },
+            },
+            packet: {
+              columns: {
+                id: true,
+                name: true,
+                brand: true,
+              },
+            },
           },
         },
       },
@@ -154,19 +160,21 @@ export async function createMachineHandler(
     });
   }
 
-  const { serialNumber, location, status, qrCode, storeId, category, type, capacity } = parseResult.data;
+  const { serialNumber, location, status, qrCode, storeId, category, type, capacity } =
+    parseResult.data;
 
   try {
-    const existing = await prisma.machine.findFirst({
-      where: {
-        tenantId,
-        OR: [{ serialNumber }, { qrCode }],
-      },
+    const existing = await db.query.machines.findFirst({
+      where: and(
+        eq(machines.tenantId, tenantId),
+        or(eq(machines.serialNumber, serialNumber), eq(machines.qrCode, qrCode))
+      ),
     });
 
     if (!existing) {
-      const machine = await prisma.machine.create({
-        data: {
+      const [machine] = await db
+        .insert(machines)
+        .values({
           tenantId,
           storeId: storeId || null,
           serialNumber,
@@ -174,11 +182,11 @@ export async function createMachineHandler(
           category: category || "Standard Confectionery",
           type: type || "Spiral Chute",
           capacity: capacity || 100,
-          status,
+          status: status || "ONLINE",
           qrCode,
-          virtualCashBalance: 0.0,
-        },
-      });
+          virtualCashBalance: "0.00",
+        })
+        .returning();
 
       return reply.status(201).send({
         statusCode: 201,
@@ -190,7 +198,8 @@ export async function createMachineHandler(
     return reply.status(409).send({
       statusCode: 409,
       error: "Conflict",
-      message: "A machine with this serial number or QR code already exists for your organization",
+      message:
+        "A machine with this serial number or QR code already exists for your organization",
     });
   } catch (error: any) {
     return reply.status(500).send({
@@ -211,25 +220,30 @@ export async function getDashboardMetricsHandler(
   const tenantId = request.tenantId;
 
   try {
-    const [machinesCount, inventoryLogs, machinesList] = await Promise.all([
-      prisma.machine.count({ where: { tenantId } }),
-      prisma.inventoryLog.findMany({
-        where: { tenantId },
-        select: { quantityAdded: true, entryType: true },
-      }),
-      prisma.machine.findMany({
-        where: { tenantId },
-        select: {
-          id: true,
-          serialNumber: true,
-          location: true,
-          status: true,
-          virtualCashBalance: true,
-        },
-      }),
+    const [machinesCountResult, inventoryLogsList, machinesList] = await Promise.all([
+      db.select({ value: count() }).from(machines).where(eq(machines.tenantId, tenantId)),
+      db
+        .select({
+          quantityAdded: inventoryLogs.quantityAdded,
+          entryType: inventoryLogs.entryType,
+        })
+        .from(inventoryLogs)
+        .where(eq(inventoryLogs.tenantId, tenantId)),
+      db
+        .select({
+          id: machines.id,
+          serialNumber: machines.serialNumber,
+          location: machines.location,
+          status: machines.status,
+          virtualCashBalance: machines.virtualCashBalance,
+        })
+        .from(machines)
+        .where(eq(machines.tenantId, tenantId)),
     ]);
 
-    const totalRestocked = inventoryLogs.reduce(
+    const totalMachines = machinesCountResult[0]?.value ?? 0;
+
+    const totalRestocked = inventoryLogsList.reduce(
       (sum, log) => sum + (log.quantityAdded || 0),
       0
     );
@@ -256,13 +270,13 @@ export async function getDashboardMetricsHandler(
     return reply.send({
       statusCode: 200,
       data: {
-        totalMachines: machinesCount,
-        totalRestocked: totalRestocked,
-        totalVirtualCash: totalVirtualCash,
+        totalMachines,
+        totalRestocked,
+        totalVirtualCash,
         shopCutPercent: 30,
         businessCutPercent: 70,
         missedVisitsCount: offlineCount,
-        attentionMachines: attentionMachines,
+        attentionMachines,
       },
     });
   } catch {

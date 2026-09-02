@@ -1,6 +1,7 @@
 import { FastifyReply, FastifyRequest } from "fastify";
+import { eq, desc } from "drizzle-orm";
 import { PacketConfigCreateSchema } from "@vending/validation";
-import { prisma } from "../../core/prisma";
+import { db, packetConfigs } from "../../core/db";
 
 /**
  * Get all Packet Configurations for authenticated tenant
@@ -11,9 +12,9 @@ export async function getPacketsHandler(
 ): Promise<void> {
   const tenantId = request.tenantId;
 
-  const packets = await prisma.packetConfig.findMany({
-    where: { tenantId },
-    orderBy: { createdAt: "desc" },
+  const packets = await db.query.packetConfigs.findMany({
+    where: eq(packetConfigs.tenantId, tenantId),
+    orderBy: [desc(packetConfigs.createdAt)],
   });
 
   return reply.send({
@@ -44,15 +45,16 @@ export async function createPacketHandler(
 
   const { name, brand, quantityPerPacket, pricePerItem } = parseResult.data;
 
-  const packet = await prisma.packetConfig.create({
-    data: {
+  const [packet] = await db
+    .insert(packetConfigs)
+    .values({
       tenantId,
       name,
       brand,
       quantityPerPacket,
-      pricePerItem,
-    },
-  });
+      pricePerItem: String(pricePerItem),
+    })
+    .returning();
 
   return reply.status(201).send({
     statusCode: 201,

@@ -1,6 +1,7 @@
 import { FastifyReply, FastifyRequest } from "fastify";
 import bcrypt from "bcryptjs";
-import { prisma } from "../../core/prisma";
+import { eq, desc } from "drizzle-orm";
+import { db, users } from "../../core/db";
 
 export async function getUsersHandler(
   request: FastifyRequest,
@@ -9,19 +10,12 @@ export async function getUsersHandler(
   const tenantId = request.tenantId;
 
   try {
-    const users = await prisma.user.findMany({
-      where: { tenantId },
-      select: {
-        id: true,
-        name: true,
-        email: true,
-        role: true,
-        createdAt: true,
-      },
-      orderBy: { createdAt: "desc" },
+    const userList = await db.query.users.findMany({
+      where: eq(users.tenantId, tenantId),
+      orderBy: [desc(users.createdAt)],
     });
 
-    const formattedUsers = users.map((u) => ({
+    const formattedUsers = userList.map((u) => ({
       id: u.id,
       name: u.name,
       email: u.email,
@@ -62,24 +56,25 @@ export async function createUserHandler(
   try {
     const defaultHashedPassword = await bcrypt.hash("Password123!", 10);
 
-    const user = await prisma.user.create({
-      data: {
+    const [createdUser] = await db
+      .insert(users)
+      .values({
         tenantId,
         name,
         email,
         role: role === "ADMIN" ? "ADMIN" : "FIELD_AGENT",
         passwordHash: defaultHashedPassword,
-      },
-    });
+      })
+      .returning();
 
     return reply.status(201).send({
       statusCode: 201,
       message: "User created successfully",
       data: {
-        id: user.id,
-        name: user.name,
-        email: user.email,
-        role: user.role,
+        id: createdUser.id,
+        name: createdUser.name,
+        email: createdUser.email,
+        role: createdUser.role,
         status: "ACTIVE",
         assignedCount: 0,
       },

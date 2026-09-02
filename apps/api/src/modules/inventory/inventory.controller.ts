@@ -1,11 +1,11 @@
 import { FastifyReply, FastifyRequest } from "fastify";
+import { eq, and, desc } from "drizzle-orm";
 import {
   RestockSchema,
   ManualEntrySchema,
   CashCollectionSchema,
 } from "@vending/validation";
-import { EntryType } from "@vending/shared-types";
-import { prisma } from "../../core/prisma";
+import { db, machines, packetConfigs, inventoryLogs, cashLogs } from "../../core/db";
 
 /**
  * Standard Restock: Agent selects predefined packet configuration.
@@ -32,8 +32,8 @@ export async function standardRestockHandler(
   const { machineId, packetId, quantity, remarks } = parseResult.data;
 
   // Verify machine exists and belongs to tenant
-  const machine = await prisma.machine.findFirst({
-    where: { id: machineId, tenantId },
+  const machine = await db.query.machines.findFirst({
+    where: and(eq(machines.id, machineId), eq(machines.tenantId, tenantId)),
   });
 
   if (!machine) {
@@ -45,8 +45,8 @@ export async function standardRestockHandler(
   }
 
   // Fetch PacketConfig defined by Admin
-  const packetConfig = await prisma.packetConfig.findFirst({
-    where: { id: packetId, tenantId },
+  const packetConfig = await db.query.packetConfigs.findFirst({
+    where: and(eq(packetConfigs.id, packetId), eq(packetConfigs.tenantId, tenantId)),
   });
 
   if (!packetConfig) {
@@ -61,23 +61,28 @@ export async function standardRestockHandler(
   const totalPieces = quantity * packetConfig.quantityPerPacket;
 
   // Execute database transaction: Log Inventory Entry and update machine timestamp
-  const [log, updatedMachine] = await prisma.$transaction([
-    prisma.inventoryLog.create({
-      data: {
+  const { log, updatedMachine } = await db.transaction(async (tx) => {
+    const [insertedLog] = await tx
+      .insert(inventoryLogs)
+      .values({
         tenantId,
         machineId: machine.id,
         agentId,
         packetId: packetConfig.id,
-        entryType: EntryType.STANDARD,
+        entryType: "STANDARD",
         quantityAdded: totalPieces,
         remarks: remarks || `Standard restock: ${quantity} packets (${totalPieces} items)`,
-      },
-    }),
-    prisma.machine.update({
-      where: { id: machine.id },
-      data: { updatedAt: new Date() },
-    }),
-  ]);
+      })
+      .returning();
+
+    const [machineRecord] = await tx
+      .update(machines)
+      .set({ updatedAt: new Date() })
+      .where(eq(machines.id, machine.id))
+      .returning();
+
+    return { log: insertedLog, updatedMachine: machineRecord };
+  });
 
   return reply.status(201).send({
     statusCode: 201,
@@ -120,8 +125,8 @@ export async function manualRestockHandler(
     parseResult.data;
 
   // Verify machine exists and belongs to tenant
-  const machine = await prisma.machine.findFirst({
-    where: { id: machineId, tenantId },
+  const machine = await db.query.machines.findFirst({
+    where: and(eq(machines.id, machineId), eq(machines.tenantId, tenantId)),
   });
 
   if (!machine) {
@@ -134,7 +139,7 @@ export async function manualRestockHandler(
 
   // Adjust sign if REVERSE type is specified but passed as positive
   let finalQuantityAdded = quantityAdded;
-  if (entryType === EntryType.REVERSE && quantityAdded > 0) {
+  if (entryType === "REVERSE" && quantityAdded > 0) {
     finalQuantityAdded = -quantityAdded;
   }
 
@@ -143,28 +148,33 @@ export async function manualRestockHandler(
     ? `[Brand: ${brandName}] ${remarks}`
     : remarks;
 
-  const [log, updatedMachine] = await prisma.$transaction([
-    prisma.inventoryLog.create({
-      data: {
+  const { log, updatedMachine } = await db.transaction(async (tx) => {
+    const [insertedLog] = await tx
+      .insert(inventoryLogs)
+      .values({
         tenantId,
         machineId: machine.id,
         agentId,
         packetId: packetId || null,
-        entryType,
+        entryType: (entryType as "STANDARD" | "MANUAL" | "REVERSE") || "MANUAL",
         quantityAdded: finalQuantityAdded,
         remarks: formattedRemarks,
-      },
-    }),
-    prisma.machine.update({
-      where: { id: machine.id },
-      data: { updatedAt: new Date() },
-    }),
-  ]);
+      })
+      .returning();
+
+    const [machineRecord] = await tx
+      .update(machines)
+      .set({ updatedAt: new Date() })
+      .where(eq(machines.id, machine.id))
+      .returning();
+
+    return { log: insertedLog, updatedMachine: machineRecord };
+  });
 
   return reply.status(201).send({
     statusCode: 201,
     message:
-      entryType === EntryType.REVERSE
+      entryType === "REVERSE"
         ? "Reversal entry recorded successfully"
         : "Manual inventory entry recorded successfully",
     data: {
@@ -201,8 +211,8 @@ export async function cashCollectionHandler(
 
   const { machineId, collectedAmount } = parseResult.data;
 
-  const machine = await prisma.machine.findFirst({
-    where: { id: machineId, tenantId },
+  const machine = await db.query.machines.findFirst({
+    where: and(eq(machines.id, machineId), eq(machines.tenantId, tenantId)),
   });
 
   if (!machine) {
@@ -213,25 +223,30 @@ export async function cashCollectionHandler(
     });
   }
 
-  const expectedAmount = Number(machine.virtualCashBalance);
+  const expectedAmount = Number(machine.virtualCashBalance || 0);
   const discrepancy = expectedAmount - collectedAmount;
 
-  const [cashLog, updatedMachine] = await prisma.$transaction([
-    prisma.cashLog.create({
-      data: {
+  const { cashLog, updatedMachine } = await db.transaction(async (tx) => {
+    const [insertedCashLog] = await tx
+      .insert(cashLogs)
+      .values({
         tenantId,
         machineId: machine.id,
         agentId,
-        collectedAmount,
-        expectedAmount,
-        discrepancy,
-      },
-    }),
-    prisma.machine.update({
-      where: { id: machine.id },
-      data: { virtualCashBalance: 0.0 },
-    }),
-  ]);
+        collectedAmount: String(collectedAmount),
+        expectedAmount: String(expectedAmount),
+        discrepancy: String(discrepancy),
+      })
+      .returning();
+
+    const [machineRecord] = await tx
+      .update(machines)
+      .set({ virtualCashBalance: "0.00" })
+      .where(eq(machines.id, machine.id))
+      .returning();
+
+    return { cashLog: insertedCashLog, updatedMachine: machineRecord };
+  });
 
   return reply.status(201).send({
     statusCode: 201,
@@ -242,7 +257,7 @@ export async function cashCollectionHandler(
       collectedAmount: Number(cashLog.collectedAmount),
       expectedAmount: Number(cashLog.expectedAmount),
       discrepancy: Number(cashLog.discrepancy),
-      newVirtualCashBalance: Number(updatedMachine.virtualCashBalance),
+      newVirtualCashBalance: Number(updatedMachine.virtualCashBalance || 0),
       createdAt: cashLog.createdAt,
     },
   });
@@ -259,36 +274,37 @@ export async function getInventoryLogsHandler(
   const { machineId } = request.query;
 
   try {
-    const logs = await prisma.inventoryLog.findMany({
-      where: {
-        tenantId,
-        ...(machineId ? { machineId } : {}),
-      },
-      include: {
+    const whereCondition = machineId
+      ? and(eq(inventoryLogs.tenantId, tenantId), eq(inventoryLogs.machineId, machineId))
+      : eq(inventoryLogs.tenantId, tenantId);
+
+    const logs = await db.query.inventoryLogs.findMany({
+      where: whereCondition,
+      with: {
         machine: {
-          select: {
+          columns: {
             id: true,
             serialNumber: true,
             location: true,
           },
         },
         agent: {
-          select: {
+          columns: {
             id: true,
             name: true,
             email: true,
           },
         },
         packet: {
-          select: {
+          columns: {
             id: true,
             name: true,
             brand: true,
           },
         },
       },
-      orderBy: { createdAt: "desc" },
-      take: 100,
+      orderBy: [desc(inventoryLogs.createdAt)],
+      limit: 100,
     });
 
     return reply.send({
@@ -313,31 +329,31 @@ export async function getCashLogsHandler(
   const tenantId = request.tenantId;
 
   try {
-    const cashLogs = await prisma.cashLog.findMany({
-      where: { tenantId },
-      include: {
+    const cashLogList = await db.query.cashLogs.findMany({
+      where: eq(cashLogs.tenantId, tenantId),
+      with: {
         machine: {
-          select: {
+          columns: {
             id: true,
             serialNumber: true,
             location: true,
           },
         },
         agent: {
-          select: {
+          columns: {
             id: true,
             name: true,
             email: true,
           },
         },
       },
-      orderBy: { createdAt: "desc" },
-      take: 100,
+      orderBy: [desc(cashLogs.createdAt)],
+      limit: 100,
     });
 
     return reply.send({
       statusCode: 200,
-      data: cashLogs,
+      data: cashLogList,
     });
   } catch {
     return reply.send({
@@ -379,13 +395,14 @@ export async function reverseEntryHandler(
 
   try {
     if (logId) {
-      const originalLog = await prisma.inventoryLog.findFirst({
-        where: { id: logId, tenantId },
+      const originalLog = await db.query.inventoryLogs.findFirst({
+        where: and(eq(inventoryLogs.id, logId), eq(inventoryLogs.tenantId, tenantId)),
       });
 
       if (originalLog) {
         targetMachineId = originalLog.machineId;
-        revertQuantity = originalLog.quantityAdded > 0 ? -originalLog.quantityAdded : originalLog.quantityAdded;
+        revertQuantity =
+          originalLog.quantityAdded > 0 ? -originalLog.quantityAdded : originalLog.quantityAdded;
         targetPacketId = originalLog.packetId;
       }
     } else {
@@ -394,23 +411,28 @@ export async function reverseEntryHandler(
       }
     }
 
-    const [reversalLog, updatedMachine] = await prisma.$transaction([
-      prisma.inventoryLog.create({
-        data: {
+    const { reversalLog, updatedMachine } = await db.transaction(async (tx) => {
+      const [insertedReversal] = await tx
+        .insert(inventoryLogs)
+        .values({
           tenantId,
           machineId: targetMachineId,
           agentId,
           packetId: targetPacketId,
-          entryType: EntryType.REVERSE,
+          entryType: "REVERSE",
           quantityAdded: revertQuantity,
           remarks: `[REVERSAL] ${remarks}`,
-        },
-      }),
-      prisma.machine.update({
-        where: { id: targetMachineId },
-        data: { updatedAt: new Date() },
-      }),
-    ]);
+        })
+        .returning();
+
+      const [machineRecord] = await tx
+        .update(machines)
+        .set({ updatedAt: new Date() })
+        .where(eq(machines.id, targetMachineId))
+        .returning();
+
+      return { reversalLog: insertedReversal, updatedMachine: machineRecord };
+    });
 
     return reply.status(201).send({
       statusCode: 201,
@@ -432,7 +454,7 @@ export async function reverseEntryHandler(
       data: {
         logId: `rev-${Date.now()}`,
         machineId: targetMachineId,
-        entryType: EntryType.REVERSE,
+        entryType: "REVERSE",
         quantityAdded: revertQuantity > 0 ? -revertQuantity : revertQuantity,
         remarks: `[REVERSAL] ${remarks}`,
         createdAt: new Date().toISOString(),

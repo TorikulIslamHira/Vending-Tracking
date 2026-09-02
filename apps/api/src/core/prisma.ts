@@ -1,4 +1,4 @@
-import { prisma, PrismaClient } from "@vending/database";
+import { db } from "./db";
 
-export { prisma, PrismaClient };
-export default prisma;
+export { db, db as prisma };
+export default db;

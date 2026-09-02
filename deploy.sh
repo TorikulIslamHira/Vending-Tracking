@@ -48,15 +48,15 @@ export COMPOSE_DOCKER_CLI_BUILD=1
 $COMPOSE_CMD build --parallel=false
 $COMPOSE_CMD up -d
 
-echo "🗄️ 4/4 Synchronizing database schema (Prisma db push)..."
+echo "🗄️ 4/4 Synchronizing database schema (Drizzle db push)..."
 # Wait 5 seconds for PostgreSQL container to become ready
 sleep 5
-# Execute database migration inside the running API container
+# Execute database schema push inside the running API container
 if $COMPOSE_CMD exec -T api pnpm --filter @vending/database run db:push; then
-  echo "✅ Database schema in sync."
+  echo "✅ Database schema in sync with Drizzle ORM."
 else
-  echo "⚠️ Fallback to direct npx prisma db push..."
-  $COMPOSE_CMD exec -T api npx prisma db push || true
+  echo "⚠️ Fallback to direct drizzle-kit push..."
+  $COMPOSE_CMD exec -T -w /app/packages/database api npx drizzle-kit push || true
 fi
 
 echo "🧹 4/4 Cleaning up obsolete Docker image layers..."

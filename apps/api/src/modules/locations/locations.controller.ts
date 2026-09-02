@@ -1,5 +1,6 @@
 import { FastifyReply, FastifyRequest } from "fastify";
-import { prisma } from "../../core/prisma";
+import { eq, and, desc } from "drizzle-orm";
+import { db, locations, machines } from "../../core/db";
 
 export async function getLocationsHandler(
   request: FastifyRequest,
@@ -16,24 +17,22 @@ export async function getLocationsHandler(
   }
 
   try {
-    const [locations, machines] = await Promise.all([
-      prisma.location.findMany({
-        where: { tenantId },
-        include: {
-          _count: {
-            select: { stores: true },
-          },
+    const [locationList, machineList] = await Promise.all([
+      db.query.locations.findMany({
+        where: eq(locations.tenantId, tenantId),
+        with: {
+          stores: true,
         },
-        orderBy: { createdAt: "desc" },
+        orderBy: [desc(locations.createdAt)],
       }),
-      prisma.machine.findMany({
-        where: { tenantId },
-        select: { location: true },
-      }),
+      db
+        .select({ location: machines.location })
+        .from(machines)
+        .where(eq(machines.tenantId, tenantId)),
     ]);
 
-    const formatted = locations.map((loc) => {
-      const machineCount = machines.filter(
+    const formatted = locationList.map((loc) => {
+      const machineCount = machineList.filter(
         (m) =>
           m.location.toLowerCase() === loc.name.toLowerCase() ||
           m.location.toLowerCase().includes(loc.name.toLowerCase())
@@ -43,7 +42,7 @@ export async function getLocationsHandler(
         id: loc.id,
         name: loc.name,
         address: loc.address || "Commercial Zone",
-        storeCount: loc._count?.stores ?? 0,
+        storeCount: loc.stores?.length ?? 0,
         machineCount,
         status: "ACTIVE" as const,
         createdAt: loc.createdAt,
@@ -80,11 +79,8 @@ export async function getLocationByIdHandler(
   }
 
   try {
-    const location = await prisma.location.findFirst({
-      where: {
-        id,
-        tenantId,
-      },
+    const location = await db.query.locations.findFirst({
+      where: and(eq(locations.id, id), eq(locations.tenantId, tenantId)),
     });
 
     if (!location) {
@@ -135,13 +131,14 @@ export async function createLocationHandler(
   }
 
   try {
-    const location = await prisma.location.create({
-      data: {
+    const [location] = await db
+      .insert(locations)
+      .values({
         tenantId,
         name: name.trim(),
         address: address ? address.trim() : null,
-      },
-    });
+      })
+      .returning();
 
     return reply.status(201).send({
       statusCode: 201,
@@ -193,18 +190,16 @@ export async function updateLocationHandler(
   }
 
   try {
-    const updated = await prisma.location.updateMany({
-      where: {
-        id,
-        tenantId,
-      },
-      data: {
+    const updated = await db
+      .update(locations)
+      .set({
         name: name.trim(),
         address: address ? address.trim() : null,
-      },
-    });
+      })
+      .where(and(eq(locations.id, id), eq(locations.tenantId, tenantId)))
+      .returning();
 
-    if (updated.count === 0) {
+    if (updated.length === 0) {
       return reply.status(404).send({
         statusCode: 404,
         error: "Not Found",

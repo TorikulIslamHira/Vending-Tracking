@@ -3,7 +3,8 @@ import Fastify, { FastifyInstance } from "fastify";
 import cors from "@fastify/cors";
 import jwt from "@fastify/jwt";
 import { tenantHandler } from "./core/middlewares/tenantHandler";
-import { prisma } from "./core/prisma";
+import { db } from "./core/db";
+import { sql } from "drizzle-orm";
 import { authRoutes } from "./modules/auth";
 import { machineRoutes } from "./modules/machines";
 import { packetRoutes } from "./modules/packets";
@@ -46,7 +47,7 @@ export function buildServer(): FastifyInstance {
   // Database Connection Health Check
   app.get("/health", async (_request, reply) => {
     try {
-      await prisma.$queryRaw`SELECT 1`;
+      await db.execute(sql`SELECT 1`);
       return {
         status: "healthy",
         database: "connected",
