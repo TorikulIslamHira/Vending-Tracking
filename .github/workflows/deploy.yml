@@ -14,29 +14,34 @@ jobs:
       - name: Checkout Codebase
         uses: actions/checkout@v4
 
-      - name: Deploy to VPS via SSH
-        uses: appleboy/ssh-action@v1.0.3
-        with:
-          host: ${{ secrets.VPS_HOST }}
-          username: ${{ secrets.VPS_USERNAME }}
-          key: ${{ secrets.VPS_SSH_KEY }}
-          port: ${{ secrets.VPS_PORT || '22' }}
-          timeout: 60s
-          command_timeout: 30m
-          script: |
-            APP_DIR="${{ secrets.VPS_APP_DIR }}"
-            if [ -z "$APP_DIR" ]; then
-              if [ -d "$HOME/Vending-Tracking" ]; then
-                APP_DIR="$HOME/Vending-Tracking"
-              elif [ -d "$HOME/bee-novelty" ]; then
-                APP_DIR="$HOME/bee-novelty"
-              elif [ -d "/var/www/Vending-Tracking" ]; then
-                APP_DIR="/var/www/Vending-Tracking"
-              else
-                echo "📁 Cloning repository for initial VPS setup..."
-                git clone https://github.com/TorikulIslamHira/Vending-Tracking.git "$HOME/Vending-Tracking"
-                APP_DIR="$HOME/Vending-Tracking"
-              fi
+      - name: Setup SSH & Deploy to VPS
+        env:
+          VPS_HOST: ${{ secrets.VPS_HOST }}
+          VPS_USERNAME: ${{ secrets.VPS_USERNAME }}
+          VPS_SSH_KEY: ${{ secrets.VPS_SSH_KEY }}
+          VPS_PORT: ${{ secrets.VPS_PORT || '22' }}
+        run: |
+          mkdir -p ~/.ssh
+          echo "$VPS_SSH_KEY" > ~/.ssh/id_rsa
+          chmod 600 ~/.ssh/id_rsa
+
+          SSH_CMD="ssh -o StrictHostKeyChecking=no -o UserKnownHostsFile=/dev/null -o ConnectTimeout=30 -p $VPS_PORT $VPS_USERNAME@$VPS_HOST"
+
+          $SSH_CMD bash -s << 'EOF'
+            set -e
+            export DEBIAN_FRONTEND=noninteractive
+
+            APP_DIR=""
+            if [ -d "$HOME/Vending-Tracking" ]; then
+              APP_DIR="$HOME/Vending-Tracking"
+            elif [ -d "$HOME/bee-novelty" ]; then
+              APP_DIR="$HOME/bee-novelty"
+            elif [ -d "/var/www/Vending-Tracking" ]; then
+              APP_DIR="/var/www/Vending-Tracking"
+            else
+              echo "📁 Cloning repository for initial VPS setup..."
+              git clone https://github.com/TorikulIslamHira/Vending-Tracking.git "$HOME/Vending-Tracking"
+              APP_DIR="$HOME/Vending-Tracking"
             fi
 
             echo "📂 Navigating to application directory: $APP_DIR"
@@ -55,3 +60,4 @@ jobs:
             # Ensure deploy.sh is executable and execute deployment
             chmod +x deploy.sh
             ./deploy.sh
+          EOF

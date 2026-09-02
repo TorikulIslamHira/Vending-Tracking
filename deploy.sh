@@ -37,12 +37,20 @@ echo "📥 1/4 Synchronizing latest changes from GitHub..."
 git fetch origin main
 git reset --hard origin/main
 
-echo "🐳 2/4 Rebuilding and restarting Docker containers..."
+echo "🛑 2/4 Stopping existing containers to free server RAM..."
+$COMPOSE_CMD down --remove-orphans || true
+
+echo "🐳 3/4 Rebuilding and starting Docker containers..."
+export DOCKER_BUILDKIT=1
+export COMPOSE_DOCKER_CLI_BUILD=1
+
 # Build images sequentially to keep RAM footprint low
 $COMPOSE_CMD build --parallel=false
 $COMPOSE_CMD up -d
 
-echo "🗄️ 3/4 Synchronizing database schema (Prisma db push)..."
+echo "🗄️ 4/4 Synchronizing database schema (Prisma db push)..."
+# Wait 5 seconds for PostgreSQL container to become ready
+sleep 5
 # Execute database migration inside the running API container
 if $COMPOSE_CMD exec -T api pnpm --filter @vending/database run db:push; then
   echo "✅ Database schema in sync."
