@@ -3,18 +3,19 @@
   "version": "1.0.0",
   "private": true,
   "description": "Drizzle ORM and Database Client for Multi-Tenant Vending SaaS",
-  "main": "./src/index.ts",
-  "types": "./src/index.ts",
+  "main": "./dist/index.js",
+  "module": "./dist/index.js",
+  "types": "./dist/index.d.ts",
   "exports": {
     ".": {
-      "types": "./src/index.ts",
-      "import": "./src/index.ts",
-      "default": "./src/index.ts"
+      "types": "./dist/index.d.ts",
+      "import": "./dist/index.js",
+      "default": "./dist/index.js"
     },
     "./schema": {
-      "types": "./src/schema.ts",
-      "import": "./src/schema.ts",
-      "default": "./src/schema.ts"
+      "types": "./dist/schema.d.ts",
+      "import": "./dist/schema.js",
+      "default": "./dist/schema.js"
     }
   },
   "scripts": {

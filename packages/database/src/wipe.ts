@@ -1,5 +1,5 @@
 import { sql } from "drizzle-orm";
-import { db } from "./client";
+import { db } from "./client.js";
 
 async function main() {
   console.log("Wiping database schema...");
