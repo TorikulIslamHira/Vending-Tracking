@@ -1,4 +1,5 @@
 import { PrismaClient, UserRole } from "@prisma/client";
+import bcrypt from "bcryptjs";
 
 const prisma = new PrismaClient();
 
@@ -23,7 +24,10 @@ async function main() {
 
   console.log(`✅ Tenant Provisioned: ${tenant.name} (${tenant.id})`);
 
-  // 2. Create EXACTLY ONE Super Admin User
+  // Securely hash the production super admin password
+  const passwordHash = await bcrypt.hash("Admin1234!", 10);
+
+  // 2. Upsert EXACTLY ONE Super Admin User
   const adminUser = await prisma.user.upsert({
     where: {
       tenantId_email: {
@@ -32,7 +36,7 @@ async function main() {
       },
     },
     update: {
-      passwordHash: "Admin1234!",
+      passwordHash,
       role: UserRole.ADMIN,
       name: "Super Admin",
     },
@@ -40,7 +44,7 @@ async function main() {
       tenantId: tenant.id,
       name: "Super Admin",
       email: "admin@example.com",
-      passwordHash: "Admin1234!",
+      passwordHash,
       role: UserRole.ADMIN,
     },
   });

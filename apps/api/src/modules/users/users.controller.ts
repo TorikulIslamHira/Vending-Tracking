@@ -1,4 +1,5 @@
 import { FastifyReply, FastifyRequest } from "fastify";
+import bcrypt from "bcryptjs";
 import { prisma } from "../../core/prisma";
 
 export async function getUsersHandler(
@@ -59,13 +60,15 @@ export async function createUserHandler(
   }
 
   try {
+    const defaultHashedPassword = await bcrypt.hash("Password123!", 10);
+
     const user = await prisma.user.create({
       data: {
         tenantId,
         name,
         email,
         role: role === "ADMIN" ? "ADMIN" : "FIELD_AGENT",
-        passwordHash: "Password123!",
+        passwordHash: defaultHashedPassword,
       },
     });
 

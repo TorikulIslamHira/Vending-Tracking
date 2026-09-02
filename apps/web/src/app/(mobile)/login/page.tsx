@@ -18,8 +18,6 @@ import {
   Lock,
   Mail,
   ArrowRight,
-  ShieldCheck,
-  UserCheck,
   Loader2,
 } from "lucide-react";
 
@@ -32,13 +30,12 @@ function LoginForm() {
   const {
     register,
     handleSubmit,
-    setValue,
     formState: { errors },
   } = useForm<UserLoginInput>({
     resolver: zodResolver(UserLoginSchema),
     defaultValues: {
-      email: "admin@example.com",
-      password: "Admin1234!",
+      email: "",
+      password: "",
     },
   });
 
@@ -53,7 +50,7 @@ function LoginForm() {
       router.push(redirectTarget);
     },
     onError: (err: any) => {
-      const msg = err?.response?.data?.message || "Invalid credentials";
+      const msg = err?.response?.data?.message || "Invalid email or password";
       toast.error(msg);
     },
   });
@@ -62,18 +59,8 @@ function LoginForm() {
     loginMutation.mutate(data);
   };
 
-  const handleQuickPreset = (role: "admin" | "agent") => {
-    if (role === "admin") {
-      setValue("email", "admin@example.com");
-      setValue("password", "Admin1234!");
-    } else {
-      setValue("email", "admin@example.com");
-      setValue("password", "Admin1234!");
-    }
-  };
-
   return (
-    <div className="min-h-[800px] flex flex-col justify-between p-6 sm:p-8">
+    <div className="min-h-[700px] flex flex-col justify-between p-6 sm:p-8">
       {/* Top Header & Logo */}
       <div className="space-y-6 pt-8">
         <div className="flex items-center gap-3">
@@ -106,11 +93,12 @@ function LoginForm() {
           <div className="space-y-1.5">
             <label className="text-xs font-semibold text-foreground flex items-center gap-1.5">
               <Mail className="h-3.5 w-3.5 text-muted-foreground" />
-              <span>Email or Phone</span>
+              <span>Email</span>
             </label>
             <Input
               type="email"
               placeholder="name@company.com"
+              autoComplete="email"
               className="h-12 rounded-2xl bg-slate-100 dark:bg-zinc-800/80 border-transparent focus-visible:border-primary/50 focus-visible:ring-2 focus-visible:ring-primary text-sm px-4 shadow-xs"
               {...register("email")}
             />
@@ -137,6 +125,7 @@ function LoginForm() {
             <Input
               type="password"
               placeholder="••••••••"
+              autoComplete="current-password"
               className="h-12 rounded-2xl bg-slate-100 dark:bg-zinc-800/80 border-transparent focus-visible:border-primary/50 focus-visible:ring-2 focus-visible:ring-primary text-sm px-4 shadow-xs"
               {...register("password")}
             />
@@ -165,31 +154,11 @@ function LoginForm() {
         </form>
       </div>
 
-      {/* Bottom Quick Demo Presets */}
-      <div className="pt-8 pb-4 space-y-3 border-t border-border/40">
-        <span className="text-[11px] font-bold uppercase tracking-wider text-muted-foreground block text-center">
-          Quick Demo Credentials
-        </span>
-        <div className="grid grid-cols-2 gap-2.5">
-          <Button
-            type="button"
-            variant="outline"
-            onClick={() => handleQuickPreset("admin")}
-            className="h-11 rounded-xl text-xs font-semibold gap-1.5 border-border/80 bg-card/60"
-          >
-            <ShieldCheck className="h-4 w-4 text-primary" />
-            <span>Admin</span>
-          </Button>
-          <Button
-            type="button"
-            variant="outline"
-            onClick={() => handleQuickPreset("agent")}
-            className="h-11 rounded-xl text-xs font-semibold gap-1.5 border-border/80 bg-card/60"
-          >
-            <UserCheck className="h-4 w-4 text-secondary" />
-            <span>Field Agent</span>
-          </Button>
-        </div>
+      {/* Production Footer */}
+      <div className="pt-8 pb-4 text-center">
+        <p className="text-[11px] text-muted-foreground">
+          Protected Enterprise System • Bee Novelty Vending
+        </p>
       </div>
     </div>
   );

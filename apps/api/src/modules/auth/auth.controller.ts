@@ -1,4 +1,5 @@
 import { FastifyReply, FastifyRequest } from "fastify";
+import bcrypt from "bcryptjs";
 import { UserLoginSchema } from "@vending/validation";
 import { UserRole } from "@vending/shared-types";
 import { prisma } from "../../core/prisma";
@@ -29,7 +30,16 @@ export async function loginHandler(
     });
 
     if (user) {
-      const isValidPassword = user.passwordHash === password;
+      let isValidPassword = false;
+      if (
+        user.passwordHash.startsWith("$2a$") ||
+        user.passwordHash.startsWith("$2b$") ||
+        user.passwordHash.startsWith("$2y$")
+      ) {
+        isValidPassword = await bcrypt.compare(password, user.passwordHash);
+      } else {
+        isValidPassword = user.passwordHash === password;
+      }
 
       if (!isValidPassword) {
         return reply.status(401).send({

@@ -16,10 +16,12 @@
     "@vending/database": "workspace:*",
     "@vending/shared-types": "workspace:*",
     "@vending/validation": "workspace:*",
+    "bcryptjs": "^3.0.3",
     "dotenv": "^16.4.7",
     "fastify": "^5.2.1"
   },
   "devDependencies": {
+    "@types/bcryptjs": "^3.0.0",
     "@types/node": "^22.13.5",
     "nodemon": "^3.1.9",
     "ts-node": "^10.9.2",

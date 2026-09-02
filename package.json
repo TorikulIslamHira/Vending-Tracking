@@ -25,5 +25,11 @@
     }
   },
   "packageManager": "pnpm@11.23.0",
-  "type": "module"
+  "type": "module",
+  "dependencies": {
+    "bcryptjs": "^3.0.3"
+  },
+  "devDependencies": {
+    "@types/bcryptjs": "^3.0.0"
+  }
 }
