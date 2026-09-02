@@ -21,7 +21,7 @@ COPY apps/api ./apps/api
 RUN --mount=type=cache,id=pnpm,target=/pnpm/store pnpm install --frozen-lockfile
 
 # Set build-time env
-ENV DATABASE_URL="postgresql://vending_user:vending_secure_password_2026@db:5432/vending_db?schema=public"
+ENV DATABASE_URL="postgresql://vending_user:vending_secure_password_2026@db:5432/vending_db"
 
 # Build workspace packages and API TypeScript bundle
 RUN pnpm --filter @vending/shared-types run build && \
