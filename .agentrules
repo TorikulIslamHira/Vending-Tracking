@@ -3,3 +3,4 @@
 2. IMPACT ANALYSIS: Before changing existing logic, check the YAML frontmatter (`dependencies`, `impacts`) in the markdown docs. You MUST state the impact of your changes before proceeding.
 3. NO HALLUCINATION: Only use predefined packages (@packages/shared-types, @packages/validation).
 4. LOGGING: Always update the daily log in `docs/04-AI-Changelogs/` after completing a task.
+5. ZERO DATA DESTRUCTION POLICY: All production data is strictly immutable. Additive schema changes only (no dropping/renaming fields/tables). Never run destructive commands (`prisma migrate reset`, `--accept-data-loss`, table truncations). Any destructive requirement requires halting and explicit human authorization.
