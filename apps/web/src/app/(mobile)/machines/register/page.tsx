@@ -17,11 +17,13 @@ import {
   Loader2,
   Sparkles,
   RefreshCw,
+  KeyRound,
 } from "lucide-react";
 
 interface MachineRegisterFormValues {
   storeId: string;
   machineId: string;
+  keyNumber: string;
   categoryName: string;
   dispenserType: string;
   capacity: number;
@@ -78,6 +80,7 @@ function RegisterMachineForm() {
     defaultValues: {
       storeId: defaultStoreId,
       machineId: "",
+      keyNumber: "",
       categoryName: "Standard Confectionery",
       dispenserType: "Spiral Chute",
       capacity: 100,
@@ -131,6 +134,7 @@ function RegisterMachineForm() {
         serialNumber: data.machineId.trim().toUpperCase(),
         location: storeLabel,
         storeId: data.storeId || undefined,
+        keyNumber: data.keyNumber?.trim() || undefined,
         category: data.categoryName.trim(),
         type: data.dispenserType,
         capacity: Number(data.capacity) || 100,
@@ -175,12 +179,12 @@ function RegisterMachineForm() {
             Fast Machine Pairing
           </h2>
           <p className="text-xs text-muted-foreground">
-            Smart sequence IDs linked to stores for instant field agent routing.
+            Smart sequence IDs & lock keys linked for instant field agent routing.
           </p>
         </div>
       </div>
 
-      {/* Screen 6: Form */}
+      {/* Registration Form */}
       <form onSubmit={handleSubmit(onSubmit)} className="space-y-4">
         {/* Store Assignment Dropdown */}
         <div className="space-y-1.5">
@@ -240,6 +244,22 @@ function RegisterMachineForm() {
           <p className="text-[10px] text-muted-foreground font-medium flex items-center gap-1">
             <Sparkles className="h-3 w-3 text-primary" />
             <span>Format: VM-[PREFIX]-[YYMM]-[SEQ] (Fully editable)</span>
+          </p>
+        </div>
+
+        {/* Key Number Registration Field */}
+        <div className="space-y-1.5">
+          <label className="text-xs font-semibold text-foreground flex items-center gap-1.5">
+            <KeyRound className="h-3.5 w-3.5 text-amber-500" />
+            <span>Machine Key Number</span>
+          </label>
+          <Input
+            {...register("keyNumber")}
+            placeholder="e.g. KEY-402, K-A12, 108B"
+            className="h-12 rounded-2xl bg-slate-100 dark:bg-zinc-800/80 border-transparent text-xs font-mono px-4 focus-visible:ring-primary shadow-xs uppercase"
+          />
+          <p className="text-[10px] text-muted-foreground">
+            Physical lock key identifier assigned to field technicians.
           </p>
         </div>
 

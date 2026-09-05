@@ -113,6 +113,7 @@ export const machines = pgTable(
     status: machineStatusEnum("status").default("ONLINE").notNull(),
     qrCode: text("qrCode").notNull(),
     virtualCashBalance: numeric("virtualCashBalance", { precision: 10, scale: 2 }).default("0.00").notNull(),
+    keyNumber: text("keyNumber"),
     createdAt: timestamp("createdAt", { withTimezone: true, mode: "date" }).defaultNow().notNull(),
     updatedAt: timestamp("updatedAt", { withTimezone: true, mode: "date" }).defaultNow().notNull().$onUpdate(() => new Date()),
   },

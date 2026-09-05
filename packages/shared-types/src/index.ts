@@ -47,11 +47,16 @@ export interface IUser {
 export interface IMachine {
   id: string;
   tenantId: string;
+  storeId?: string | null;
   serialNumber: string;
   location: string;
+  category?: string | null;
+  type?: string | null;
+  capacity?: number | null;
   status: MachineStatus;
   qrCode: string;
   virtualCashBalance: number;
+  keyNumber?: string | null;
   createdAt: Date | string;
   updatedAt?: Date | string;
 }

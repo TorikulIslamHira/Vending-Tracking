@@ -35,6 +35,7 @@ import {
   ChevronRight,
   Sparkles,
   MapPin,
+  KeyRound,
 } from "lucide-react";
 
 const fallbackMachines: IMachine[] = [
@@ -259,9 +260,17 @@ export default function MobileMachinesPage() {
                         <Boxes className="h-4 w-4" />
                       </div>
                       <div>
-                        <span className="font-mono font-bold text-sm text-foreground block">
-                          {machine.serialNumber}
-                        </span>
+                        <div className="flex items-center gap-1.5">
+                          <span className="font-mono font-bold text-sm text-foreground block">
+                            {machine.serialNumber}
+                          </span>
+                          {machine.keyNumber && (
+                            <span className="text-[10px] font-mono text-amber-600 dark:text-amber-400 bg-amber-500/10 px-1.5 py-0.5 rounded font-semibold flex items-center gap-0.5">
+                              <KeyRound className="h-2.5 w-2.5" />
+                              <span>{machine.keyNumber}</span>
+                            </span>
+                          )}
+                        </div>
                         <span className="text-[10px] text-muted-foreground font-mono">
                           ID: {machine.id}
                         </span>
@@ -394,16 +403,27 @@ export default function MobileMachinesPage() {
 
               <div className="space-y-1.5">
                 <label className="text-xs font-semibold text-foreground">
-                  Initial Status
+                  Key Number
                 </label>
-                <select
-                  className="flex h-11 w-full rounded-xl border border-border/60 bg-muted/30 px-3 text-xs font-bold text-foreground shadow-xs focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary"
-                  {...register("status")}
-                >
-                  <option value={MachineStatus.ONLINE}>ONLINE</option>
-                  <option value={MachineStatus.OFFLINE}>OFFLINE</option>
-                </select>
+                <Input
+                  placeholder="e.g. K-101"
+                  className="h-11 rounded-xl text-xs bg-muted/30 border-border/60 font-mono"
+                  {...register("keyNumber")}
+                />
               </div>
+            </div>
+
+            <div className="space-y-1.5">
+              <label className="text-xs font-semibold text-foreground">
+                Initial Status
+              </label>
+              <select
+                className="flex h-11 w-full rounded-xl border border-border/60 bg-muted/30 px-3 text-xs font-bold text-foreground shadow-xs focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary"
+                {...register("status")}
+              >
+                <option value={MachineStatus.ONLINE}>ONLINE</option>
+                <option value={MachineStatus.OFFLINE}>OFFLINE</option>
+              </select>
             </div>
 
             <DrawerFooter className="p-0 pt-4 gap-2">

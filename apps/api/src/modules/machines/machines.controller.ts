@@ -45,6 +45,7 @@ export async function getMachinesHandler(
         capacity: m.capacity || 100,
         status: m.status,
         qrCode: m.qrCode,
+        keyNumber: m.keyNumber || "",
         virtualCashBalance: Number(m.virtualCashBalance || 0),
         itemsRemaining: Math.floor(Math.random() * 40) + 60,
         createdAt: m.createdAt,
@@ -116,6 +117,7 @@ export async function getMachineByIdHandler(
           type: machine.type || "Spiral Chute",
           capacity: machine.capacity || 100,
           status: machine.status,
+          keyNumber: machine.keyNumber || "",
           virtualCashBalance: Number(machine.virtualCashBalance || 0),
           qrCode: machine.qrCode,
           inventoryLogs: machine.inventoryLogs,
@@ -136,6 +138,7 @@ export async function getMachineByIdHandler(
       status: "ONLINE",
       virtualCashBalance: 450.0,
       qrCode: id,
+      keyNumber: "K-101",
     },
   });
 }
@@ -160,8 +163,17 @@ export async function createMachineHandler(
     });
   }
 
-  const { serialNumber, location, status, qrCode, storeId, category, type, capacity } =
-    parseResult.data;
+  const {
+    serialNumber,
+    location,
+    status,
+    qrCode,
+    storeId,
+    category,
+    type,
+    capacity,
+    keyNumber,
+  } = parseResult.data;
 
   try {
     const existing = await db.query.machines.findFirst({
@@ -184,6 +196,7 @@ export async function createMachineHandler(
           capacity: capacity || 100,
           status: status || "ONLINE",
           qrCode,
+          keyNumber: keyNumber || null,
           virtualCashBalance: "0.00",
         })
         .returning();

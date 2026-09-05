@@ -111,6 +111,7 @@ export const MachineCreateSchema = z.object({
   category: z.string().optional().nullable(),
   type: z.string().optional().nullable(),
   capacity: z.number().optional().nullable(),
+  keyNumber: z.string().optional().nullable(),
 });
 
 export type MachineCreateInput = z.infer<typeof MachineCreateSchema>;

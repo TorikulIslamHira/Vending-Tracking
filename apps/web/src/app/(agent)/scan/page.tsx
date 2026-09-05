@@ -6,23 +6,24 @@ import { Html5QrcodeScanner, Html5QrcodeSupportedFormats } from "html5-qrcode";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
+import { useMachines } from "@/hooks/useMachines";
 import { toast } from "sonner";
 import {
   QrCode,
-  Camera,
   AlertCircle,
   Keyboard,
   ArrowRight,
-  Sparkles,
-  Server,
+  Boxes,
+  KeyRound,
+  Loader2,
 } from "lucide-react";
 
 export default function QRScannerPage() {
   const router = useRouter();
   const [manualCode, setManualCode] = useState("");
   const [cameraError, setCameraError] = useState<string | null>(null);
-  const [isScanning, setIsScanning] = useState(true);
   const scannerRef = useRef<Html5QrcodeScanner | null>(null);
+  const { data: machinesList = [], isLoading: isMachinesLoading } = useMachines();
 
   useEffect(() => {
     let isMounted = true;
@@ -129,7 +130,7 @@ export default function QRScannerPage() {
         <CardContent className="px-4 pb-4">
           <form onSubmit={handleManualSubmit} className="flex gap-2">
             <Input
-              placeholder="e.g. VM-NY-010 or QR-NY-010"
+              placeholder="e.g. VM-GC-2608-0001 or QR code"
               value={manualCode}
               onChange={(e) => setManualCode(e.target.value)}
               className="h-10 text-sm font-mono"
@@ -142,37 +143,60 @@ export default function QRScannerPage() {
         </CardContent>
       </Card>
 
-      {/* Demo Quick Shortcuts */}
+      {/* Real Dynamic Quick Fleet Shortcuts */}
       <div className="pt-2">
-        <span className="text-[11px] font-semibold uppercase tracking-wider text-muted-foreground block mb-2 px-1">
-          Quick Fleet Shortcuts (Demo)
-        </span>
-        <div className="grid grid-cols-2 gap-2">
-          {[
-            { id: "VM-NY-010", location: "Grand Central" },
-            { id: "VM-NY-014", location: "Times Square" },
-            { id: "VM-NJ-003", location: "Hoboken Terminal" },
-            { id: "VM-NY-015", location: "JFK Airport" },
-          ].map((item) => (
-            <Button
-              key={item.id}
-              variant="outline"
-              size="sm"
-              onClick={() => router.push(`/machine/${item.id}`)}
-              className="flex items-center justify-between text-xs h-11 px-3 border-border/80"
-            >
-              <div className="flex flex-col items-start truncate">
-                <span className="font-semibold text-foreground font-mono">
-                  {item.id}
-                </span>
-                <span className="text-[10px] text-muted-foreground truncate">
-                  {item.location}
-                </span>
-              </div>
-              <ArrowRight className="h-3.5 w-3.5 text-muted-foreground shrink-0" />
-            </Button>
-          ))}
+        <div className="flex items-center justify-between mb-2 px-1">
+          <span className="text-[11px] font-semibold uppercase tracking-wider text-muted-foreground">
+            Quick Fleet Shortcuts
+          </span>
+          {machinesList.length > 0 && (
+            <span className="text-[10px] font-bold text-primary bg-primary/10 px-2 py-0.5 rounded-full">
+              {machinesList.length} Active {machinesList.length === 1 ? "Unit" : "Units"}
+            </span>
+          )}
         </div>
+
+        {isMachinesLoading ? (
+          <div className="flex items-center justify-center p-6 border border-dashed border-border/60 rounded-xl">
+            <Loader2 className="h-5 w-5 animate-spin text-primary" />
+          </div>
+        ) : machinesList.length > 0 ? (
+          <div className="grid grid-cols-2 gap-2">
+            {machinesList.slice(0, 8).map((item) => (
+              <Button
+                key={item.id}
+                variant="outline"
+                size="sm"
+                onClick={() => router.push(`/machine/${encodeURIComponent(item.serialNumber || item.id)}`)}
+                className="flex items-center justify-between text-xs h-13 px-3 border-border/80 text-left bg-card hover:border-primary/50 transition-colors"
+              >
+                <div className="flex flex-col items-start truncate min-w-0 pr-1">
+                  <span className="font-bold text-foreground font-mono truncate max-w-full">
+                    {item.serialNumber || item.id}
+                  </span>
+                  <span className="text-[10px] text-muted-foreground truncate max-w-full">
+                    {item.storeName || item.location}
+                  </span>
+                  {item.keyNumber && (
+                    <span className="text-[9px] font-mono text-amber-600 dark:text-amber-400 font-semibold flex items-center gap-0.5 mt-0.5">
+                      <KeyRound className="h-2.5 w-2.5 shrink-0" />
+                      <span>{item.keyNumber}</span>
+                    </span>
+                  )}
+                </div>
+                <ArrowRight className="h-3.5 w-3.5 text-muted-foreground shrink-0" />
+              </Button>
+            ))}
+          </div>
+        ) : (
+          <div className="p-4 border border-dashed border-border/60 rounded-xl text-center">
+            <Boxes className="h-5 w-5 text-muted-foreground mx-auto mb-1.5" />
+            <p className="text-xs font-medium text-foreground">No registered machines yet</p>
+            <p className="text-[11px] text-muted-foreground mt-0.5">
+              Machines registered by the admin will appear here for one-tap routing.
+            </p>
+          </div>
+        )}
       </div>
     </div>
   );

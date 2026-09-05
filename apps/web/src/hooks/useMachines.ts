@@ -15,6 +15,7 @@ export interface MachineItem {
   type?: string;
   itemsRemaining?: number;
   capacity?: number;
+  keyNumber?: string;
   status: "ONLINE" | "LOW_STOCK" | "OFFLINE";
   virtualCashBalance?: number;
   qrCode?: string;
@@ -43,6 +44,7 @@ export function useMachines(storeId?: string) {
             type: m.type || "Spiral Chute",
             itemsRemaining: m.itemsRemaining ?? (m.status === "OFFLINE" ? 0 : 50),
             capacity: m.capacity || 100,
+            keyNumber: m.keyNumber || "",
             status: m.status || "ONLINE",
             virtualCashBalance: Number(m.virtualCashBalance || 0),
             qrCode: m.qrCode || m.serialNumber,
@@ -68,6 +70,7 @@ export function useCreateMachine() {
       category?: string;
       type?: string;
       capacity?: number;
+      keyNumber?: string;
     }) => {
       const response = await api.post("/machines", {
         serialNumber: payload.serialNumber,
@@ -76,6 +79,7 @@ export function useCreateMachine() {
         category: payload.category || "Standard Confectionery",
         type: payload.type || "Spiral Chute",
         capacity: payload.capacity || 100,
+        keyNumber: payload.keyNumber || null,
         status: "ONLINE",
         qrCode: payload.serialNumber,
       });
