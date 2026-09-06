@@ -8,7 +8,9 @@
     "dev:api": "pnpm --filter @vending/api run dev",
     "dev:web": "pnpm --filter @vending/web run dev",
     "build": "pnpm -r run build",
-    "typecheck": "pnpm -r run typecheck"
+    "typecheck": "pnpm -r run typecheck",
+    "lint": "eslint .",
+    "format": "prettier --write ."
   },
   "keywords": [
     "vending",
@@ -30,6 +32,14 @@
     "bcryptjs": "^3.0.3"
   },
   "devDependencies": {
-    "@types/bcryptjs": "^3.0.0"
+    "@eslint/eslintrc": "^3.3.7",
+    "@eslint/js": "^9.39.5",
+    "@types/bcryptjs": "^3.0.0",
+    "@typescript-eslint/eslint-plugin": "^8.69.0",
+    "@typescript-eslint/parser": "^8.69.0",
+    "eslint": "^9.39.5",
+    "eslint-config-next": "15.1.7",
+    "eslint-config-prettier": "^10.1.8",
+    "prettier": "^3.9.6"
   }
 }
