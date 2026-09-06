@@ -70,7 +70,9 @@ export function useTenantSettings() {
         if (stored) {
           try {
             return { ...defaultSettings, ...JSON.parse(stored) };
-          } catch {}
+          } catch {
+            // Corrupted or stale localStorage value — fall through to defaults below.
+          }
         }
       }
       return defaultSettings;

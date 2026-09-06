@@ -76,49 +76,6 @@ export default function MachineOperationPage() {
   const [pendingCashAmount, setPendingCashAmount] = useState<number | null>(null);
   const { format: formatMoney, symbol } = useCurrency();
 
-  // Unauthenticated Route Guard State (403 Forbidden)
-  if (hasCheckedAuth && (!isAuthenticated || !token)) {
-    return (
-      <div className="w-full min-h-[520px] flex flex-col items-center justify-center text-center p-6 space-y-5">
-        <div className="h-16 w-16 rounded-3xl bg-rose-500/10 text-rose-600 dark:text-rose-400 flex items-center justify-center ring-8 ring-rose-500/10 shadow-lg">
-          <ShieldAlert className="h-8 w-8" />
-        </div>
-
-        <div className="space-y-2 max-w-xs">
-          <span className="text-[10px] font-black uppercase tracking-widest text-rose-500 bg-rose-500/10 px-2.5 py-1 rounded-full inline-block">
-            403 • Restricted Route
-          </span>
-          <h1 className="text-xl font-black tracking-tight text-foreground">
-            Technician Login Required
-          </h1>
-          <p className="text-xs text-muted-foreground leading-relaxed">
-            Machine <strong>#{machineId}</strong> telemetry & refill operations are restricted to authorized field technicians.
-          </p>
-        </div>
-
-        <div className="w-full max-w-xs space-y-2.5 pt-2">
-          <Button
-            onClick={() =>
-              router.push(`/login?redirect=/machine/${encodeURIComponent(machineId)}`)
-            }
-            className="w-full h-12 rounded-2xl bg-zinc-900 text-white dark:bg-zinc-100 dark:text-zinc-900 font-bold text-sm shadow-md active:scale-[0.98]"
-          >
-            Sign In as Field Agent
-          </Button>
-
-          <Button
-            variant="outline"
-            onClick={() => router.push("/")}
-            className="w-full h-11 rounded-xl text-xs font-semibold"
-          >
-            Return to Home
-          </Button>
-        </div>
-      </div>
-    );
-  }
-
-
   // 1. Query Machine Data
   const { data: machine, refetch: refetchMachine } = useQuery<IMachine>({
     queryKey: ["machine", machineId],
@@ -364,6 +321,50 @@ export default function MachineOperationPage() {
     setPendingCashAmount(data.collectedAmount);
     setCashDropConfirmOpen(true);
   };
+
+  // Unauthenticated Route Guard (403 Forbidden). Placed after every hook call
+  // above — not before — so the set of hooks run is identical on every render
+  // regardless of auth state. React Hooks must never be called conditionally.
+  if (hasCheckedAuth && (!isAuthenticated || !token)) {
+    return (
+      <div className="w-full min-h-[520px] flex flex-col items-center justify-center text-center p-6 space-y-5">
+        <div className="h-16 w-16 rounded-3xl bg-rose-500/10 text-rose-600 dark:text-rose-400 flex items-center justify-center ring-8 ring-rose-500/10 shadow-lg">
+          <ShieldAlert className="h-8 w-8" />
+        </div>
+
+        <div className="space-y-2 max-w-xs">
+          <span className="text-[10px] font-black uppercase tracking-widest text-rose-500 bg-rose-500/10 px-2.5 py-1 rounded-full inline-block">
+            403 • Restricted Route
+          </span>
+          <h1 className="text-xl font-black tracking-tight text-foreground">
+            Technician Login Required
+          </h1>
+          <p className="text-xs text-muted-foreground leading-relaxed">
+            Machine <strong>#{machineId}</strong> telemetry & refill operations are restricted to authorized field technicians.
+          </p>
+        </div>
+
+        <div className="w-full max-w-xs space-y-2.5 pt-2">
+          <Button
+            onClick={() =>
+              router.push(`/login?redirect=/machine/${encodeURIComponent(machineId)}`)
+            }
+            className="w-full h-12 rounded-2xl bg-zinc-900 text-white dark:bg-zinc-100 dark:text-zinc-900 font-bold text-sm shadow-md active:scale-[0.98]"
+          >
+            Sign In as Field Agent
+          </Button>
+
+          <Button
+            variant="outline"
+            onClick={() => router.push("/")}
+            className="w-full h-11 rounded-xl text-xs font-semibold"
+          >
+            Return to Home
+          </Button>
+        </div>
+      </div>
+    );
+  }
 
   return (
     <div className="space-y-4 pb-4">
@@ -1023,7 +1024,7 @@ export default function MachineOperationPage() {
               <span>Confirm Cash Collection</span>
             </DialogTitle>
             <DialogDescription className="text-xs text-muted-foreground">
-              Please verify the physical currency counted. Finalizing will reset the machine's virtual ledger balance.
+              Please verify the physical currency counted. Finalizing will reset the machine&apos;s virtual ledger balance.
             </DialogDescription>
           </DialogHeader>
 
@@ -1062,7 +1063,7 @@ export default function MachineOperationPage() {
                     ? "Mandatory Discrepancy Reason"
                     : "Collection Notes"}
                 </span>
-                <p className="text-foreground italic">"{cashForm.getValues("remarks")}"</p>
+                <p className="text-foreground italic">&quot;{cashForm.getValues("remarks")}&quot;</p>
               </div>
             )}
           </div>

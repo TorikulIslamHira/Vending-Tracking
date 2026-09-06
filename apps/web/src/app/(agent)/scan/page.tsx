@@ -97,7 +97,7 @@ export default function QRScannerPage() {
           </h1>
         </div>
         <p className="text-xs text-muted-foreground mt-0.5">
-          Align the machine's QR code within the frame to start restock or cash collect.
+          Align the machine&apos;s QR code within the frame to start restock or cash collect.
         </p>
       </div>
 

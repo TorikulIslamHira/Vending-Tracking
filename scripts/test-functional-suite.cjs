@@ -9,7 +9,9 @@ function makeRequest(options, postData = null) {
         let json = null;
         try {
           json = JSON.parse(data);
-        } catch {}
+        } catch {
+          // Response body wasn't valid JSON — leave json as null, raw body is still returned below.
+        }
         resolve({
           statusCode: res.statusCode,
           headers: res.headers,
