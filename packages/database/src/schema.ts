@@ -27,6 +27,7 @@ export const entryTypeEnum = pgEnum("EntryType", ["STANDARD", "MANUAL", "REVERSE
 export const tenants = pgTable("tenants", {
   id: text("id").primaryKey().$defaultFn(() => crypto.randomUUID()),
   name: text("name").notNull(),
+  currency: text("currency").default("USD").notNull(),
   themeConfig: jsonb("themeConfig"),
   isActive: boolean("isActive").default(true).notNull(),
   createdAt: timestamp("createdAt", { withTimezone: true, mode: "date" }).defaultNow().notNull(),
@@ -45,6 +46,7 @@ export const users = pgTable(
     role: userRoleEnum("role").default("FIELD_AGENT").notNull(),
     email: text("email").notNull(),
     passwordHash: text("passwordHash").notNull(),
+    isActive: boolean("isActive").default(true).notNull(),
     createdAt: timestamp("createdAt", { withTimezone: true, mode: "date" }).defaultNow().notNull(),
     updatedAt: timestamp("updatedAt", { withTimezone: true, mode: "date" }).defaultNow().notNull().$onUpdate(() => new Date()),
   },
@@ -110,6 +112,7 @@ export const machines = pgTable(
     category: text("category").default("Standard Confectionery"),
     type: text("type").default("Spiral Chute"),
     capacity: integer("capacity").default(100),
+    pricePerPlay: numeric("pricePerPlay", { precision: 10, scale: 2 }).default("1.00").notNull(),
     status: machineStatusEnum("status").default("ONLINE").notNull(),
     qrCode: text("qrCode").notNull(),
     virtualCashBalance: numeric("virtualCashBalance", { precision: 10, scale: 2 }).default("0.00").notNull(),
@@ -137,6 +140,7 @@ export const packetConfigs = pgTable(
     brand: text("brand").notNull(),
     quantityPerPacket: integer("quantityPerPacket").notNull(),
     pricePerItem: numeric("pricePerItem", { precision: 10, scale: 2 }).notNull(),
+    packetCost: numeric("packetCost", { precision: 10, scale: 2 }).default("0.00").notNull(),
     createdAt: timestamp("createdAt", { withTimezone: true, mode: "date" }).defaultNow().notNull(),
     updatedAt: timestamp("updatedAt", { withTimezone: true, mode: "date" }).defaultNow().notNull().$onUpdate(() => new Date()),
   },
@@ -163,12 +167,16 @@ export const inventoryLogs = pgTable(
     entryType: entryTypeEnum("entryType").default("STANDARD").notNull(),
     quantityAdded: integer("quantityAdded").notNull(),
     remarks: text("remarks").notNull(),
+    // Self-reference: set on a REVERSE entry to the original log it reverses.
+    // Used to enforce "most recent restock only" + prevent double-reversal.
+    reversedLogId: text("reversedLogId").references((): any => inventoryLogs.id, { onDelete: "set null" }),
     createdAt: timestamp("createdAt", { withTimezone: true, mode: "date" }).defaultNow().notNull(),
   },
   (table) => [
     index("inventory_logs_tenantId_idx").on(table.tenantId),
     index("inventory_logs_machineId_idx").on(table.machineId),
     index("inventory_logs_agentId_idx").on(table.agentId),
+    index("inventory_logs_reversedLogId_idx").on(table.reversedLogId),
   ]
 );
 
@@ -189,6 +197,7 @@ export const cashLogs = pgTable(
     collectedAmount: numeric("collectedAmount", { precision: 10, scale: 2 }).notNull(),
     expectedAmount: numeric("expectedAmount", { precision: 10, scale: 2 }).notNull(),
     discrepancy: numeric("discrepancy", { precision: 10, scale: 2 }).notNull(),
+    remarks: text("remarks"),
     createdAt: timestamp("createdAt", { withTimezone: true, mode: "date" }).defaultNow().notNull(),
   },
   (table) => [

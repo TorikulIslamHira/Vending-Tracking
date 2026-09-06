@@ -9,6 +9,7 @@ import { zodResolver } from "@hookform/resolvers/zod";
 import { MachineCreateSchema, MachineCreateDto } from "@vending/validation";
 import { IMachine, MachineStatus } from "@vending/shared-types";
 import { apiClient } from "@/lib/api-client";
+import { useCurrency } from "@/hooks/useTenantSettings";
 import { toast } from "sonner";
 import { Card, CardContent } from "@/components/ui/card";
 import {
@@ -77,6 +78,7 @@ export default function MobileMachinesPage() {
   const [searchQuery, setSearchQuery] = useState("");
   const [statusFilter, setStatusFilter] = useState<string>("ALL");
   const queryClient = useQueryClient();
+  const { format: formatMoney } = useCurrency();
 
   const {
     register,
@@ -306,7 +308,7 @@ export default function MobileMachinesPage() {
                     <div className="flex items-center gap-1.5 font-bold text-foreground">
                       <Coins className="h-4 w-4 text-amber-500" />
                       <span className="font-mono text-sm">
-                        ${Number(machine.virtualCashBalance || 0).toFixed(2)}
+                        {formatMoney(Number(machine.virtualCashBalance || 0))}
                       </span>
                       <span className="text-[10px] font-normal text-muted-foreground">
                         cash

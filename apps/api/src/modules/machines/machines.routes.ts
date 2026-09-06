@@ -6,6 +6,8 @@ import {
   getDashboardMetricsHandler,
 } from "./machines.controller";
 import { tenantHandler } from "../../core/middlewares/tenantHandler";
+import { requireRole } from "../../core/middlewares/rbac";
+import { UserRole } from "@vending/shared-types";
 
 export async function machineRoutes(app: FastifyInstance): Promise<void> {
   // Attach tenant authentication middleware to all machine routes
@@ -14,7 +16,7 @@ export async function machineRoutes(app: FastifyInstance): Promise<void> {
   app.get("/", getMachinesHandler);
   app.get("/metrics", getDashboardMetricsHandler);
   app.get("/:id", getMachineByIdHandler);
-  app.post("/", createMachineHandler);
+  app.post("/", { onRequest: [requireRole(UserRole.ADMIN)] }, createMachineHandler);
 }
 
 export default machineRoutes;

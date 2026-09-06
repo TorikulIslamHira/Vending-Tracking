@@ -1,6 +1,6 @@
 import { FastifyReply, FastifyRequest } from "fastify";
 import { eq, and, desc } from "drizzle-orm";
-import { db, stores, locations, machines } from "../../core/db";
+import { db, stores, locations } from "../../core/db";
 
 export async function getStoresByLocationHandler(
   request: FastifyRequest<{ Params: { locationId: string } }>,
@@ -18,18 +18,17 @@ export async function getStoresByLocationHandler(
   }
 
   try {
-    const [location, storeList, machineList] = await Promise.all([
+    const [location, storeList] = await Promise.all([
       db.query.locations.findFirst({
         where: and(eq(locations.id, locationId), eq(locations.tenantId, tenantId)),
       }),
       db.query.stores.findMany({
         where: and(eq(stores.locationId, locationId), eq(stores.tenantId, tenantId)),
+        with: {
+          machines: true,
+        },
         orderBy: [desc(stores.createdAt)],
       }),
-      db
-        .select({ location: machines.location })
-        .from(machines)
-        .where(eq(machines.tenantId, tenantId)),
     ]);
 
     if (!location) {
@@ -40,24 +39,27 @@ export async function getStoresByLocationHandler(
       });
     }
 
-    const formattedStores = storeList.map((st) => {
-      const machineCount = machineList.filter(
-        (m) =>
-          m.location.toLowerCase() === st.name.toLowerCase() ||
-          m.location.toLowerCase().includes(st.name.toLowerCase()) ||
-          m.location.toLowerCase().includes(location.name.toLowerCase())
-      ).length;
-
-      return {
-        id: st.id,
-        name: st.name,
-        category: st.category || "Novelty Vending",
-        shopCutPercent: st.shopCutPercent,
-        businessCutPercent: st.businessCutPercent,
-        machineCount,
-        createdAt: st.createdAt,
-      };
-    });
+    const formattedStores = storeList.map((st) => ({
+      id: st.id,
+      name: st.name,
+      category: st.category || "Novelty Vending",
+      shopCutPercent: st.shopCutPercent,
+      businessCutPercent: st.businessCutPercent,
+      machineCount: st.machines?.length || 0,
+      machines: (st.machines || []).map((m) => ({
+        id: m.id,
+        serialNumber: m.serialNumber,
+        category: m.category || "Standard Confectionery",
+        type: m.type || "Spiral Chute",
+        capacity: m.capacity || 100,
+        status: m.status,
+        keyNumber: m.keyNumber || "",
+        qrCode: m.qrCode,
+        virtualCashBalance: Number(m.virtualCashBalance || 0),
+        createdAt: m.createdAt,
+      })),
+      createdAt: st.createdAt,
+    }));
 
     return reply.send({
       statusCode: 200,
@@ -91,40 +93,38 @@ export async function getAllStoresHandler(
   }
 
   try {
-    const [storeList, machineList] = await Promise.all([
-      db.query.stores.findMany({
-        where: eq(stores.tenantId, tenantId),
-        with: {
-          location: true,
-        },
-        orderBy: [desc(stores.createdAt)],
-      }),
-      db
-        .select({ location: machines.location })
-        .from(machines)
-        .where(eq(machines.tenantId, tenantId)),
-    ]);
-
-    const formattedStores = storeList.map((st) => {
-      const machineCount = machineList.filter(
-        (m) =>
-          m.location.toLowerCase() === st.name.toLowerCase() ||
-          m.location.toLowerCase().includes(st.name.toLowerCase()) ||
-          (st.location && m.location.toLowerCase().includes(st.location.name.toLowerCase()))
-      ).length;
-
-      return {
-        id: st.id,
-        name: st.name,
-        category: st.category || "Novelty Vending",
-        locationId: st.locationId,
-        locationName: st.location?.name || "Assigned Location",
-        shopCutPercent: st.shopCutPercent,
-        businessCutPercent: st.businessCutPercent,
-        machineCount,
-        createdAt: st.createdAt,
-      };
+    const storeList = await db.query.stores.findMany({
+      where: eq(stores.tenantId, tenantId),
+      with: {
+        location: true,
+        machines: true,
+      },
+      orderBy: [desc(stores.createdAt)],
     });
+
+    const formattedStores = storeList.map((st) => ({
+      id: st.id,
+      name: st.name,
+      category: st.category || "Novelty Vending",
+      locationId: st.locationId,
+      locationName: st.location?.name || "Assigned Location",
+      shopCutPercent: st.shopCutPercent,
+      businessCutPercent: st.businessCutPercent,
+      machineCount: st.machines?.length || 0,
+      machines: (st.machines || []).map((m) => ({
+        id: m.id,
+        serialNumber: m.serialNumber,
+        category: m.category || "Standard Confectionery",
+        type: m.type || "Spiral Chute",
+        capacity: m.capacity || 100,
+        status: m.status,
+        keyNumber: m.keyNumber || "",
+        qrCode: m.qrCode,
+        virtualCashBalance: Number(m.virtualCashBalance || 0),
+        createdAt: m.createdAt,
+      })),
+      createdAt: st.createdAt,
+    }));
 
     return reply.send({
       statusCode: 200,
@@ -159,6 +159,7 @@ export async function getStoreByIdHandler(
       where: and(eq(stores.id, id), eq(stores.tenantId, tenantId)),
       with: {
         location: true,
+        machines: true,
       },
     });
 
@@ -181,6 +182,7 @@ export async function getStoreByIdHandler(
         locationAddress: store.location?.address || "Commercial Zone",
         shopCutPercent: store.shopCutPercent,
         businessCutPercent: store.businessCutPercent,
+        machineCount: store.machines?.length || 0,
         createdAt: store.createdAt,
       },
     });

@@ -16,6 +16,7 @@ import {
 import { EntryType, IMachine, IPacketConfig } from "@vending/shared-types";
 import { api as apiClient } from "@/lib/api";
 import { useAuthStore } from "@/store/useAuthStore";
+import { useCurrency } from "@/hooks/useTenantSettings";
 import { toast } from "sonner";
 import {
   Card,
@@ -29,14 +30,14 @@ import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Textarea } from "@/components/ui/textarea";
 import {
-  Drawer,
-  DrawerContent,
-  DrawerDescription,
-  DrawerFooter,
-  DrawerHeader,
-  DrawerTitle,
-  DrawerClose,
-} from "@/components/ui/drawer";
+  Dialog,
+  DialogContent,
+  DialogDescription,
+  DialogFooter,
+  DialogHeader,
+  DialogTitle,
+  DialogClose,
+} from "@/components/ui/dialog";
 import {
   PackageOpen,
   Coins,
@@ -50,6 +51,8 @@ import {
   Clock,
   ShieldAlert,
   Lock,
+  Boxes,
+  TrendingDown,
 } from "lucide-react";
 
 export default function MachineOperationPage() {
@@ -71,6 +74,7 @@ export default function MachineOperationPage() {
   const [isReversing, setIsReversing] = useState(false);
   const [cashDropConfirmOpen, setCashDropConfirmOpen] = useState(false);
   const [pendingCashAmount, setPendingCashAmount] = useState<number | null>(null);
+  const { format: formatMoney, symbol } = useCurrency();
 
   // Unauthenticated Route Guard State (403 Forbidden)
   if (hasCheckedAuth && (!isAuthenticated || !token)) {
@@ -116,7 +120,7 @@ export default function MachineOperationPage() {
 
 
   // 1. Query Machine Data
-  const { data: machine } = useQuery<IMachine>({
+  const { data: machine, refetch: refetchMachine } = useQuery<IMachine>({
     queryKey: ["machine", machineId],
     queryFn: async () => {
       try {
@@ -131,7 +135,8 @@ export default function MachineOperationPage() {
           location: "Terminal Station - Platform 1",
           status: "ONLINE" as any,
           qrCode: `QR-${machineId}`,
-          virtualCashBalance: 450.0,
+          virtualCashBalance: 0,
+          currentEstimatedStock: 0,
           createdAt: new Date().toISOString(),
         };
       }
@@ -171,7 +176,7 @@ export default function MachineOperationPage() {
   });
 
   // 3. Query Machine Inventory Logs
-  const { data: machineLogs = [] } = useQuery<any[]>({
+  const { data: machineLogs = [], refetch: refetchLogs } = useQuery<any[]>({
     queryKey: ["machine-logs", machineId],
     queryFn: async () => {
       try {
@@ -181,7 +186,7 @@ export default function MachineOperationPage() {
         return [];
       }
     },
-    enabled: !!machine,
+    enabled: !!machineId,
   });
 
   // Form: Standard Restock
@@ -216,6 +221,23 @@ export default function MachineOperationPage() {
     },
   });
 
+  // Machine Pricing & Dynamic Stock Values
+  const machinePricePerPlay = Number(machine?.pricePerPlay || 1.00) || 1.00;
+
+  // Single source of truth: read directly from the backend's unified calculation
+  // (GET /machines/:id) instead of recomputing independently from machineLogs.
+  // This is the exact same formula used by the fleet list and dashboard endpoints,
+  // so this figure can never drift from what an admin sees for the same machine.
+  // It still updates instantly after a mutation because invalidateAndRefetchAll()
+  // invalidates and refetches the ["machine", machineId] query below.
+  const currentEstimatedStock = machine?.currentEstimatedStock ?? 0;
+  const virtualCashBalance = Number(machine?.virtualCashBalance ?? 0);
+
+  // Cash Collect real-time calculation & overage guardrail
+  const enteredCashAmount = Number(cashForm.watch("collectedAmount") || 0);
+  const isCashOverage = enteredCashAmount > virtualCashBalance;
+  const approxUnitsSold = Math.floor(enteredCashAmount / machinePricePerPlay);
+
   // Selected Packet for piece calculation
   const selectedPacketId = standardForm.watch("packetId") || packets[0]?.id;
   const selectedPacket = packets.find((p) => p.id === selectedPacketId);
@@ -223,6 +245,24 @@ export default function MachineOperationPage() {
   const totalCalculatedPieces = selectedPacket
     ? packetCount * selectedPacket.quantityPerPacket
     : 0;
+
+  // Invalidate and refetch all related machine and log queries
+  const invalidateAndRefetchAll = async () => {
+    await Promise.all([
+      queryClient.invalidateQueries({ queryKey: ["machine"] }),
+      queryClient.invalidateQueries({ queryKey: ["machine", machineId] }),
+      queryClient.invalidateQueries({ queryKey: ["machines"] }),
+      queryClient.invalidateQueries({ queryKey: ["machine-logs"] }),
+      queryClient.invalidateQueries({ queryKey: ["machine-logs", machineId] }),
+      queryClient.invalidateQueries({ queryKey: ["inventory-logs"] }),
+      queryClient.invalidateQueries({ queryKey: ["cash-logs"] }),
+      queryClient.invalidateQueries({ queryKey: ["reports"] }),
+      queryClient.invalidateQueries({ queryKey: ["dashboard-metrics"] }),
+    ]);
+    refetchMachine();
+    refetchLogs();
+    router.refresh();
+  };
 
   // Mutations
   const standardMutation = useMutation({
@@ -238,8 +278,7 @@ export default function MachineOperationPage() {
         `Standard Restock Logged: +${data.data.totalPiecesAdded} items (${data.data.packetsAdded} packets)`
       );
       standardForm.reset();
-      queryClient.invalidateQueries({ queryKey: ["machine-logs", machineId] });
-      queryClient.invalidateQueries({ queryKey: ["inventory-logs"] });
+      invalidateAndRefetchAll();
     },
     onError: (err: any) => {
       toast.error(err.response?.data?.message || "Standard restock failed");
@@ -259,8 +298,7 @@ export default function MachineOperationPage() {
         `Manual Entry Logged: ${data.data.quantityAdded > 0 ? "+" : ""}${data.data.quantityAdded} items`
       );
       manualForm.reset();
-      queryClient.invalidateQueries({ queryKey: ["machine-logs", machineId] });
-      queryClient.invalidateQueries({ queryKey: ["inventory-logs"] });
+      invalidateAndRefetchAll();
     },
     onError: (err: any) => {
       toast.error(err.response?.data?.message || "Manual restock failed");
@@ -277,16 +315,14 @@ export default function MachineOperationPage() {
     },
     onSuccess: (data) => {
       toast.success(
-        `Cash Drop Processed: $${data.data.collectedAmount.toFixed(2)} collected. Virtual balance reset!`
+        `Cash Collect Processed: ${formatMoney(data.data.collectedAmount)} collected. Virtual balance reset!`
       );
       cashForm.reset();
       setCashDropConfirmOpen(false);
-      queryClient.invalidateQueries({ queryKey: ["machine", machineId] });
-      queryClient.invalidateQueries({ queryKey: ["machines"] });
-      queryClient.invalidateQueries({ queryKey: ["cash-logs"] });
+      invalidateAndRefetchAll();
     },
     onError: (err: any) => {
-      toast.error(err.response?.data?.message || "Cash drop failed");
+      toast.error(err.response?.data?.message || "Cash collect failed");
     },
   });
 
@@ -300,19 +336,15 @@ export default function MachineOperationPage() {
 
     try {
       setIsReversing(true);
-      await apiClient.post("/inventory/restock/manual", {
-        machineId: machine?.id || machineId,
-        packetId: reversalTarget.packetId || null,
-        entryType: EntryType.REVERSE,
-        quantityAdded: -Math.abs(reversalTarget.quantityAdded),
-        remarks: `Reversal of [Log #${reversalTarget.id.substring(0, 6)}]: ${reversalRemarks.trim()}`,
+      await apiClient.post("/inventory/reverse", {
+        logId: reversalTarget.id,
+        remarks: reversalRemarks.trim(),
       });
 
       toast.success("Log successfully reversed with offset adjustment!");
       setReversalTarget(null);
       setReversalRemarks("");
-      queryClient.invalidateQueries({ queryKey: ["machine-logs", machineId] });
-      queryClient.invalidateQueries({ queryKey: ["inventory-logs"] });
+      invalidateAndRefetchAll();
     } catch (err: any) {
       toast.error(err.response?.data?.message || "Failed to reverse log entry");
     } finally {
@@ -321,6 +353,14 @@ export default function MachineOperationPage() {
   };
 
   const handleCashFormSubmit = (data: CashCollectionInput) => {
+    if (isCashOverage && (!data.remarks || !data.remarks.trim())) {
+      cashForm.setError("remarks", {
+        type: "manual",
+        message: `Reason required: Amount (${formatMoney(data.collectedAmount)}) exceeds virtual cash balance (${formatMoney(virtualCashBalance)}).`,
+      });
+      toast.error("A mandatory reason is required for cash collections exceeding the virtual balance.");
+      return;
+    }
     setPendingCashAmount(data.collectedAmount);
     setCashDropConfirmOpen(true);
   };
@@ -365,8 +405,8 @@ export default function MachineOperationPage() {
             <span className="text-[10px] text-muted-foreground uppercase font-semibold tracking-wider">
               Virtual Cash Balance
             </span>
-            <span className="font-bold text-amber-500 text-sm">
-              ${Number(machine?.virtualCashBalance || 0).toFixed(2)}
+            <span className="font-bold text-amber-500 text-sm font-mono">
+              {formatMoney(virtualCashBalance)}
             </span>
           </div>
         </CardContent>
@@ -392,7 +432,7 @@ export default function MachineOperationPage() {
             className="rounded-xl text-xs font-semibold gap-1.5 data-[state=active]:bg-card data-[state=active]:text-foreground data-[state=active]:shadow-xs transition-[background-color,color,box-shadow] duration-200"
           >
             <Coins className="h-4 w-4 text-amber-500" />
-            <span>Cash Drop</span>
+            <span>Cash Collect</span>
           </TabsTrigger>
           <TabsTrigger
             value="audit"
@@ -405,6 +445,92 @@ export default function MachineOperationPage() {
 
         {/* TAB 1: RESTOCK */}
         <TabsContent value="restock" className="mt-3.5 space-y-3.5 focus-visible:outline-none">
+          {/* Prominent Current Estimated Stock Card */}
+          <Card className="border-border/70 bg-gradient-to-br from-card via-card/95 to-primary/5 shadow-xs overflow-hidden">
+            <CardContent className="p-4 space-y-3">
+              <div className="flex items-start justify-between gap-3">
+                <div className="space-y-1">
+                  <div className="flex items-center gap-1.5 text-xs font-semibold text-muted-foreground uppercase tracking-wider">
+                    <Boxes className="h-3.5 w-3.5 text-primary" />
+                    <span>Current Estimated Stock</span>
+                  </div>
+                  <div className="flex items-baseline gap-2">
+                    <span className="text-3xl font-black tracking-tight text-foreground font-mono">
+                      {currentEstimatedStock}
+                    </span>
+                    <span className="text-xs font-semibold text-muted-foreground">
+                      pieces inside
+                    </span>
+                  </div>
+                </div>
+
+                <div className="flex flex-col items-end gap-1">
+                  <span
+                    className={`inline-flex items-center gap-1 px-2.5 py-0.5 rounded-full text-[11px] font-bold ${
+                      currentEstimatedStock === 0
+                        ? "bg-rose-500/10 text-rose-600 dark:text-rose-400 border border-rose-500/20"
+                        : currentEstimatedStock < 20
+                        ? "bg-amber-500/10 text-amber-600 dark:text-amber-400 border border-amber-500/20"
+                        : "bg-emerald-500/10 text-emerald-600 dark:text-emerald-400 border border-emerald-500/20"
+                    }`}
+                  >
+                    <span
+                      className={`h-1.5 w-1.5 rounded-full ${
+                        currentEstimatedStock === 0
+                          ? "bg-rose-500"
+                          : currentEstimatedStock < 20
+                          ? "bg-amber-500"
+                          : "bg-emerald-500"
+                      }`}
+                    />
+                    {currentEstimatedStock === 0
+                      ? "Empty / Depleted"
+                      : currentEstimatedStock < 20
+                      ? "Low Stock"
+                      : "Sufficient"}
+                  </span>
+                  <span className="text-[10px] text-muted-foreground">
+                    Cap: {machine?.capacity || 100} pcs • {formatMoney(machinePricePerPlay)}/play
+                  </span>
+                </div>
+              </div>
+
+              {/* Progress bar / Stock ratio */}
+              <div className="space-y-1">
+                <div className="w-full bg-muted/80 rounded-full h-2 overflow-hidden">
+                  <div
+                    className={`h-full transition-all duration-500 rounded-full ${
+                      currentEstimatedStock < 20
+                        ? "bg-amber-500"
+                        : "bg-primary"
+                    }`}
+                    style={{
+                      width: `${Math.min(
+                        100,
+                        Math.max(
+                          0,
+                          Math.round(
+                            (currentEstimatedStock /
+                              (machine?.capacity || 100)) *
+                              100
+                          )
+                        )
+                      )}%`,
+                    }}
+                  />
+                </div>
+                <div className="flex justify-between text-[10px] text-muted-foreground font-medium pt-0.5">
+                  <span>
+                    Refilled: +{(machine as any)?.totalRestockedUnits ?? currentEstimatedStock} pcs
+                  </span>
+                  <span>
+                    Dispensed: -{(machine as any)?.totalUnitsSold ?? 0} pcs ({formatMoney((machine as any)?.totalCashCollected ?? 0)})
+                  </span>
+                </div>
+              </div>
+            </CardContent>
+          </Card>
+
           {/* Mode Switcher */}
           <div className="flex items-center justify-between rounded-xl bg-accent/40 border border-border/40 p-2.5 text-xs">
             <div className="flex items-center gap-2">
@@ -452,7 +578,7 @@ export default function MachineOperationPage() {
                     >
                       {packets.map((pkt) => (
                         <option key={pkt.id} value={pkt.id} className="bg-card">
-                          {pkt.name} ({pkt.quantityPerPacket} pcs/pkt - ${Number(pkt.pricePerItem).toFixed(2)})
+                          {pkt.name} ({pkt.quantityPerPacket} pcs/pkt - {formatMoney(pkt.pricePerItem)})
                         </option>
                       ))}
                     </select>
@@ -591,7 +717,7 @@ export default function MachineOperationPage() {
           )}
         </TabsContent>
 
-        {/* TAB 2: CASH DROP */}
+        {/* TAB 2: CASH COLLECT */}
         <TabsContent value="cash" className="mt-3.5 space-y-3.5 focus-visible:outline-none">
           <Card className="border-border/60">
             <CardHeader className="pb-2 pt-4 px-4">
@@ -614,18 +740,23 @@ export default function MachineOperationPage() {
                       Expected System Balance:
                     </span>
                     <span className="text-[11px] text-muted-foreground">
-                      Tracked from standard dispenses
+                      {currentEstimatedStock} pcs @ {formatMoney(machinePricePerPlay)}/play
                     </span>
                   </div>
-                  <span className="text-lg font-bold text-amber-600 dark:text-amber-400">
-                    ${Number(machine?.virtualCashBalance || 0).toFixed(2)}
+                  <span className="text-lg font-bold text-amber-600 dark:text-amber-400 font-mono">
+                    {formatMoney(virtualCashBalance)}
                   </span>
                 </div>
 
                 <div className="space-y-1.5">
-                  <label className="text-xs font-semibold text-foreground">
-                    Physical Cash Collected ($) *
-                  </label>
+                  <div className="flex items-center justify-between">
+                    <label className="text-xs font-semibold text-foreground">
+                      Physical Cash Collected ({symbol}) *
+                    </label>
+                    <span className="text-[10px] text-muted-foreground">
+                      Rate: {formatMoney(machinePricePerPlay)} / item
+                    </span>
+                  </div>
                   <Input
                     type="number"
                     step="0.01"
@@ -640,17 +771,73 @@ export default function MachineOperationPage() {
                       {cashForm.formState.errors.collectedAmount.message}
                     </p>
                   )}
+                  {enteredCashAmount > 0 && (
+                    <div className="rounded-xl bg-muted/60 border border-border/50 p-2.5 flex items-center justify-between text-xs animate-in fade-in slide-in-from-top-1 duration-200">
+                      <span className="text-muted-foreground flex items-center gap-1.5 font-medium">
+                        <TrendingDown className="h-3.5 w-3.5 text-amber-500" />
+                        <span>Depletion Feedback:</span>
+                      </span>
+                      <span className="font-bold text-foreground">
+                        Equals approx.{" "}
+                        <span className="text-amber-600 dark:text-amber-400 font-mono font-black">
+                          {approxUnitsSold}
+                        </span>{" "}
+                        units sold
+                      </span>
+                    </div>
+                  )}
+
+                  {/* Overage Warning Badge */}
+                  {isCashOverage && (
+                    <div className="flex items-center gap-1.5 text-xs text-amber-700 dark:text-amber-400 font-semibold bg-amber-500/10 px-3 py-2 rounded-xl border border-amber-500/30 animate-in fade-in slide-in-from-top-1 duration-200">
+                      <AlertTriangle className="h-4 w-4 shrink-0 text-amber-600 dark:text-amber-400" />
+                      <span>Amount exceeds expected balance. Reason required.</span>
+                    </div>
+                  )}
                 </div>
 
                 <div className="space-y-1.5">
-                  <label className="text-xs font-medium text-muted-foreground">
-                    Optional Collection Notes
-                  </label>
+                  <div className="flex items-center justify-between">
+                    <label
+                      className={`text-xs font-semibold ${
+                        isCashOverage
+                          ? "text-amber-700 dark:text-amber-400 flex items-center gap-1"
+                          : "text-muted-foreground"
+                      }`}
+                    >
+                      {isCashOverage ? (
+                        <>
+                          <AlertTriangle className="h-3 w-3" />
+                          <span>Mandatory Reason for Discrepancy *</span>
+                        </>
+                      ) : (
+                        "Optional Collection Notes"
+                      )}
+                    </label>
+                    {isCashOverage && (
+                      <span className="text-[10px] font-bold text-amber-700 dark:text-amber-400 bg-amber-500/15 px-1.5 py-0.5 rounded">
+                        Required (&gt; {formatMoney(virtualCashBalance)})
+                      </span>
+                    )}
+                  </div>
                   <Input
-                    placeholder="e.g. Bag seal #8812 - clean coin chute"
-                    className="h-10 rounded-xl text-xs"
+                    placeholder={
+                      isCashOverage
+                        ? "State reason (e.g. Unjammed extra bills / customer overpay / testing)"
+                        : "e.g. Bag seal #8812 - clean coin chute"
+                    }
+                    className={`h-10 rounded-xl text-xs ${
+                      isCashOverage
+                        ? "border-amber-500/50 bg-amber-500/5 focus-visible:ring-amber-500"
+                        : ""
+                    }`}
                     {...cashForm.register("remarks")}
                   />
+                  {cashForm.formState.errors.remarks && (
+                    <p className="text-xs text-destructive font-medium">
+                      {cashForm.formState.errors.remarks.message}
+                    </p>
+                  )}
                 </div>
 
                 <Button
@@ -661,7 +848,7 @@ export default function MachineOperationPage() {
                   {cashMutation.isPending && (
                     <Loader2 className="mr-2 h-4 w-4 animate-spin" />
                   )}
-                  Submit Cash Drop
+                  Submit Cash Collect
                 </Button>
               </form>
             </CardContent>
@@ -677,19 +864,79 @@ export default function MachineOperationPage() {
                 <span>Recent Machine Activity</span>
               </CardTitle>
               <CardDescription className="text-xs">
-                Audit trail for this machine. Tap "Reverse" to offset mistaken entries.
+                Chronological audit trail. Only the most recent restock entry can be reversed.
               </CardDescription>
             </CardHeader>
             <CardContent className="px-4 pb-4">
               {machineLogs.length === 0 ? (
                 <div className="p-6 text-center text-xs text-muted-foreground">
-                  No recent logs recorded for this machine yet.
+                  No recent activity recorded for this machine yet.
                 </div>
               ) : (
                 <div className="space-y-2.5">
-                  {machineLogs.map((log: any) => {
+                  {machineLogs.map((log: any, index: number) => {
+                    const isCash =
+                      log.logType === "CASH" ||
+                      log.entryType === "CASH_DROP" ||
+                      log.entryType === "CASH_COLLECT";
                     const isStandard = log.entryType === EntryType.STANDARD;
                     const isReverse = log.entryType === EntryType.REVERSE;
+
+                    // Condition 1: NEVER show Reverse for Cash Collect
+                    // Condition 2: ONLY show Reverse for the MOST RECENT entry (index 0) if it is an Inventory Restock (Standard or Manual)
+                    const canReverse = index === 0 && !isCash && !isReverse;
+
+                    if (isCash) {
+                      return (
+                        <div
+                          key={log.id}
+                          className="rounded-xl border border-amber-500/30 p-3.5 text-xs space-y-2 bg-gradient-to-r from-amber-500/5 via-card to-card hover:border-amber-500/50 transition-colors shadow-xs"
+                        >
+                          <div className="flex items-center justify-between">
+                            <span className="inline-flex items-center gap-1 rounded-full px-2.5 py-0.5 text-[10px] font-bold bg-amber-500/15 text-amber-700 dark:text-amber-400 border border-amber-500/30">
+                              <Coins className="h-3 w-3 text-amber-600 dark:text-amber-400" />
+                              <span>CASH COLLECT</span>
+                            </span>
+                            <span className="font-mono font-black text-amber-600 dark:text-amber-400 text-sm">
+                              {formatMoney(Number(log.collectedAmount || 0))}
+                            </span>
+                          </div>
+
+                          <p className="text-foreground font-medium leading-snug">
+                            {log.remarks || "Physical cash collection recorded from coin mechanism."}
+                          </p>
+
+                          {Number(log.discrepancy || 0) !== 0 && (
+                            <div className="flex items-center gap-1 text-[10px] text-rose-600 dark:text-rose-400 font-semibold bg-rose-500/10 px-2 py-1 rounded-lg border border-rose-500/20">
+                              <AlertTriangle className="h-3 w-3 shrink-0" />
+                              <span>
+                                Ledger Discrepancy: -{formatMoney(Math.abs(Number(log.discrepancy)))} (Expected: {formatMoney(Number(log.expectedAmount || 0))})
+                              </span>
+                            </div>
+                          )}
+
+                          <div className="flex items-center justify-between pt-1.5 border-t border-amber-500/20 text-[10px] text-muted-foreground">
+                            <div className="flex items-center gap-1 font-mono">
+                              <Clock className="h-3 w-3 text-muted-foreground/70" />
+                              <span>
+                                {new Date(log.createdAt).toLocaleTimeString([], {
+                                  hour: "2-digit",
+                                  minute: "2-digit",
+                                })}{" "}
+                                •{" "}
+                                {new Date(log.createdAt).toLocaleDateString([], {
+                                  month: "short",
+                                  day: "numeric",
+                                })}
+                              </span>
+                            </div>
+                            <span className="font-medium text-foreground/80">
+                              {log.agent?.name || "Field Technician"}
+                            </span>
+                          </div>
+                        </div>
+                      );
+                    }
 
                     return (
                       <div
@@ -727,17 +974,22 @@ export default function MachineOperationPage() {
                         </p>
 
                         <div className="flex items-center justify-between pt-1.5 border-t border-border/30 text-[10px] text-muted-foreground">
-                          <div className="flex items-center gap-1">
-                            <Clock className="h-3 w-3" />
+                          <div className="flex items-center gap-1 font-mono">
+                            <Clock className="h-3 w-3 text-muted-foreground/70" />
                             <span>
                               {new Date(log.createdAt).toLocaleTimeString([], {
                                 hour: "2-digit",
                                 minute: "2-digit",
+                              })}{" "}
+                              •{" "}
+                              {new Date(log.createdAt).toLocaleDateString([], {
+                                month: "short",
+                                day: "numeric",
                               })}
                             </span>
                           </div>
 
-                          {!isReverse && (
+                          {canReverse && (
                             <Button
                               variant="ghost"
                               size="sm"
@@ -759,54 +1011,72 @@ export default function MachineOperationPage() {
         </TabsContent>
       </Tabs>
 
-      {/* BOTTOM DRAWER: CONFIRM CASH DROP */}
-      <Drawer
+      {/* DIALOG: CONFIRM CASH COLLECT */}
+      <Dialog
         open={cashDropConfirmOpen}
         onOpenChange={setCashDropConfirmOpen}
       >
-        <DrawerContent className="p-4 pt-0">
-          <DrawerHeader className="text-left px-0 pb-2">
-            <DrawerTitle className="flex items-center gap-2 text-base font-bold">
+        <DialogContent className="max-w-md w-[92vw] rounded-2xl p-6 bg-background border border-border/60 shadow-2xl z-50">
+          <DialogHeader className="text-left pb-1 space-y-1">
+            <DialogTitle className="flex items-center gap-2 text-base font-bold">
               <Coins className="h-5 w-5 text-amber-500" />
-              <span>Confirm Cash Collection Drop</span>
-            </DrawerTitle>
-            <DrawerDescription className="text-xs">
+              <span>Confirm Cash Collection</span>
+            </DialogTitle>
+            <DialogDescription className="text-xs text-muted-foreground">
               Please verify the physical currency counted. Finalizing will reset the machine's virtual ledger balance.
-            </DrawerDescription>
-          </DrawerHeader>
+            </DialogDescription>
+          </DialogHeader>
 
           <div className="py-3 space-y-2.5 text-xs">
             <div className="flex justify-between p-3 rounded-xl bg-muted/60 border border-border/40">
               <span className="font-medium">Expected Ledger Balance:</span>
               <span className="font-bold font-mono">
-                ${Number(machine?.virtualCashBalance || 0).toFixed(2)}
+                {formatMoney(virtualCashBalance)}
               </span>
             </div>
             <div className="flex justify-between p-3 rounded-xl bg-primary/10 border border-primary/30">
-              <span className="font-semibold text-primary-foreground">Counted Cash:</span>
-              <span className="font-bold font-mono text-primary-foreground">
-                ${Number(pendingCashAmount || 0).toFixed(2)}
+              <span className="font-semibold text-primary">Counted Cash:</span>
+              <span className="font-bold font-mono text-primary">
+                {formatMoney(Number(pendingCashAmount || 0))}
               </span>
             </div>
-            {Number(machine?.virtualCashBalance || 0) !== Number(pendingCashAmount || 0) && (
+            {virtualCashBalance !== Number(pendingCashAmount || 0) && (
               <div className="p-3 rounded-xl bg-amber-500/10 border border-amber-500/30 text-amber-700 dark:text-amber-400 text-xs flex items-center gap-2">
                 <AlertTriangle className="h-4 w-4 shrink-0" />
                 <span>
                   Discrepancy:{" "}
                   <strong>
-                    ${(
-                      Number(machine?.virtualCashBalance || 0) -
+                    {formatMoney(
+                      virtualCashBalance -
                       Number(pendingCashAmount || 0)
-                    ).toFixed(2)}
+                    )}
                   </strong>
                 </span>
               </div>
             )}
+
+            {cashForm.getValues("remarks") && (
+              <div className="p-3 rounded-xl bg-muted/50 border border-border/50 text-xs space-y-0.5">
+                <span className="font-semibold text-muted-foreground block text-[10px] uppercase tracking-wider">
+                  {Number(pendingCashAmount || 0) > virtualCashBalance
+                    ? "Mandatory Discrepancy Reason"
+                    : "Collection Notes"}
+                </span>
+                <p className="text-foreground italic">"{cashForm.getValues("remarks")}"</p>
+              </div>
+            )}
           </div>
 
-          <DrawerFooter className="px-0 pt-2 flex flex-col gap-2">
+          <DialogFooter className="pt-2 flex flex-col sm:flex-row gap-2">
             <Button
-              className="w-full h-12 text-sm font-bold shadow-md shadow-primary/20 rounded-xl"
+              variant="outline"
+              onClick={() => setCashDropConfirmOpen(false)}
+              className="w-full sm:w-auto h-11 rounded-xl text-xs font-semibold"
+            >
+              Cancel
+            </Button>
+            <Button
+              className="w-full sm:w-auto h-11 text-xs font-bold shadow-md shadow-primary/20 rounded-xl"
               onClick={() => {
                 if (pendingCashAmount !== null) {
                   cashMutation.mutate({
@@ -823,39 +1093,37 @@ export default function MachineOperationPage() {
               )}
               Confirm & Reset Ledger
             </Button>
-            <DrawerClose asChild>
-              <Button variant="outline" className="w-full h-11 rounded-xl">
-                Cancel
-              </Button>
-            </DrawerClose>
-          </DrawerFooter>
-        </DrawerContent>
-      </Drawer>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
 
-      {/* BOTTOM DRAWER: ERROR REVERSAL */}
-      <Drawer
+      {/* DIALOG: ERROR REVERSAL */}
+      <Dialog
         open={!!reversalTarget}
         onOpenChange={(open) => !open && setReversalTarget(null)}
       >
-        <DrawerContent className="p-4 pt-0">
-          <DrawerHeader className="text-left px-0 pb-2">
-            <DrawerTitle className="flex items-center gap-2 text-base font-bold text-rose-600 dark:text-rose-400">
-              <ShieldAlert className="h-5 w-5" />
+        <DialogContent className="max-w-md w-[92vw] rounded-2xl p-6 bg-background border border-border/60 shadow-2xl z-50">
+          <DialogHeader className="text-left pb-1 space-y-1">
+            <DialogTitle className="flex items-center gap-2 text-base font-bold text-rose-600 dark:text-rose-400">
+              <ShieldAlert className="h-5 w-5 shrink-0" />
               <span>Reverse Mistaken Log Entry</span>
-            </DrawerTitle>
-            <DrawerDescription className="text-xs">
+            </DialogTitle>
+            <DialogDescription className="text-xs text-muted-foreground">
               Creates an immutable offset reversal to adjust inventory counts without deleting audit trail history.
-            </DrawerDescription>
-          </DrawerHeader>
+            </DialogDescription>
+          </DialogHeader>
 
           {reversalTarget && (
             <div className="py-2 space-y-3">
-              <div className="p-3 rounded-xl bg-muted/60 border border-border/40 text-xs space-y-1">
+              <div className="p-3 rounded-xl bg-muted/60 border border-border/40 text-xs space-y-1.5">
                 <p className="font-semibold text-foreground">Original Entry:</p>
-                <p className="text-muted-foreground">{reversalTarget.remarks}</p>
-                <p className="font-bold text-rose-600 dark:text-rose-400 pt-1">
-                  Offset adjustment: -{reversalTarget.quantityAdded} pieces
-                </p>
+                <p className="text-muted-foreground">{reversalTarget.remarks || "No remarks provided"}</p>
+                <div className="flex items-center justify-between pt-1 border-t border-border/30">
+                  <span className="text-muted-foreground">Offset adjustment:</span>
+                  <span className="font-mono font-bold text-rose-600 dark:text-rose-400">
+                    -{reversalTarget.quantityAdded} pieces
+                  </span>
+                </div>
               </div>
 
               <div className="space-y-1.5">
@@ -866,16 +1134,23 @@ export default function MachineOperationPage() {
                   placeholder="e.g. Mistakenly entered quantity from adjacent machine"
                   value={reversalRemarks}
                   onChange={(e) => setReversalRemarks(e.target.value)}
-                  className="min-h-[85px] text-xs rounded-xl"
+                  className="min-h-[85px] text-xs rounded-xl bg-muted/20 border-border/60"
                 />
               </div>
             </div>
           )}
 
-          <DrawerFooter className="px-0 pt-2 flex flex-col gap-2">
+          <DialogFooter className="pt-2 flex flex-col sm:flex-row gap-2">
+            <Button
+              variant="outline"
+              onClick={() => setReversalTarget(null)}
+              className="w-full sm:w-auto h-11 rounded-xl text-xs font-semibold"
+            >
+              Cancel
+            </Button>
             <Button
               variant="destructive"
-              className="w-full h-12 text-sm font-bold shadow-md rounded-xl"
+              className="w-full sm:w-auto h-11 text-xs font-bold shadow-md rounded-xl"
               onClick={handleExecuteReversal}
               disabled={isReversing}
             >
@@ -884,14 +1159,9 @@ export default function MachineOperationPage() {
               )}
               Confirm Reversal Entry
             </Button>
-            <DrawerClose asChild>
-              <Button variant="outline" className="w-full h-11 rounded-xl">
-                Cancel
-              </Button>
-            </DrawerClose>
-          </DrawerFooter>
-        </DrawerContent>
-      </Drawer>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
     </div>
   );
 }

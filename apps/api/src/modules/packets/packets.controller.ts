@@ -19,7 +19,17 @@ export async function getPacketsHandler(
 
   return reply.send({
     statusCode: 200,
-    data: packets,
+    data: packets.map((p) => ({
+      id: p.id,
+      tenantId: p.tenantId,
+      name: p.name,
+      brand: p.brand,
+      quantityPerPacket: p.quantityPerPacket,
+      pricePerItem: Number(p.pricePerItem || 0),
+      packetCost: Number(p.packetCost || 0),
+      createdAt: p.createdAt,
+      updatedAt: p.updatedAt,
+    })),
   });
 }
 
@@ -43,7 +53,7 @@ export async function createPacketHandler(
     });
   }
 
-  const { name, brand, quantityPerPacket, pricePerItem } = parseResult.data;
+  const { name, brand, quantityPerPacket, pricePerItem, packetCost } = parseResult.data;
 
   const [packet] = await db
     .insert(packetConfigs)
@@ -53,12 +63,17 @@ export async function createPacketHandler(
       brand,
       quantityPerPacket,
       pricePerItem: String(pricePerItem),
+      packetCost: packetCost !== undefined && packetCost !== null ? String(packetCost) : "0.00",
     })
     .returning();
 
   return reply.status(201).send({
     statusCode: 201,
     message: "Packet configuration created successfully",
-    data: packet,
+    data: {
+      ...packet,
+      pricePerItem: Number(packet.pricePerItem || 0),
+      packetCost: Number(packet.packetCost || 0),
+    },
   });
 }

@@ -1,5 +1,7 @@
 import { FastifyRequest, FastifyReply } from "fastify";
+import { eq } from "drizzle-orm";
 import { UserRole } from "@vending/shared-types";
+import { db, users } from "../db";
 
 /**
  * JWT payload contract containing multi-tenant session metadata
@@ -40,6 +42,29 @@ export async function tenantHandler(
         statusCode: 401,
         error: "Unauthorized",
         message: "Missing or invalid tenant context in authentication token",
+      });
+    }
+
+    // Re-check live account status on every request: a JWT issued before deactivation
+    // must stop working immediately, not just after it naturally expires.
+    const account = await db.query.users.findFirst({
+      where: eq(users.id, decoded.userId),
+      columns: { id: true, isActive: true, tenantId: true },
+    });
+
+    if (!account || account.tenantId !== decoded.tenantId) {
+      return reply.status(401).send({
+        statusCode: 401,
+        error: "Unauthorized",
+        message: "Account no longer exists",
+      });
+    }
+
+    if (!account.isActive) {
+      return reply.status(401).send({
+        statusCode: 401,
+        error: "Unauthorized",
+        message: "This account has been deactivated. Contact your administrator.",
       });
     }
 

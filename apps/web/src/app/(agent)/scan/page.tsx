@@ -16,6 +16,8 @@ import {
   Boxes,
   KeyRound,
   Loader2,
+  Store,
+  Compass,
 } from "lucide-react";
 
 export default function QRScannerPage() {
@@ -23,6 +25,8 @@ export default function QRScannerPage() {
   const [manualCode, setManualCode] = useState("");
   const [cameraError, setCameraError] = useState<string | null>(null);
   const scannerRef = useRef<Html5QrcodeScanner | null>(null);
+
+  // Data queries
   const { data: machinesList = [], isLoading: isMachinesLoading } = useMachines();
 
   useEffect(() => {
@@ -83,7 +87,7 @@ export default function QRScannerPage() {
   };
 
   return (
-    <div className="space-y-4">
+    <div className="space-y-4 pb-12 font-sans">
       {/* Title & Instructions */}
       <div>
         <div className="flex items-center gap-2">
@@ -93,7 +97,7 @@ export default function QRScannerPage() {
           </h1>
         </div>
         <p className="text-xs text-muted-foreground mt-0.5">
-          Align the machine's QR code within the frame to start restock or cash drop.
+          Align the machine's QR code within the frame to start restock or cash collect.
         </p>
       </div>
 
@@ -143,6 +147,32 @@ export default function QRScannerPage() {
         </CardContent>
       </Card>
 
+      {/* Dedicated Browse All Machines Action Banner */}
+      <Card
+        onClick={() => router.push("/browse")}
+        className="border-border/60 bg-gradient-to-r from-card via-card/95 to-primary/10 hover:border-primary/50 transition-all cursor-pointer shadow-xs active:scale-[0.99] p-4 flex items-center justify-between"
+      >
+        <div className="flex items-center gap-3 min-w-0 pr-2">
+          <div className="h-10 w-10 rounded-2xl bg-primary/15 text-primary flex items-center justify-center shrink-0">
+            <Store className="h-5 w-5" />
+          </div>
+          <div className="min-w-0">
+            <h3 className="text-xs font-bold text-foreground flex items-center gap-1.5">
+              <span>Browse All Machines</span>
+              <span className="text-[9px] font-bold text-primary bg-primary/10 px-1.5 py-0.2 rounded-md">
+                Directory
+              </span>
+            </h3>
+            <p className="text-[11px] text-muted-foreground truncate">
+              Explore stores and select units without scanning QR
+            </p>
+          </div>
+        </div>
+        <div className="h-8 w-8 rounded-xl bg-muted/60 flex items-center justify-center text-foreground shrink-0 border border-border/40">
+          <ArrowRight className="h-4 w-4" />
+        </div>
+      </Card>
+
       {/* Real Dynamic Quick Fleet Shortcuts */}
       <div className="pt-2">
         <div className="flex items-center justify-between mb-2 px-1">
@@ -162,13 +192,15 @@ export default function QRScannerPage() {
           </div>
         ) : machinesList.length > 0 ? (
           <div className="grid grid-cols-2 gap-2">
-            {machinesList.slice(0, 8).map((item) => (
+            {machinesList.slice(0, 6).map((item) => (
               <Button
                 key={item.id}
                 variant="outline"
                 size="sm"
-                onClick={() => router.push(`/machine/${encodeURIComponent(item.serialNumber || item.id)}`)}
-                className="flex items-center justify-between text-xs h-13 px-3 border-border/80 text-left bg-card hover:border-primary/50 transition-colors"
+                onClick={() =>
+                  router.push(`/machine/${encodeURIComponent(item.serialNumber || item.id)}`)
+                }
+                className="flex items-center justify-between text-xs h-13 px-3 border-border/80 text-left bg-card hover:border-primary/50 transition-colors shadow-2xs"
               >
                 <div className="flex flex-col items-start truncate min-w-0 pr-1">
                   <span className="font-bold text-foreground font-mono truncate max-w-full">

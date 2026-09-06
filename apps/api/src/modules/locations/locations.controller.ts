@@ -1,6 +1,6 @@
 import { FastifyReply, FastifyRequest } from "fastify";
 import { eq, and, desc } from "drizzle-orm";
-import { db, locations, machines } from "../../core/db";
+import { db, locations } from "../../core/db";
 
 export async function getLocationsHandler(
   request: FastifyRequest,
@@ -17,26 +17,23 @@ export async function getLocationsHandler(
   }
 
   try {
-    const [locationList, machineList] = await Promise.all([
-      db.query.locations.findMany({
-        where: eq(locations.tenantId, tenantId),
-        with: {
-          stores: true,
+    const locationList = await db.query.locations.findMany({
+      where: eq(locations.tenantId, tenantId),
+      with: {
+        stores: {
+          with: {
+            machines: true,
+          },
         },
-        orderBy: [desc(locations.createdAt)],
-      }),
-      db
-        .select({ location: machines.location })
-        .from(machines)
-        .where(eq(machines.tenantId, tenantId)),
-    ]);
+      },
+      orderBy: [desc(locations.createdAt)],
+    });
 
     const formatted = locationList.map((loc) => {
-      const machineCount = machineList.filter(
-        (m) =>
-          m.location.toLowerCase() === loc.name.toLowerCase() ||
-          m.location.toLowerCase().includes(loc.name.toLowerCase())
-      ).length;
+      const machineCount = (loc.stores || []).reduce(
+        (total, st) => total + (st.machines?.length || 0),
+        0
+      );
 
       return {
         id: loc.id,

@@ -8,6 +8,7 @@ import { zodResolver } from "@hookform/resolvers/zod";
 import { PacketConfigCreateSchema, PacketConfigCreateDto } from "@vending/validation";
 import { IPacketConfig } from "@vending/shared-types";
 import { apiClient } from "@/lib/api-client";
+import { useCurrency } from "@/hooks/useTenantSettings";
 import { toast } from "sonner";
 import { Card, CardContent } from "@/components/ui/card";
 import {
@@ -32,6 +33,9 @@ import {
   Package,
   Boxes,
   CheckCircle2,
+  TrendingUp,
+  Tag,
+  Receipt,
 } from "lucide-react";
 
 const fallbackPackets: IPacketConfig[] = [
@@ -42,6 +46,7 @@ const fallbackPackets: IPacketConfig[] = [
     brand: "SweetBall Candy Co.",
     quantityPerPacket: 100,
     pricePerItem: 0.25,
+    packetCost: 12.5,
     createdAt: new Date().toISOString(),
   },
   {
@@ -51,6 +56,7 @@ const fallbackPackets: IPacketConfig[] = [
     brand: "Novelty Confections",
     quantityPerPacket: 50,
     pricePerItem: 0.5,
+    packetCost: 10.0,
     createdAt: new Date().toISOString(),
   },
   {
@@ -60,6 +66,7 @@ const fallbackPackets: IPacketConfig[] = [
     brand: "ChocoKing Ltd.",
     quantityPerPacket: 75,
     pricePerItem: 0.75,
+    packetCost: 25.0,
     createdAt: new Date().toISOString(),
   },
 ];
@@ -68,11 +75,13 @@ export default function MobilePacketsPage() {
   const router = useRouter();
   const [isDrawerOpen, setIsDrawerOpen] = useState(false);
   const queryClient = useQueryClient();
+  const { format: formatMoney, symbol } = useCurrency();
 
   const {
     register,
     handleSubmit,
     reset,
+    watch,
     formState: { errors },
   } = useForm<PacketConfigCreateDto>({
     resolver: zodResolver(PacketConfigCreateSchema),
@@ -81,8 +90,19 @@ export default function MobilePacketsPage() {
       brand: "",
       quantityPerPacket: 100,
       pricePerItem: 0.25,
+      packetCost: 12.5,
     },
   });
+
+  const watchQty = Number(watch("quantityPerPacket") || 0);
+  const watchPrice = Number(watch("pricePerItem") || 0);
+  const watchCost = Number(watch("packetCost") || 0);
+  const watchTotalRevenue = watchQty * watchPrice;
+  const watchProfit = watchTotalRevenue - watchCost;
+  const watchMargin =
+    watchTotalRevenue > 0
+      ? Math.round((watchProfit / watchTotalRevenue) * 100)
+      : 0;
 
   // Query packets
   const { data: packets = fallbackPackets, isLoading } = useQuery<IPacketConfig[]>({
@@ -145,7 +165,7 @@ export default function MobilePacketsPage() {
               Packet Master Config
             </h1>
             <p className="text-xs text-muted-foreground">
-              Define standardized refill bags (1 Packet = N Pieces).
+              Standardized refill bags & wholesale unit cost tracking.
             </p>
           </div>
           <div className="h-10 w-10 rounded-2xl bg-primary/20 flex items-center justify-center text-primary shrink-0">
@@ -170,7 +190,7 @@ export default function MobilePacketsPage() {
             Configured Packets ({packets.length})
           </h2>
           <span className="text-[11px] text-muted-foreground">
-            Fixed restock units
+            Fixed restock units & margins
           </span>
         </div>
 
@@ -186,9 +206,15 @@ export default function MobilePacketsPage() {
           </div>
         ) : (
           packets.map((pkt) => {
-            const totalValue = (
-              Number(pkt.quantityPerPacket) * Number(pkt.pricePerItem)
-            ).toFixed(2);
+            const qty = Number(pkt.quantityPerPacket || 0);
+            const unitRetail = Number(pkt.pricePerItem || 0);
+            const wholeCost = Number(pkt.packetCost || 0);
+            const totalRetailValue = qty * unitRetail;
+            const expectedProfit = totalRetailValue - wholeCost;
+            const profitMargin =
+              totalRetailValue > 0
+                ? Math.round((expectedProfit / totalRetailValue) * 100)
+                : 0;
 
             return (
               <Card
@@ -212,28 +238,51 @@ export default function MobilePacketsPage() {
                       </div>
                     </div>
 
-                    <span className="rounded-xl bg-primary/20 text-foreground px-2.5 py-1 text-[11px] font-black shrink-0">
-                      {pkt.quantityPerPacket} pcs
+                    <span className="rounded-xl bg-primary/20 text-foreground px-2.5 py-1 text-[11px] font-black shrink-0 font-mono">
+                      {qty} pcs
                     </span>
                   </div>
 
                   {/* Pricing Breakdown Grid */}
                   <div className="grid grid-cols-2 gap-2 pt-2 border-t border-border/40 text-xs">
-                    <div className="bg-muted/30 p-2 rounded-xl">
-                      <span className="text-[10px] font-semibold text-muted-foreground block">
-                        Unit Retail Price
+                    <div className="bg-muted/40 p-2.5 rounded-xl space-y-0.5">
+                      <span className="text-[10px] font-semibold text-muted-foreground flex items-center gap-1">
+                        <Tag className="h-3 w-3 text-primary" />
+                        <span>Unit Retail Price</span>
                       </span>
-                      <span className="font-mono font-bold text-foreground">
-                        ${Number(pkt.pricePerItem).toFixed(2)} / pc
+                      <span className="font-mono font-bold text-foreground block">
+                        {formatMoney(unitRetail)} / pc
                       </span>
                     </div>
 
-                    <div className="bg-primary/10 p-2 rounded-xl text-right">
-                      <span className="text-[10px] font-semibold text-muted-foreground block">
-                        Total Packet Value
+                    <div className="bg-muted/40 p-2.5 rounded-xl space-y-0.5">
+                      <span className="text-[10px] font-semibold text-muted-foreground flex items-center gap-1">
+                        <Receipt className="h-3 w-3 text-amber-500" />
+                        <span>Whole Packet Cost</span>
                       </span>
-                      <span className="font-mono font-black text-foreground">
-                        ${totalValue}
+                      <span className="font-mono font-bold text-foreground block">
+                        {formatMoney(wholeCost)} / bag
+                      </span>
+                    </div>
+                  </div>
+
+                  {/* Profit & Margin Banner */}
+                  <div className="rounded-xl bg-emerald-500/10 border border-emerald-500/20 p-2.5 flex items-center justify-between text-xs">
+                    <div className="space-y-0.5">
+                      <span className="text-[10px] font-semibold text-muted-foreground">
+                        Total Value: {formatMoney(totalRetailValue)}
+                      </span>
+                      <div className="flex items-center gap-1 text-[11px] font-bold text-emerald-600 dark:text-emerald-400">
+                        <TrendingUp className="h-3.5 w-3.5" />
+                        <span>Expected Gross Profit:</span>
+                      </div>
+                    </div>
+                    <div className="text-right">
+                      <span className="font-mono font-black text-sm text-emerald-600 dark:text-emerald-400 block">
+                        +{formatMoney(expectedProfit)}
+                      </span>
+                      <span className="text-[10px] font-bold text-emerald-600/80 dark:text-emerald-400/80">
+                        {profitMargin}% margin
                       </span>
                     </div>
                   </div>
@@ -246,7 +295,7 @@ export default function MobilePacketsPage() {
 
       {/* 5. Vaul Bottom Drawer: Create Packet Configuration Form */}
       <Drawer open={isDrawerOpen} onOpenChange={setIsDrawerOpen}>
-        <DrawerContent className="max-w-md mx-auto rounded-t-[28px] p-6 space-y-4 max-h-[85vh] flex flex-col">
+        <DrawerContent className="max-w-md mx-auto rounded-t-[28px] p-6 space-y-4 max-h-[88vh] flex flex-col">
           <DrawerHeader className="p-0 text-left shrink-0">
             <div className="flex items-center gap-2">
               <div className="h-8 w-8 rounded-xl bg-primary/20 flex items-center justify-center text-primary">
@@ -257,7 +306,7 @@ export default function MobilePacketsPage() {
               </DrawerTitle>
             </div>
             <DrawerDescription className="text-xs text-muted-foreground">
-              Set fixed item quantities per packet. Agents restock in standardized packet units.
+              Standardize packet sizes, retail prices, and wholesale purchase costs.
             </DrawerDescription>
           </DrawerHeader>
 
@@ -293,44 +342,83 @@ export default function MobilePacketsPage() {
               )}
             </div>
 
-            <div className="grid grid-cols-2 gap-3">
+            <div className="grid grid-cols-3 gap-2.5">
               <div className="space-y-1.5">
-                <label className="text-xs font-semibold text-foreground">
-                  Qty / Packet (pcs) *
+                <label className="text-xs font-semibold text-foreground truncate block">
+                  Qty/Packet *
                 </label>
                 <Input
                   type="number"
                   placeholder="100"
-                  className="h-11 rounded-xl text-xs bg-muted/30 border-border/60"
+                  className="h-11 rounded-xl text-xs bg-muted/30 border-border/60 px-2.5"
                   {...register("quantityPerPacket", { valueAsNumber: true })}
                 />
                 {errors.quantityPerPacket && (
-                  <p className="text-[11px] text-destructive font-medium">
+                  <p className="text-[10px] text-destructive font-medium">
                     {errors.quantityPerPacket.message}
                   </p>
                 )}
               </div>
 
               <div className="space-y-1.5">
-                <label className="text-xs font-semibold text-foreground">
-                  Price / Item ($) *
+                <label className="text-xs font-semibold text-foreground truncate block">
+                  Retail / Pc ({symbol}) *
                 </label>
                 <Input
                   type="number"
                   step="0.01"
                   placeholder="0.25"
-                  className="h-11 rounded-xl text-xs bg-muted/30 border-border/60"
+                  className="h-11 rounded-xl text-xs bg-muted/30 border-border/60 px-2.5"
                   {...register("pricePerItem", { valueAsNumber: true })}
                 />
                 {errors.pricePerItem && (
-                  <p className="text-[11px] text-destructive font-medium">
+                  <p className="text-[10px] text-destructive font-medium">
                     {errors.pricePerItem.message}
+                  </p>
+                )}
+              </div>
+
+              <div className="space-y-1.5">
+                <label className="text-xs font-semibold text-foreground truncate block">
+                  Bag Cost ({symbol}) *
+                </label>
+                <Input
+                  type="number"
+                  step="0.01"
+                  placeholder="12.50"
+                  className="h-11 rounded-xl text-xs bg-muted/30 border-border/60 px-2.5"
+                  {...register("packetCost", { valueAsNumber: true })}
+                />
+                {errors.packetCost && (
+                  <p className="text-[10px] text-destructive font-medium">
+                    {errors.packetCost.message}
                   </p>
                 )}
               </div>
             </div>
 
-            <DrawerFooter className="p-0 pt-4 gap-2">
+            {/* Live Profit Margin Feedback in Drawer */}
+            <div className="rounded-2xl bg-muted/50 border border-border/60 p-3 space-y-1.5 text-xs">
+              <div className="flex justify-between items-center text-muted-foreground text-[11px]">
+                <span>Total Retail Value ({watchQty} pcs @ {formatMoney(watchPrice)}):</span>
+                <span className="font-mono font-bold text-foreground">{formatMoney(watchTotalRevenue)}</span>
+              </div>
+              <div className="flex justify-between items-center text-muted-foreground text-[11px]">
+                <span>Whole Packet Cost:</span>
+                <span className="font-mono font-bold text-foreground">-{formatMoney(watchCost)}</span>
+              </div>
+              <div className="flex justify-between items-center pt-1.5 border-t border-border/40 font-semibold">
+                <span className="text-foreground">Projected Profit / Packet:</span>
+                <span className="font-mono font-black text-emerald-600 dark:text-emerald-400">
+                  +{formatMoney(watchProfit)}{" "}
+                  <span className="text-[10px] font-bold text-emerald-600/80 dark:text-emerald-400/80">
+                    ({watchMargin}% margin)
+                  </span>
+                </span>
+              </div>
+            </div>
+
+            <DrawerFooter className="p-0 pt-2 gap-2">
               <Button
                 type="submit"
                 className="w-full h-12 rounded-2xl bg-zinc-900 text-white dark:bg-zinc-100 dark:text-zinc-900 font-bold text-sm shadow-md active:scale-[0.97]"

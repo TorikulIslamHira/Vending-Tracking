@@ -4,6 +4,7 @@ import React, { useState } from "react";
 import { useRouter } from "next/navigation";
 import { useQuery } from "@tanstack/react-query";
 import { apiClient } from "@/lib/api-client";
+import { useCurrency } from "@/hooks/useTenantSettings";
 import { Card, CardContent } from "@/components/ui/card";
 import {
   Drawer,
@@ -121,6 +122,7 @@ export default function MobileCashTrackingPage() {
   const router = useRouter();
   const [searchQuery, setSearchQuery] = useState("");
   const [selectedLog, setSelectedLog] = useState<PopulatedCashLog | null>(null);
+  const { format: formatMoney } = useCurrency();
 
   const { data: cashLogs = fallbackCashLogs, isLoading } = useQuery<
     PopulatedCashLog[]
@@ -196,7 +198,7 @@ export default function MobileCashTrackingPage() {
                 Total Cash Collected
               </span>
               <div className="text-2xl font-black font-mono text-foreground">
-                ${totalCollected.toFixed(2)}
+                {formatMoney(totalCollected)}
               </div>
               <span className="text-[10px] text-muted-foreground">
                 {cashLogs.length} total agent collections
@@ -215,7 +217,7 @@ export default function MobileCashTrackingPage() {
                 Expected Total
               </span>
               <div className="text-lg font-black font-mono text-foreground">
-                ${totalExpected.toFixed(2)}
+                {formatMoney(totalExpected)}
               </div>
               <span className="text-[10px] text-muted-foreground block truncate">
                 Dispense telemetry
@@ -235,7 +237,7 @@ export default function MobileCashTrackingPage() {
                     : "text-emerald-600 dark:text-emerald-400"
                 }`}
               >
-                ${totalDiscrepancy.toFixed(2)}
+                {formatMoney(totalDiscrepancy)}
               </div>
               <span className="text-[10px] text-muted-foreground block truncate">
                 {totalDiscrepancy !== 0 ? "Shortfall flagged" : "Zero shortfall"}
@@ -342,7 +344,7 @@ export default function MobileCashTrackingPage() {
                         Expected
                       </span>
                       <span className="font-mono font-bold text-muted-foreground">
-                        ${Number(log.expectedAmount).toFixed(2)}
+                        {formatMoney(Number(log.expectedAmount))}
                       </span>
                     </div>
 
@@ -351,7 +353,7 @@ export default function MobileCashTrackingPage() {
                         Collected
                       </span>
                       <span className="font-mono font-bold text-foreground">
-                        ${Number(log.collectedAmount).toFixed(2)}
+                        {formatMoney(Number(log.collectedAmount))}
                       </span>
                     </div>
 
@@ -367,8 +369,8 @@ export default function MobileCashTrackingPage() {
                       </span>
                       <span className="font-mono font-black">
                         {hasDiscrepancy
-                          ? `-$${Math.abs(Number(log.discrepancy)).toFixed(2)}`
-                          : "$0.00"}
+                          ? `-${formatMoney(Math.abs(Number(log.discrepancy)))}`
+                          : formatMoney(0)}
                       </span>
                     </div>
                   </div>
@@ -406,7 +408,7 @@ export default function MobileCashTrackingPage() {
                 <Coins className="h-4 w-4" />
               </div>
               <DrawerTitle className="text-lg font-bold text-foreground">
-                Cash Drop Audit Record
+                Cash Collect Audit Record
               </DrawerTitle>
             </div>
             <DrawerDescription className="text-xs text-muted-foreground">
@@ -454,13 +456,13 @@ export default function MobileCashTrackingPage() {
                 <div className="flex justify-between items-center">
                   <span className="text-muted-foreground">Expected Dispense Cash:</span>
                   <span className="font-mono font-bold text-foreground">
-                    ${Number(selectedLog.expectedAmount).toFixed(2)}
+                    {formatMoney(Number(selectedLog.expectedAmount))}
                   </span>
                 </div>
                 <div className="flex justify-between items-center">
                   <span className="text-muted-foreground">Actual Cash Collected:</span>
                   <span className="font-mono font-black text-sm text-foreground">
-                    ${Number(selectedLog.collectedAmount).toFixed(2)}
+                    {formatMoney(Number(selectedLog.collectedAmount))}
                   </span>
                 </div>
                 <div className="flex justify-between items-center pt-2 border-t border-border/40">
@@ -473,8 +475,8 @@ export default function MobileCashTrackingPage() {
                     }`}
                   >
                     {Number(selectedLog.discrepancy) !== 0
-                      ? `-$${Math.abs(Number(selectedLog.discrepancy)).toFixed(2)} (Shortfall)`
-                      : "$0.00 (Matched)"}
+                      ? `-${formatMoney(Math.abs(Number(selectedLog.discrepancy)))} (Shortfall)`
+                      : `${formatMoney(0)} (Matched)`}
                   </span>
                 </div>
               </div>

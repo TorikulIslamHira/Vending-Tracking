@@ -26,6 +26,7 @@ import {
   Loader2,
   MapPin,
   ChevronRight,
+  Boxes,
 } from "lucide-react";
 
 export default function LocationStoresPage() {
@@ -173,9 +174,15 @@ export default function LocationStoresPage() {
                     <p className="text-[11px] text-muted-foreground truncate">
                       {store.category}
                     </p>
-                    <div className="flex items-center gap-2 pt-1">
+                    <div className="flex flex-wrap items-center gap-1.5 pt-1">
                       <span className="inline-flex items-center gap-1 text-[11px] font-bold text-foreground bg-accent/60 px-2 py-0.5 rounded-md">
-                        <Percent className="h-3 w-3 text-primary" />
+                        <Boxes className="h-3 w-3 text-primary" />
+                        <span>
+                          {store.machineCount ?? 0} {store.machineCount === 1 ? "machine" : "machines"}
+                        </span>
+                      </span>
+                      <span className="inline-flex items-center gap-1 text-[11px] font-bold text-foreground bg-accent/60 px-2 py-0.5 rounded-md">
+                        <Percent className="h-3 w-3 text-emerald-500" />
                         <span>
                           Split: {store.shopCutPercent}% shop /{" "}
                           {store.businessCutPercent}% biz

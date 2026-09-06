@@ -1,11 +1,33 @@
 import { FastifyReply, FastifyRequest } from "fastify";
-import { eq, and, desc } from "drizzle-orm";
+import { eq, and, or, gt, desc, gte, lte } from "drizzle-orm";
 import {
   RestockSchema,
   ManualEntrySchema,
   CashCollectionSchema,
+  ReverseEntrySchema,
 } from "@vending/validation";
 import { db, machines, packetConfigs, inventoryLogs, cashLogs } from "../../core/db";
+import { computeVirtualCashBalanceForMachine } from "../machines/virtualCashBalance.service";
+
+/**
+ * Thrown for expected reversal-validation failures so the transaction rolls back
+ * cleanly and the handler can reply with the correct HTTP status instead of a 500.
+ */
+class ReversalError extends Error {
+  constructor(public statusCode: number, message: string) {
+    super(message);
+  }
+}
+
+/**
+ * Thrown for expected cash-collection validation failures so the transaction
+ * rolls back cleanly and the handler can reply with the correct HTTP status.
+ */
+class CashCollectionError extends Error {
+  constructor(public statusCode: number, message: string) {
+    super(message);
+  }
+}
 
 /**
  * Standard Restock: Agent selects predefined packet configuration.
@@ -31,9 +53,12 @@ export async function standardRestockHandler(
 
   const { machineId, packetId, quantity, remarks } = parseResult.data;
 
-  // Verify machine exists and belongs to tenant
+  // Verify machine exists and belongs to tenant (match by id, serialNumber, or qrCode)
   const machine = await db.query.machines.findFirst({
-    where: and(eq(machines.id, machineId), eq(machines.tenantId, tenantId)),
+    where: and(
+      eq(machines.tenantId, tenantId),
+      or(eq(machines.id, machineId), eq(machines.serialNumber, machineId), eq(machines.qrCode, machineId))
+    ),
   });
 
   if (!machine) {
@@ -124,9 +149,12 @@ export async function manualRestockHandler(
   const { machineId, quantityAdded, entryType, remarks, packetId, brandName } =
     parseResult.data;
 
-  // Verify machine exists and belongs to tenant
+  // Verify machine exists and belongs to tenant (match by id, serialNumber, or qrCode)
   const machine = await db.query.machines.findFirst({
-    where: and(eq(machines.id, machineId), eq(machines.tenantId, tenantId)),
+    where: and(
+      eq(machines.tenantId, tenantId),
+      or(eq(machines.id, machineId), eq(machines.serialNumber, machineId), eq(machines.qrCode, machineId))
+    ),
   });
 
   if (!machine) {
@@ -209,10 +237,15 @@ export async function cashCollectionHandler(
     });
   }
 
-  const { machineId, collectedAmount } = parseResult.data;
+  const { machineId, collectedAmount, remarks } = parseResult.data;
 
+  // Resolve the fuzzy identifier (id, serial, or QR) to a machine row. Read-only,
+  // not part of the race, so no lock needed yet.
   const machine = await db.query.machines.findFirst({
-    where: and(eq(machines.id, machineId), eq(machines.tenantId, tenantId)),
+    where: and(
+      eq(machines.tenantId, tenantId),
+      or(eq(machines.id, machineId), eq(machines.serialNumber, machineId), eq(machines.qrCode, machineId))
+    ),
   });
 
   if (!machine) {
@@ -223,48 +256,106 @@ export async function cashCollectionHandler(
     });
   }
 
-  const expectedAmount = Number(machine.virtualCashBalance || 0);
-  const discrepancy = expectedAmount - collectedAmount;
+  try {
+    const result = await db.transaction(async (tx) => {
+      // Lock the machine row for the duration of the transaction. Two
+      // double-tapped (or otherwise concurrent) collection requests for the same
+      // machine now serialize instead of both reading the same pre-collection
+      // totals and both independently passing the overage guardrail.
+      const [lockedMachine] = await tx
+        .select()
+        .from(machines)
+        .where(and(eq(machines.id, machine.id), eq(machines.tenantId, tenantId)))
+        .for("update");
 
-  const { cashLog, updatedMachine } = await db.transaction(async (tx) => {
-    const [insertedCashLog] = await tx
-      .insert(cashLogs)
-      .values({
+      if (!lockedMachine) {
+        throw new CashCollectionError(404, "Machine not found in your organization");
+      }
+
+      // Same unified formula used by the machine detail, fleet list, and
+      // dashboard endpoints — recomputed inside the lock so it reflects any
+      // collection that just committed from a prior, now-unblocked request.
+      const { virtualCashBalance: expectedAmount } = await computeVirtualCashBalanceForMachine(
+        tx,
         tenantId,
-        machineId: machine.id,
-        agentId,
-        collectedAmount: String(collectedAmount),
-        expectedAmount: String(expectedAmount),
-        discrepancy: String(discrepancy),
-      })
-      .returning();
+        lockedMachine
+      );
 
-    const [machineRecord] = await tx
-      .update(machines)
-      .set({ virtualCashBalance: "0.00" })
-      .where(eq(machines.id, machine.id))
-      .returning();
+      // Safety guardrail: Require mandatory remarks if collection strictly exceeds expected virtual cash balance
+      if (collectedAmount > expectedAmount && (!remarks || remarks.trim().length === 0)) {
+        throw new CashCollectionError(
+          400,
+          `A remark is required for cash collections exceeding the expected balance of $${expectedAmount.toFixed(2)}.`
+        );
+      }
 
-    return { cashLog: insertedCashLog, updatedMachine: machineRecord };
-  });
+      const discrepancy = expectedAmount - collectedAmount;
 
-  return reply.status(201).send({
-    statusCode: 201,
-    message: "Cash collection processed and virtual balance reset",
-    data: {
-      cashLogId: cashLog.id,
-      machineId: updatedMachine.id,
-      collectedAmount: Number(cashLog.collectedAmount),
-      expectedAmount: Number(cashLog.expectedAmount),
-      discrepancy: Number(cashLog.discrepancy),
-      newVirtualCashBalance: Number(updatedMachine.virtualCashBalance || 0),
-      createdAt: cashLog.createdAt,
-    },
-  });
+      const [insertedCashLog] = await tx
+        .insert(cashLogs)
+        .values({
+          tenantId,
+          machineId: lockedMachine.id,
+          agentId,
+          collectedAmount: String(collectedAmount),
+          expectedAmount: String(expectedAmount),
+          discrepancy: String(discrepancy),
+          remarks: remarks || null,
+        })
+        .returning();
+
+      const [updatedMachine] = await tx
+        .update(machines)
+        .set({ updatedAt: new Date() })
+        .where(and(eq(machines.id, lockedMachine.id), eq(machines.tenantId, tenantId)))
+        .returning();
+
+      // Recompute from the now-updated ledger (same unified formula) rather than
+      // trusting a stored column, so the reported post-collection balance is exact.
+      const { virtualCashBalance: newVirtualCashBalance } = await computeVirtualCashBalanceForMachine(
+        tx,
+        tenantId,
+        updatedMachine
+      );
+
+      return { cashLog: insertedCashLog, updatedMachine, newVirtualCashBalance };
+    });
+
+    return reply.status(201).send({
+      statusCode: 201,
+      message: "Cash collection processed and virtual balance updated",
+      data: {
+        cashLogId: result.cashLog.id,
+        machineId: result.updatedMachine.id,
+        collectedAmount: Number(result.cashLog.collectedAmount),
+        expectedAmount: Number(result.cashLog.expectedAmount),
+        discrepancy: Number(result.cashLog.discrepancy),
+        remarks: result.cashLog.remarks,
+        newVirtualCashBalance: result.newVirtualCashBalance,
+        createdAt: result.cashLog.createdAt,
+      },
+    });
+  } catch (err) {
+    if (err instanceof CashCollectionError) {
+      return reply.status(err.statusCode).send({
+        statusCode: err.statusCode,
+        error: err.statusCode === 404 ? "Not Found" : "Bad Request",
+        message: err.message,
+      });
+    }
+
+    request.log.error(err);
+    return reply.status(500).send({
+      statusCode: 500,
+      error: "Internal Server Error",
+      message: "Failed to process cash collection",
+    });
+  }
 }
 
 /**
  * Get all Inventory Logs for the authenticated tenant (with optional machineId filter)
+ * When machineId is provided, combines both inventory and cash collection history into a single timeline.
  */
 export async function getInventoryLogsHandler(
   request: FastifyRequest<{ Querystring: { machineId?: string } }>,
@@ -274,11 +365,24 @@ export async function getInventoryLogsHandler(
   const { machineId } = request.query;
 
   try {
-    const whereCondition = machineId
-      ? and(eq(inventoryLogs.tenantId, tenantId), eq(inventoryLogs.machineId, machineId))
+    let resolvedMachineId = machineId;
+    if (machineId) {
+      const machineRecord = await db.query.machines.findFirst({
+        where: and(
+          eq(machines.tenantId, tenantId),
+          or(eq(machines.id, machineId), eq(machines.serialNumber, machineId), eq(machines.qrCode, machineId))
+        ),
+      });
+      if (machineRecord) {
+        resolvedMachineId = machineRecord.id;
+      }
+    }
+
+    const whereCondition = resolvedMachineId
+      ? and(eq(inventoryLogs.tenantId, tenantId), eq(inventoryLogs.machineId, resolvedMachineId))
       : eq(inventoryLogs.tenantId, tenantId);
 
-    const logs = await db.query.inventoryLogs.findMany({
+    const invLogs = await db.query.inventoryLogs.findMany({
       where: whereCondition,
       with: {
         machine: {
@@ -307,9 +411,62 @@ export async function getInventoryLogsHandler(
       limit: 100,
     });
 
+    const formattedInvLogs = invLogs.map((log) => ({
+      ...log,
+      logType: "INVENTORY" as const,
+    }));
+
+    // If machineId is provided, also fetch cash drop logs for this machine
+    let formattedCashLogs: any[] = [];
+    if (resolvedMachineId) {
+      const cLogs = await db.query.cashLogs.findMany({
+        where: and(eq(cashLogs.tenantId, tenantId), eq(cashLogs.machineId, resolvedMachineId)),
+        with: {
+          machine: {
+            columns: {
+              id: true,
+              serialNumber: true,
+              location: true,
+            },
+          },
+          agent: {
+            columns: {
+              id: true,
+              name: true,
+              email: true,
+            },
+          },
+        },
+        orderBy: [desc(cashLogs.createdAt)],
+        limit: 100,
+      });
+
+      formattedCashLogs = cLogs.map((log) => ({
+        id: log.id,
+        logType: "CASH" as const,
+        tenantId: log.tenantId,
+        machineId: log.machineId,
+        agentId: log.agentId,
+        entryType: "CASH_COLLECT",
+        quantityAdded: null,
+        collectedAmount: Number(log.collectedAmount),
+        expectedAmount: Number(log.expectedAmount),
+        discrepancy: Number(log.discrepancy),
+        remarks: log.remarks || `Physical cash collect: $${Number(log.collectedAmount).toFixed(2)} collected`,
+        createdAt: log.createdAt,
+        machine: log.machine,
+        agent: log.agent,
+        packet: null,
+      }));
+    }
+
+    const combinedLogs = [...formattedInvLogs, ...formattedCashLogs].sort(
+      (a, b) => new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime()
+    );
+
     return reply.send({
       statusCode: 200,
-      data: logs,
+      data: combinedLogs,
     });
   } catch {
     return reply.send({
@@ -320,23 +477,63 @@ export async function getInventoryLogsHandler(
 }
 
 /**
- * Get all Cash Logs for the authenticated tenant
+ * Get all Cash Logs for the authenticated tenant with date range & store filters
  */
 export async function getCashLogsHandler(
-  request: FastifyRequest,
+  request: FastifyRequest<{
+    Querystring: {
+      fromDate?: string;
+      toDate?: string;
+      storeId?: string;
+      machineId?: string;
+    };
+  }>,
   reply: FastifyReply
 ): Promise<void> {
   const tenantId = request.tenantId;
+  const { fromDate, toDate, storeId, machineId } = request.query;
 
   try {
+    const conditions = [eq(cashLogs.tenantId, tenantId)];
+
+    if (fromDate) {
+      const start = new Date(fromDate.includes("T") ? fromDate : `${fromDate}T00:00:00.000Z`);
+      if (!isNaN(start.getTime())) {
+        conditions.push(gte(cashLogs.createdAt, start));
+      }
+    }
+
+    if (toDate) {
+      const end = new Date(toDate.includes("T") ? toDate : `${toDate}T23:59:59.999Z`);
+      if (!isNaN(end.getTime())) {
+        conditions.push(lte(cashLogs.createdAt, end));
+      }
+    }
+
+    if (machineId && machineId !== "ALL" && machineId !== "all") {
+      let resolvedMachineId: string = machineId;
+      const machineRecord = await db.query.machines.findFirst({
+        where: and(
+          eq(machines.tenantId, tenantId),
+          or(eq(machines.id, machineId), eq(machines.serialNumber, machineId), eq(machines.qrCode, machineId))
+        ),
+      });
+      if (machineRecord) {
+        resolvedMachineId = machineRecord.id;
+      }
+      conditions.push(eq(cashLogs.machineId, resolvedMachineId));
+    }
+
     const cashLogList = await db.query.cashLogs.findMany({
-      where: eq(cashLogs.tenantId, tenantId),
+      where: and(...conditions),
       with: {
         machine: {
-          columns: {
-            id: true,
-            serialNumber: true,
-            location: true,
+          with: {
+            store: {
+              with: {
+                location: true,
+              },
+            },
           },
         },
         agent: {
@@ -348,12 +545,16 @@ export async function getCashLogsHandler(
         },
       },
       orderBy: [desc(cashLogs.createdAt)],
-      limit: 100,
+      limit: 200,
     });
+
+    const filtered = storeId && storeId !== "ALL" && storeId !== "all"
+      ? cashLogList.filter((l) => l.machine?.storeId === storeId || l.machine?.store?.id === storeId)
+      : cashLogList;
 
     return reply.send({
       statusCode: 200,
-      data: cashLogList,
+      data: filtered,
     });
   } catch {
     return reply.send({
@@ -364,8 +565,199 @@ export async function getCashLogsHandler(
 }
 
 /**
+ * Financial Reports & Reconciliation Handler:
+ * Aggregates cash collections by date range (inclusive of entire day) and optional storeId filter.
+ */
+export async function getReportsHandler(
+  request: FastifyRequest<{
+    Querystring: {
+      fromDate?: string;
+      toDate?: string;
+      storeId?: string;
+      machineId?: string;
+    };
+  }>,
+  reply: FastifyReply
+): Promise<void> {
+  const tenantId = request.tenantId;
+  const { fromDate, toDate, storeId, machineId } = request.query;
+
+  try {
+    // 1. Fetch machines belonging to this tenant, optionally filtered by storeId
+    const machineWhereConditions = [eq(machines.tenantId, tenantId)];
+    if (storeId && storeId !== "ALL" && storeId !== "all") {
+      machineWhereConditions.push(eq(machines.storeId, storeId));
+    }
+    if (machineId && machineId !== "ALL" && machineId !== "all") {
+      const matchCondition = or(
+        eq(machines.id, machineId),
+        eq(machines.serialNumber, machineId),
+        eq(machines.qrCode, machineId)
+      );
+      if (matchCondition) {
+        machineWhereConditions.push(matchCondition);
+      }
+    }
+
+    const tenantMachines = await db.query.machines.findMany({
+      where: and(...machineWhereConditions),
+      with: {
+        store: {
+          with: {
+            location: true,
+          },
+        },
+      },
+      orderBy: [desc(machines.createdAt)],
+    });
+
+    // 2. Build cash logs date range filter with inclusive full-day boundaries
+    const cashLogConditions = [eq(cashLogs.tenantId, tenantId)];
+
+    if (fromDate) {
+      const start = new Date(fromDate.includes("T") ? fromDate : `${fromDate}T00:00:00.000Z`);
+      if (!isNaN(start.getTime())) {
+        cashLogConditions.push(gte(cashLogs.createdAt, start));
+      }
+    }
+
+    if (toDate) {
+      const end = new Date(toDate.includes("T") ? toDate : `${toDate}T23:59:59.999Z`);
+      if (!isNaN(end.getTime())) {
+        cashLogConditions.push(lte(cashLogs.createdAt, end));
+      }
+    }
+
+    // 3. Fetch all matching cash logs in the date range
+    const logs = await db.query.cashLogs.findMany({
+      where: and(...cashLogConditions),
+      with: {
+        machine: {
+          with: {
+            store: {
+              with: {
+                location: true,
+              },
+            },
+          },
+        },
+        agent: {
+          columns: {
+            id: true,
+            name: true,
+            email: true,
+          },
+        },
+      },
+      orderBy: [desc(cashLogs.createdAt)],
+    });
+
+    // Filter logs matching tenant machines
+    const validMachineIds = new Set(tenantMachines.map((m) => m.id));
+    const filteredLogs = logs.filter((l) => validMachineIds.has(l.machineId));
+
+    // Aggregate cash collected by machineId
+    const cashMap = new Map<string, { totalCash: number; count: number; lastDate: string }>();
+    for (const log of filteredLogs) {
+      const current = cashMap.get(log.machineId) || {
+        totalCash: 0,
+        count: 0,
+        lastDate: log.createdAt ? new Date(log.createdAt).toISOString().split("T")[0] : new Date().toISOString().split("T")[0],
+      };
+      current.totalCash += Number(log.collectedAmount || 0);
+      current.count += 1;
+      cashMap.set(log.machineId, current);
+    }
+
+    // 4. Construct machine payout breakdown records
+    const records = tenantMachines.map((m) => {
+      const cashData = cashMap.get(m.id);
+      const totalCash = Number((cashData?.totalCash || 0).toFixed(2));
+      const shopPercent = Number(m.store?.shopCutPercent ?? 30);
+      const bizPercent = Number(m.store?.businessCutPercent ?? (100 - shopPercent));
+      const shopCut = Number((totalCash * (shopPercent / 100)).toFixed(2));
+      const businessCut = Number((totalCash * (bizPercent / 100)).toFixed(2));
+
+      return {
+        id: `rec-${m.id}`,
+        machineId: m.serialNumber,
+        storeId: m.storeId,
+        storeName: m.store?.name || m.location || "Store Unit",
+        locationName: m.store?.location?.name || "Venue",
+        date: cashData?.lastDate || (toDate || new Date().toISOString().split("T")[0]),
+        totalCash,
+        shopCut,
+        businessCut,
+        splitRatio: `${shopPercent}% / ${bizPercent}%`,
+        collectionsCount: cashData?.count || 0,
+      };
+    });
+
+    // 5. Calculate summary aggregates
+    const totalCollected = Number(records.reduce((sum, r) => sum + r.totalCash, 0).toFixed(2));
+    const totalShopCut = Number(records.reduce((sum, r) => sum + r.shopCut, 0).toFixed(2));
+    const totalBusinessCut = Number(records.reduce((sum, r) => sum + r.businessCut, 0).toFixed(2));
+
+    return reply.send({
+      statusCode: 200,
+      data: {
+        summary: {
+          totalCollected,
+          totalShopCut,
+          totalBusinessCut,
+          collectionsCount: filteredLogs.length,
+          machinesCount: records.length,
+          fromDate: fromDate || null,
+          toDate: toDate || null,
+        },
+        records,
+        detailedLogs: filteredLogs.map((log) => ({
+          id: log.id,
+          createdAt: log.createdAt,
+          date: log.createdAt ? new Date(log.createdAt).toISOString().split("T")[0] : "",
+          machineId: log.machine?.serialNumber || log.machineId,
+          storeName: log.machine?.store?.name || log.machine?.location || "Store Unit",
+          locationName: log.machine?.store?.location?.name || "Venue",
+          collectedAmount: Number(log.collectedAmount || 0),
+          expectedAmount: Number(log.expectedAmount || 0),
+          discrepancy: Number(log.discrepancy || 0),
+          remarks: log.remarks,
+          agentName: log.agent?.name || "Field Agent",
+        })),
+      },
+    });
+  } catch (err: any) {
+    request.log.error(err);
+    return reply.status(500).send({
+      statusCode: 500,
+      error: "Internal Server Error",
+      message: "Failed to generate reconciliation reports",
+      data: {
+        summary: {
+          totalCollected: 0,
+          totalShopCut: 0,
+          totalBusinessCut: 0,
+          collectionsCount: 0,
+          machinesCount: 0,
+        },
+        records: [],
+        detailedLogs: [],
+      },
+    });
+  }
+}
+
+/**
  * Direct Log Reversal / Undo Handler:
- * Given a logId or machineId and reason, creates a compensating REVERSE entry.
+ * Reverses a single, specific inventory log identified by `logId`. The server — not the
+ * client — determines which machine/quantity/packet are affected, by reading the
+ * original log itself. Guardrails enforced (all tenant-scoped):
+ *   1. Cash Collect entries can never be reversed.
+ *   2. Only the single, absolute most recent Restock entry for a machine may be reversed.
+ *   3. A REVERSE entry can never itself be reversed, and a log cannot be reversed twice.
+ *   4. Reversal always negates the original quantity exactly once (no compounding sign bugs).
+ * On any failure — validation or database — a proper HTTP error is returned. Nothing is
+ * ever reported as a fake success.
  */
 export async function reverseEntryHandler(
   request: FastifyRequest,
@@ -374,91 +766,155 @@ export async function reverseEntryHandler(
   const tenantId = request.tenantId;
   const agentId = request.userId;
 
-  const { logId, machineId, quantity, remarks } = request.body as {
-    logId?: string;
-    machineId?: string;
-    quantity?: number;
-    remarks?: string;
-  };
+  const parseResult = ReverseEntrySchema.safeParse(request.body);
 
-  if (!remarks || remarks.length < 5) {
+  if (!parseResult.success) {
     return reply.status(400).send({
       statusCode: 400,
       error: "Bad Request",
-      message: "A clear reversal justification (minimum 5 characters) is required",
+      message: "Validation failed",
+      issues: parseResult.error.issues,
     });
   }
 
-  let targetMachineId = machineId || "m-1";
-  let revertQuantity = quantity || 50;
-  let targetPacketId: string | null = null;
+  const { logId, remarks } = parseResult.data;
+
+  // Distinguish "not found" from "this is a Cash Collect entry" for a clear error message.
+  const candidateLog = await db.query.inventoryLogs.findFirst({
+    where: and(eq(inventoryLogs.id, logId), eq(inventoryLogs.tenantId, tenantId)),
+  });
+
+  if (!candidateLog) {
+    const cashLogMatch = await db.query.cashLogs.findFirst({
+      where: and(eq(cashLogs.id, logId), eq(cashLogs.tenantId, tenantId)),
+    });
+
+    if (cashLogMatch) {
+      return reply.status(400).send({
+        statusCode: 400,
+        error: "Bad Request",
+        message: "Cash Collect entries cannot be reversed",
+      });
+    }
+
+    return reply.status(404).send({
+      statusCode: 404,
+      error: "Not Found",
+      message: "Inventory log entry not found in your organization",
+    });
+  }
 
   try {
-    if (logId) {
-      const originalLog = await db.query.inventoryLogs.findFirst({
+    const result = await db.transaction(async (tx) => {
+      // Lock the machine row for the duration of the transaction so concurrent reversal
+      // attempts against the same machine serialize instead of racing past each other.
+      const [lockedMachine] = await tx
+        .select({ id: machines.id })
+        .from(machines)
+        .where(and(eq(machines.id, candidateLog.machineId), eq(machines.tenantId, tenantId)))
+        .for("update");
+
+      if (!lockedMachine) {
+        throw new ReversalError(404, "Machine not found in your organization");
+      }
+
+      // Re-fetch inside the lock: authoritative, race-free view of the log.
+      const originalLog = await tx.query.inventoryLogs.findFirst({
         where: and(eq(inventoryLogs.id, logId), eq(inventoryLogs.tenantId, tenantId)),
       });
 
-      if (originalLog) {
-        targetMachineId = originalLog.machineId;
-        revertQuantity =
-          originalLog.quantityAdded > 0 ? -originalLog.quantityAdded : originalLog.quantityAdded;
-        targetPacketId = originalLog.packetId;
+      if (!originalLog) {
+        throw new ReversalError(404, "Inventory log entry not found in your organization");
       }
-    } else {
-      if (revertQuantity > 0) {
-        revertQuantity = -revertQuantity;
-      }
-    }
 
-    const { reversalLog, updatedMachine } = await db.transaction(async (tx) => {
-      const [insertedReversal] = await tx
+      if (originalLog.entryType === "REVERSE") {
+        throw new ReversalError(400, "A reversal entry cannot itself be reversed");
+      }
+
+      if (originalLog.quantityAdded <= 0) {
+        throw new ReversalError(400, "Only a positive Restock entry can be reversed");
+      }
+
+      const alreadyReversed = await tx.query.inventoryLogs.findFirst({
+        where: and(
+          eq(inventoryLogs.tenantId, tenantId),
+          eq(inventoryLogs.reversedLogId, originalLog.id)
+        ),
+      });
+
+      if (alreadyReversed) {
+        throw new ReversalError(409, "This entry has already been reversed");
+      }
+
+      // The absolute most recent Restock (STANDARD or MANUAL, positive quantity) entry
+      // for this machine — must be exactly the entry being reversed.
+      const mostRecentRestock = await tx.query.inventoryLogs.findFirst({
+        where: and(
+          eq(inventoryLogs.tenantId, tenantId),
+          eq(inventoryLogs.machineId, originalLog.machineId),
+          or(eq(inventoryLogs.entryType, "STANDARD"), eq(inventoryLogs.entryType, "MANUAL")),
+          gt(inventoryLogs.quantityAdded, 0)
+        ),
+        orderBy: [desc(inventoryLogs.createdAt)],
+      });
+
+      if (!mostRecentRestock || mostRecentRestock.id !== originalLog.id) {
+        throw new ReversalError(
+          400,
+          "Only the most recent Restock entry for this machine can be reversed"
+        );
+      }
+
+      const [reversalLog] = await tx
         .insert(inventoryLogs)
         .values({
           tenantId,
-          machineId: targetMachineId,
+          machineId: originalLog.machineId,
           agentId,
-          packetId: targetPacketId,
+          packetId: originalLog.packetId,
           entryType: "REVERSE",
-          quantityAdded: revertQuantity,
-          remarks: `[REVERSAL] ${remarks}`,
+          quantityAdded: -originalLog.quantityAdded,
+          reversedLogId: originalLog.id,
+          remarks: `[REVERSAL of ${originalLog.id}] ${remarks}`,
         })
         .returning();
 
-      const [machineRecord] = await tx
+      const [updatedMachine] = await tx
         .update(machines)
         .set({ updatedAt: new Date() })
-        .where(eq(machines.id, targetMachineId))
+        .where(and(eq(machines.id, originalLog.machineId), eq(machines.tenantId, tenantId)))
         .returning();
 
-      return { reversalLog: insertedReversal, updatedMachine: machineRecord };
+      return { reversalLog, updatedMachine };
     });
 
     return reply.status(201).send({
       statusCode: 201,
       message: "Inventory reversal entry recorded successfully",
       data: {
-        logId: reversalLog.id,
-        machineId: updatedMachine.id,
-        entryType: reversalLog.entryType,
-        quantityAdded: reversalLog.quantityAdded,
-        remarks: reversalLog.remarks,
-        createdAt: reversalLog.createdAt,
+        logId: result.reversalLog.id,
+        machineId: result.updatedMachine.id,
+        entryType: result.reversalLog.entryType,
+        quantityAdded: result.reversalLog.quantityAdded,
+        remarks: result.reversalLog.remarks,
+        createdAt: result.reversalLog.createdAt,
       },
     });
-  } catch {
-    // Development fallback
-    return reply.status(201).send({
-      statusCode: 201,
-      message: "Inventory reversal entry recorded successfully (Dev Mode)",
-      data: {
-        logId: `rev-${Date.now()}`,
-        machineId: targetMachineId,
-        entryType: "REVERSE",
-        quantityAdded: revertQuantity > 0 ? -revertQuantity : revertQuantity,
-        remarks: `[REVERSAL] ${remarks}`,
-        createdAt: new Date().toISOString(),
-      },
+  } catch (err) {
+    if (err instanceof ReversalError) {
+      return reply.status(err.statusCode).send({
+        statusCode: err.statusCode,
+        error:
+          err.statusCode === 404 ? "Not Found" : err.statusCode === 409 ? "Conflict" : "Bad Request",
+        message: err.message,
+      });
+    }
+
+    request.log.error(err);
+    return reply.status(500).send({
+      statusCode: 500,
+      error: "Internal Server Error",
+      message: "Failed to process inventory reversal",
     });
   }
 }

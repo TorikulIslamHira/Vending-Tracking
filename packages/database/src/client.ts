@@ -9,9 +9,13 @@ import * as schema from "./schema.js";
  * "unrecognized configuration parameter schema"
  */
 function getCleanConnectionString(rawUrl?: string): string {
-  const defaultUrl =
-    "postgresql://vending_user:vending_secure_password_2026@localhost:5432/vending_db";
-  const urlStr = (rawUrl || defaultUrl).trim();
+  const urlStr = (rawUrl || "").trim();
+
+  if (!urlStr) {
+    throw new Error(
+      "DATABASE_URL environment variable is required but was not set. Refusing to start with an insecure default connection string."
+    );
+  }
 
   try {
     const parsed = new URL(urlStr);

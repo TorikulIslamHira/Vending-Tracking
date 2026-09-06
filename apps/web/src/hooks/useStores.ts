@@ -4,13 +4,29 @@ import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { toast } from "sonner";
 import { api } from "@/lib/api";
 
+export interface StoreMachineItem {
+  id: string;
+  serialNumber: string;
+  category?: string;
+  type?: string;
+  capacity?: number;
+  status: "ONLINE" | "LOW_STOCK" | "OFFLINE";
+  keyNumber?: string;
+  qrCode?: string;
+  virtualCashBalance?: number;
+  createdAt?: string;
+}
+
 export interface StoreItem {
   id: string;
   name: string;
   category: string;
+  locationId?: string;
+  locationName?: string;
   shopCutPercent: number;
   businessCutPercent: number;
   machineCount: number;
+  machines?: StoreMachineItem[];
   createdAt?: string;
 }
 
@@ -40,6 +56,19 @@ export function useStores(locationId: string) {
               shopCutPercent: Number(st.shopCutPercent ?? 30),
               businessCutPercent: Number(st.businessCutPercent ?? 70),
               machineCount: Number(st.machineCount ?? 0),
+              machines: Array.isArray(st.machines)
+                ? st.machines.map((m: any) => ({
+                    id: m.id,
+                    serialNumber: m.serialNumber,
+                    category: m.category || "Standard Confectionery",
+                    type: m.type || "Spiral Chute",
+                    capacity: m.capacity || 100,
+                    status: m.status || "ONLINE",
+                    keyNumber: m.keyNumber || "",
+                    qrCode: m.qrCode || m.serialNumber,
+                    virtualCashBalance: Number(m.virtualCashBalance || 0),
+                  }))
+                : [],
               createdAt: st.createdAt,
             })),
           };
@@ -106,6 +135,19 @@ export function useAllStores() {
             shopCutPercent: Number(st.shopCutPercent ?? 30),
             businessCutPercent: Number(st.businessCutPercent ?? 70),
             machineCount: Number(st.machineCount ?? 0),
+            machines: Array.isArray(st.machines)
+              ? st.machines.map((m: any) => ({
+                  id: m.id,
+                  serialNumber: m.serialNumber,
+                  category: m.category || "Standard Confectionery",
+                  type: m.type || "Spiral Chute",
+                  capacity: m.capacity || 100,
+                  status: m.status || "ONLINE",
+                  keyNumber: m.keyNumber || "",
+                  qrCode: m.qrCode || m.serialNumber,
+                  virtualCashBalance: Number(m.virtualCashBalance || 0),
+                }))
+              : [],
           }));
         }
         return [];

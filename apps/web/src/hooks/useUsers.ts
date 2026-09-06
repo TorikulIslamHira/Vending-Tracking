@@ -60,17 +60,21 @@ export function useToggleUserStatus() {
 
   return useMutation({
     mutationFn: async (userId: string) => {
-      return userId;
+      const res = await api.patch(`/users/${userId}/status`);
+      return res.data?.data as AppUser;
     },
-    onSuccess: (userId) => {
-      queryClient.setQueryData<AppUser[]>(["users"], (old = []) =>
-        old.map((u) =>
-          u.id === userId
-            ? { ...u, status: u.status === "ACTIVE" ? "INACTIVE" : "ACTIVE" }
-            : u
-        )
+    onSuccess: (updatedUser) => {
+      queryClient.invalidateQueries({ queryKey: ["users"] });
+      toast.success(
+        updatedUser?.status === "INACTIVE"
+          ? "User deactivated"
+          : "User reactivated"
       );
-      toast.success("User status updated");
+    },
+    onError: (err: any) => {
+      toast.error(
+        err?.response?.data?.message || err?.message || "Failed to update user status"
+      );
     },
   });
 }

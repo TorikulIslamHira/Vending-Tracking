@@ -72,17 +72,45 @@ export type CashCollectionInput = z.infer<typeof CashCollectionSchema>;
 export type CashCollectionDto = CashCollectionInput;
 
 /**
+ * ReverseEntrySchema: Validates inventory reversal requests.
+ * The server resolves the target machine/quantity from the referenced log itself —
+ * only a logId and a mandatory justification are accepted from the client.
+ */
+export const ReverseEntrySchema = z.object({
+  logId: z.string().min(1, "logId is required"),
+  remarks: z
+    .string()
+    .min(5, "A clear reversal justification (minimum 5 characters) is required"),
+});
+
+export type ReverseEntryInput = z.infer<typeof ReverseEntrySchema>;
+export type ReverseEntryDto = ReverseEntryInput;
+
+/**
  * 🏢 Master Data & Entity Schemas
  */
 
 export const TenantCreateSchema = z.object({
   name: z.string().min(1, "Tenant name is required"),
+  currency: z.string().default("USD").optional(),
   themeConfig: z.record(z.any()).optional().nullable(),
   isActive: z.boolean().default(true),
 });
 
 export type TenantCreateInput = z.infer<typeof TenantCreateSchema>;
 export type TenantCreateDto = TenantCreateInput;
+
+export const TenantSettingsSchema = z.object({
+  currency: z.string().optional(),
+  defaultShopCut: z.number().min(0).max(100).optional(),
+  defaultBizCut: z.number().min(0).max(100).optional(),
+  lowStockAlerts: z.boolean().optional(),
+  cashDropAlerts: z.boolean().optional(),
+  dailyReports: z.boolean().optional(),
+});
+
+export type TenantSettingsInput = z.infer<typeof TenantSettingsSchema>;
+export type TenantSettingsDto = TenantSettingsInput;
 
 export const UserCreateSchema = z.object({
   name: z.string().min(1, "User name is required"),
@@ -111,6 +139,7 @@ export const MachineCreateSchema = z.object({
   category: z.string().optional().nullable(),
   type: z.string().optional().nullable(),
   capacity: z.number().optional().nullable(),
+  pricePerPlay: z.number().optional().nullable(),
   keyNumber: z.string().optional().nullable(),
 });
 
@@ -127,6 +156,9 @@ export const PacketConfigCreateSchema = z.object({
   pricePerItem: z
     .number()
     .positive("Price per item must be greater than 0"),
+  packetCost: z
+    .number()
+    .min(0, "Packet cost cannot be negative"),
 });
 
 export type PacketConfigCreateInput = z.infer<typeof PacketConfigCreateSchema>;

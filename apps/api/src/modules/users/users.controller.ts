@@ -1,6 +1,6 @@
 import { FastifyReply, FastifyRequest } from "fastify";
 import bcrypt from "bcryptjs";
-import { eq, desc } from "drizzle-orm";
+import { eq, and, desc } from "drizzle-orm";
 import { db, users } from "../../core/db";
 
 export async function getUsersHandler(
@@ -20,7 +20,7 @@ export async function getUsersHandler(
       name: u.name,
       email: u.email,
       role: u.role,
-      status: "ACTIVE" as const,
+      status: u.isActive ? ("ACTIVE" as const) : ("INACTIVE" as const),
       assignedCount: 0,
     }));
 
@@ -84,6 +84,66 @@ export async function createUserHandler(
       statusCode: 500,
       error: "Internal Server Error",
       message: err?.message || "Failed to create user",
+    });
+  }
+}
+
+/**
+ * Toggle a user's active/inactive status. Deactivation takes effect immediately:
+ * `tenantHandler` re-checks `isActive` on every subsequent authenticated request,
+ * so an already-issued JWT stops working right away rather than at its 7-day expiry.
+ */
+export async function toggleUserStatusHandler(
+  request: FastifyRequest<{ Params: { id: string } }>,
+  reply: FastifyReply
+): Promise<void> {
+  const tenantId = request.tenantId;
+  const { id } = request.params;
+
+  if (id === request.userId) {
+    return reply.status(400).send({
+      statusCode: 400,
+      error: "Bad Request",
+      message: "You cannot deactivate your own account",
+    });
+  }
+
+  try {
+    const targetUser = await db.query.users.findFirst({
+      where: and(eq(users.id, id), eq(users.tenantId, tenantId)),
+    });
+
+    if (!targetUser) {
+      return reply.status(404).send({
+        statusCode: 404,
+        error: "Not Found",
+        message: "User not found in your organization",
+      });
+    }
+
+    const [updatedUser] = await db
+      .update(users)
+      .set({ isActive: !targetUser.isActive })
+      .where(and(eq(users.id, id), eq(users.tenantId, tenantId)))
+      .returning();
+
+    return reply.send({
+      statusCode: 200,
+      message: `User ${updatedUser.isActive ? "reactivated" : "deactivated"} successfully`,
+      data: {
+        id: updatedUser.id,
+        name: updatedUser.name,
+        email: updatedUser.email,
+        role: updatedUser.role,
+        status: updatedUser.isActive ? "ACTIVE" : "INACTIVE",
+        assignedCount: 0,
+      },
+    });
+  } catch (err: any) {
+    return reply.status(500).send({
+      statusCode: 500,
+      error: "Internal Server Error",
+      message: err?.message || "Failed to update user status",
     });
   }
 }

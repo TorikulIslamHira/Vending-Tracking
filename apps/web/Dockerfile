@@ -12,13 +12,22 @@ RUN corepack enable && corepack prepare pnpm@11.23.0 --activate
 FROM base AS builder
 WORKDIR /app
 
-# Copy monorepo manifests
+# Copy only manifests first, so `pnpm install` is its own cached layer and only
+# re-runs when a dependency actually changes — not on every source edit.
+# Note: packages/database is intentionally never copied into this image —
+# the web app depends only on @vending/shared-types and @vending/validation.
 COPY package.json pnpm-lock.yaml pnpm-workspace.yaml tsconfig.base.json ./
-COPY packages ./packages
-COPY apps/web ./apps/web
+COPY packages/shared-types/package.json ./packages/shared-types/package.json
+COPY packages/validation/package.json ./packages/validation/package.json
+COPY apps/web/package.json ./apps/web/package.json
 
-# Install all workspace dependencies
 RUN --mount=type=cache,id=pnpm,target=/pnpm/store pnpm install --frozen-lockfile
+
+# Now copy the actual source and build. Only this layer (and below) is busted
+# by a source change; the dependency-install layer above stays cached.
+COPY packages/shared-types ./packages/shared-types
+COPY packages/validation ./packages/validation
+COPY apps/web ./apps/web
 
 # Set build-time env
 ENV NEXT_PUBLIC_API_URL=/api/v1
@@ -30,15 +39,28 @@ RUN pnpm --filter @vending/shared-types run build && \
     pnpm --filter @vending/validation run build && \
     pnpm --filter @vending/web run build
 
+# Drop devDependencies (typescript, tailwind, autoprefixer, postcss, ...) —
+# only the resolved production dependency graph is needed from here on.
+# CI=true skips pnpm's interactive confirmation prompt (no TTY in a RUN step).
+RUN CI=true pnpm prune --prod
+
 # Stage 2: Production Runner
 FROM base AS runner
 WORKDIR /app
 ENV NODE_ENV=production
 ENV PORT=3000
 
-# Copy workspace build artifacts
-COPY --from=builder /app /app
+# Copy the pruned install + built code, owned by the non-root `node` user
+# that ships in the base image (uid/gid 1000), and run as that user.
+COPY --from=builder --chown=node:node /app /app
+USER node
+WORKDIR /app/apps/web
 
 EXPOSE 3000
 
-CMD ["pnpm", "--filter", "@vending/web", "start"]
+# Invoke the local Next.js binary directly instead of `pnpm run start`: pnpm's
+# startup dependency-status check tries to run a real `pnpm install` against
+# the registry on every container start, which is both wrong (a production
+# container shouldn't need network access to npm just to boot) and breaks
+# under the non-root user's restricted permissions.
+CMD ["node_modules/.bin/next", "start", "--port", "3000"]

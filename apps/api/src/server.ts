@@ -12,8 +12,18 @@ import { inventoryRoutes } from "./modules/inventory";
 import { usersRoutes } from "./modules/users";
 import { locationsRoutes } from "./modules/locations";
 import { storesRoutes, locationStoresRoutes } from "./modules/stores";
+import { settingsRoutes } from "./modules/settings";
 
 export function buildServer(): FastifyInstance {
+  // Fail fast: a missing JWT_SECRET must never silently fall back to a
+  // well-known default, since that would let anyone forge a valid session.
+  const jwtSecret = process.env.JWT_SECRET;
+  if (!jwtSecret) {
+    throw new Error(
+      "JWT_SECRET environment variable is required but was not set. Refusing to start with an insecure default."
+    );
+  }
+
   const app = Fastify({
     logger: {
       level: process.env.LOG_LEVEL || "info",
@@ -28,7 +38,7 @@ export function buildServer(): FastifyInstance {
 
   // Register JWT
   app.register(jwt, {
-    secret: process.env.JWT_SECRET || "vending-saas-default-dev-secret-key-change-in-prod",
+    secret: jwtSecret,
   });
 
   // Decorate with authenticateTenant hook
@@ -72,6 +82,7 @@ export function buildServer(): FastifyInstance {
   app.register(packetRoutes, { prefix: "/api/v1/packets" });
   app.register(inventoryRoutes, { prefix: "/api/v1/inventory" });
   app.register(usersRoutes, { prefix: "/api/v1/users" });
+  app.register(settingsRoutes, { prefix: "/api/v1/settings" });
 
   return app;
 }

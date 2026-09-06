@@ -41,9 +41,9 @@ export default function AgentMobileLayout({
     },
     {
       label: "History",
-      href: "/inventory-logs",
+      href: "/reports",
       icon: ClipboardList,
-      active: pathname === "/inventory-logs",
+      active: pathname === "/reports",
     },
     {
       label: "Admin Portal",

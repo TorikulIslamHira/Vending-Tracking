@@ -5,9 +5,12 @@ import {
   cashCollectionHandler,
   getInventoryLogsHandler,
   getCashLogsHandler,
+  getReportsHandler,
   reverseEntryHandler,
 } from "./inventory.controller";
 import { tenantHandler } from "../../core/middlewares/tenantHandler";
+import { requireRole } from "../../core/middlewares/rbac";
+import { UserRole } from "@vending/shared-types";
 
 export async function inventoryRoutes(app: FastifyInstance): Promise<void> {
   // Attach tenant authentication middleware to all inventory routes
@@ -15,9 +18,15 @@ export async function inventoryRoutes(app: FastifyInstance): Promise<void> {
 
   app.get("/logs", getInventoryLogsHandler);
   app.get("/cash-logs", getCashLogsHandler);
+  app.get("/reports", getReportsHandler);
   app.post("/restock/standard", standardRestockHandler);
   app.post("/restock/manual", manualRestockHandler);
-  app.post("/reverse", reverseEntryHandler);
+  // Field agents must be able to self-correct restock typos on-site, so both roles are allowed.
+  app.post(
+    "/reverse",
+    { onRequest: [requireRole(UserRole.ADMIN, UserRole.FIELD_AGENT)] },
+    reverseEntryHandler
+  );
   app.post("/cash-collection", cashCollectionHandler);
 }
 

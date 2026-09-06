@@ -50,6 +50,14 @@ export async function loginHandler(
         });
       }
 
+      if (!user.isActive) {
+        return reply.status(401).send({
+          statusCode: 401,
+          error: "Unauthorized",
+          message: "This account has been deactivated. Contact your administrator.",
+        });
+      }
+
       const jwtPayload: JWTPayload = {
         userId: user.id,
         tenantId: user.tenantId,

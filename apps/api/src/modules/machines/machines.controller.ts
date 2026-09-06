@@ -1,7 +1,8 @@
 import { FastifyReply, FastifyRequest } from "fastify";
 import { eq, and, or, desc, count } from "drizzle-orm";
 import { MachineCreateSchema } from "@vending/validation";
-import { db, machines, inventoryLogs } from "../../core/db";
+import { db, machines } from "../../core/db";
+import { computeVirtualCashBalances, computeVirtualCashBalanceForMachine } from "./virtualCashBalance.service";
 
 /**
  * Fetch all machines scoped to the authenticated tenant, optionally filtered by storeId
@@ -31,6 +32,8 @@ export async function getMachinesHandler(
       orderBy: [desc(machines.createdAt)],
     });
 
+    const balances = await computeVirtualCashBalances(db, tenantId, machineList);
+
     return reply.send({
       statusCode: 200,
       data: machineList.map((m) => ({
@@ -43,10 +46,11 @@ export async function getMachinesHandler(
         category: m.category || "Standard Confectionery",
         type: m.type || "Spiral Chute",
         capacity: m.capacity || 100,
+        pricePerPlay: Number(m.pricePerPlay || 1.00),
         status: m.status,
         qrCode: m.qrCode,
         keyNumber: m.keyNumber || "",
-        virtualCashBalance: Number(m.virtualCashBalance || 0),
+        virtualCashBalance: balances.get(m.id)?.virtualCashBalance ?? 0,
         itemsRemaining: Math.floor(Math.random() * 40) + 60,
         createdAt: m.createdAt,
       })),
@@ -104,6 +108,15 @@ export async function getMachineByIdHandler(
     });
 
     if (machine) {
+      const {
+        totalRestockedUnits,
+        totalCashCollected,
+        totalUnitsSold,
+        currentEstimatedStock,
+        virtualCashBalance,
+      } = await computeVirtualCashBalanceForMachine(db, tenantId, machine);
+      const pricePerPlay = Number(machine.pricePerPlay || 1.00) || 1.00;
+
       return reply.send({
         statusCode: 200,
         data: {
@@ -116,9 +129,14 @@ export async function getMachineByIdHandler(
           category: machine.category || "Standard Confectionery",
           type: machine.type || "Spiral Chute",
           capacity: machine.capacity || 100,
+          pricePerPlay,
+          currentEstimatedStock,
+          totalRestockedUnits,
+          totalUnitsSold,
+          totalCashCollected,
           status: machine.status,
           keyNumber: machine.keyNumber || "",
-          virtualCashBalance: Number(machine.virtualCashBalance || 0),
+          virtualCashBalance,
           qrCode: machine.qrCode,
           inventoryLogs: machine.inventoryLogs,
           createdAt: machine.createdAt,
@@ -137,6 +155,11 @@ export async function getMachineByIdHandler(
       location: "Metropolitan Terminal Hub",
       status: "ONLINE",
       virtualCashBalance: 450.0,
+      pricePerPlay: 1.00,
+      currentEstimatedStock: 85,
+      totalRestockedUnits: 100,
+      totalUnitsSold: 15,
+      totalCashCollected: 15.0,
       qrCode: id,
       keyNumber: "K-101",
     },
@@ -172,6 +195,7 @@ export async function createMachineHandler(
     category,
     type,
     capacity,
+    pricePerPlay,
     keyNumber,
   } = parseResult.data;
 
@@ -194,6 +218,7 @@ export async function createMachineHandler(
           category: category || "Standard Confectionery",
           type: type || "Spiral Chute",
           capacity: capacity || 100,
+          pricePerPlay: pricePerPlay ? String(pricePerPlay) : "1.00",
           status: status || "ONLINE",
           qrCode,
           keyNumber: keyNumber || null,
@@ -233,22 +258,15 @@ export async function getDashboardMetricsHandler(
   const tenantId = request.tenantId;
 
   try {
-    const [machinesCountResult, inventoryLogsList, machinesList] = await Promise.all([
+    const [machinesCountResult, machinesList] = await Promise.all([
       db.select({ value: count() }).from(machines).where(eq(machines.tenantId, tenantId)),
-      db
-        .select({
-          quantityAdded: inventoryLogs.quantityAdded,
-          entryType: inventoryLogs.entryType,
-        })
-        .from(inventoryLogs)
-        .where(eq(inventoryLogs.tenantId, tenantId)),
       db
         .select({
           id: machines.id,
           serialNumber: machines.serialNumber,
           location: machines.location,
           status: machines.status,
-          virtualCashBalance: machines.virtualCashBalance,
+          pricePerPlay: machines.pricePerPlay,
         })
         .from(machines)
         .where(eq(machines.tenantId, tenantId)),
@@ -256,15 +274,15 @@ export async function getDashboardMetricsHandler(
 
     const totalMachines = machinesCountResult[0]?.value ?? 0;
 
-    const totalRestocked = inventoryLogsList.reduce(
-      (sum, log) => sum + (log.quantityAdded || 0),
-      0
-    );
+    const balances = await computeVirtualCashBalances(db, tenantId, machinesList);
 
-    const totalVirtualCash = machinesList.reduce(
-      (sum, m) => sum + Number(m.virtualCashBalance || 0),
-      0
-    );
+    let totalRestocked = 0;
+    let totalVirtualCash = 0;
+    for (const balance of balances.values()) {
+      totalRestocked += balance.totalRestockedUnits;
+      totalVirtualCash += balance.virtualCashBalance;
+    }
+    totalVirtualCash = Number(totalVirtualCash.toFixed(2));
 
     const offlineCount = machinesList.filter((m) => m.status === "OFFLINE").length;
 

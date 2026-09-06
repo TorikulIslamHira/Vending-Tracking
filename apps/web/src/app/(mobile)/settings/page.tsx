@@ -5,6 +5,7 @@ import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { useAuthStore } from "@/store/useAuthStore";
 import { useTenantSettings } from "@/hooks/useTenantSettings";
+import { CURRENCY_OPTIONS } from "@/lib/currency";
 import { toast } from "sonner";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent } from "@/components/ui/card";
@@ -156,7 +157,7 @@ export default function MobileSettingsPage() {
                   Cash Collection Ledger
                 </span>
                 <span className="text-[11px] text-muted-foreground">
-                  Audit physical cash drops & discrepancies
+                  Audit physical cash collections & discrepancies
                 </span>
               </div>
             </div>
@@ -222,16 +223,17 @@ export default function MobileSettingsPage() {
                 </span>
               </div>
               <select
-                value={settings.currency}
+                value={settings.currency || "USD"}
                 onChange={(e) => {
                   updateSettings({ currency: e.target.value });
                 }}
                 className="h-9 rounded-xl bg-muted/50 border-border/60 text-xs font-bold px-3 text-foreground focus:outline-hidden focus:ring-2 focus:ring-primary shadow-xs"
               >
-                <option value="USD">USD ($)</option>
-                <option value="BDT">BDT (৳)</option>
-                <option value="EUR">EUR (€)</option>
-                <option value="GBP">GBP (£)</option>
+                {CURRENCY_OPTIONS.map((opt) => (
+                  <option key={opt.code} value={opt.code}>
+                    {opt.label}
+                  </option>
+                ))}
               </select>
             </div>
 

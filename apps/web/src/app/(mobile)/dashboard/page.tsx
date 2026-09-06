@@ -5,6 +5,7 @@ import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { useAuthStore } from "@/store/useAuthStore";
 import { useDashboardMetrics, AttentionMachineItem } from "@/hooks/useDashboardMetrics";
+import { useCurrency } from "@/hooks/useTenantSettings";
 import defaultThemeConfig from "@/config/theme";
 import { toast } from "sonner";
 import { Button } from "@/components/ui/button";
@@ -30,6 +31,7 @@ export default function MobileDashboardPage() {
   const router = useRouter();
   const { user } = useAuthStore();
   const { data: metrics, isLoading, isRefetching, refetch } = useDashboardMetrics();
+  const { format: formatMoney } = useCurrency();
 
   const [selectedMachineIds, setSelectedMachineIds] = useState<string[]>([]);
 
@@ -59,11 +61,8 @@ export default function MobileDashboardPage() {
   const totalVirtualCash = metrics?.totalVirtualCash ?? 0;
   const shopCutPercent = metrics?.shopCutPercent ?? 30;
   const businessCutPercent = metrics?.businessCutPercent ?? 70;
-  const shopCutAmount = (totalVirtualCash * (shopCutPercent / 100)).toFixed(2);
-  const businessCutAmount = (
-    totalVirtualCash *
-    (businessCutPercent / 100)
-  ).toFixed(2);
+  const shopCutAmount = totalVirtualCash * (shopCutPercent / 100);
+  const businessCutAmount = totalVirtualCash * (businessCutPercent / 100);
   const missedVisitsCount = metrics?.missedVisitsCount ?? 0;
 
   // True empty state when fleet is empty
@@ -212,7 +211,7 @@ export default function MobileDashboardPage() {
                     <div className="h-7 w-32 bg-muted/60 rounded-lg animate-pulse my-1" />
                   ) : (
                     <div className="text-2xl font-black text-foreground font-mono">
-                      ${totalVirtualCash.toLocaleString()}
+                      {formatMoney(totalVirtualCash)}
                     </div>
                   )}
                   <div className="flex items-center gap-1 text-[10px] text-amber-600 dark:text-amber-400 font-semibold">
@@ -259,7 +258,7 @@ export default function MobileDashboardPage() {
                   <span className="text-muted-foreground">
                     Shop:{" "}
                     <strong className="text-foreground font-mono">
-                      ${shopCutAmount}
+                      {formatMoney(shopCutAmount)}
                     </strong>
                   </span>
                 </div>
@@ -268,7 +267,7 @@ export default function MobileDashboardPage() {
                   <span className="text-muted-foreground">
                     Business:{" "}
                     <strong className="text-foreground font-mono">
-                      ${businessCutAmount}
+                      {formatMoney(businessCutAmount)}
                     </strong>
                   </span>
                 </div>

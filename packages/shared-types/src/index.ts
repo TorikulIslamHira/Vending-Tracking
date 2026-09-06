@@ -27,6 +27,7 @@ export type EntryType = (typeof EntryType)[keyof typeof EntryType];
 export interface ITenant {
   id: string;
   name: string;
+  currency?: string;
   themeConfig?: Record<string, any> | null;
   isActive: boolean;
   createdAt: Date | string;
@@ -40,6 +41,7 @@ export interface IUser {
   role: UserRole;
   email: string;
   passwordHash?: string;
+  isActive: boolean;
   createdAt: Date | string;
   updatedAt?: Date | string;
 }
@@ -56,6 +58,8 @@ export interface IMachine {
   status: MachineStatus;
   qrCode: string;
   virtualCashBalance: number;
+  pricePerPlay?: number | string | null;
+  currentEstimatedStock?: number;
   keyNumber?: string | null;
   createdAt: Date | string;
   updatedAt?: Date | string;
@@ -68,6 +72,7 @@ export interface IPacketConfig {
   brand: string;
   quantityPerPacket: number;
   pricePerItem: number;
+  packetCost?: number | string | null;
   createdAt: Date | string;
   updatedAt?: Date | string;
 }
@@ -81,6 +86,7 @@ export interface IInventoryLog {
   entryType: EntryType;
   quantityAdded: number;
   remarks: string;
+  reversedLogId?: string | null;
   createdAt: Date | string;
 }
 
@@ -92,7 +98,41 @@ export interface ICashLog {
   collectedAmount: number;
   expectedAmount: number;
   discrepancy: number;
+  remarks?: string | null;
   createdAt: Date | string;
+}
+
+export type ActivityLogType = "INVENTORY" | "CASH";
+
+export interface IMachineActivityLog {
+  id: string;
+  logType: ActivityLogType;
+  tenantId: string;
+  machineId: string;
+  agentId: string;
+  entryType?: EntryType | string | null;
+  quantityAdded?: number | null;
+  packetId?: string | null;
+  packet?: {
+    id: string;
+    name: string;
+    brand: string;
+  } | null;
+  collectedAmount?: number | null;
+  expectedAmount?: number | null;
+  discrepancy?: number | null;
+  remarks?: string | null;
+  createdAt: Date | string;
+  agent?: {
+    id: string;
+    name: string;
+    email: string;
+  } | null;
+  machine?: {
+    id: string;
+    serialNumber: string;
+    location: string;
+  } | null;
 }
 
 /**
