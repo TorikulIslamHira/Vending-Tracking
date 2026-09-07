@@ -33,6 +33,37 @@ echo "=========================================="
 echo "🚀 Bee Novelty Vending Deployment Script"
 echo "=========================================="
 
+echo "🔍 0/4 Verifying required environment configuration..."
+if [ ! -f .env ]; then
+  echo "❌ No .env file found in $(pwd)."
+  echo "   Copy .env.production.example to .env and fill in real values, or"
+  echo "   configure the corresponding GitHub Actions secrets so the CI/CD"
+  echo "   pipeline can inject it automatically."
+  exit 1
+fi
+
+# Fail fast with a clear, per-variable report — rather than letting a missing
+# value surface much later as an opaque docker-compose ":?" error after the
+# build has already started. Never prints the values themselves.
+MISSING_VARS=""
+for VAR in POSTGRES_PASSWORD JWT_SECRET SUPER_ADMIN_EMAIL SUPER_ADMIN_PASSWORD; do
+  VALUE=$(grep -E "^${VAR}=" .env | tail -n1 | cut -d '=' -f2- | tr -d '\r')
+  if [ -z "$VALUE" ]; then
+    echo "  ❌ $VAR is missing a value"
+    MISSING_VARS="$MISSING_VARS $VAR"
+  else
+    echo "  ✅ $VAR is set"
+  fi
+done
+
+if [ -n "$MISSING_VARS" ]; then
+  echo "🛑 Aborting: missing required .env value(s):$MISSING_VARS"
+  echo "   Set them as GitHub repository secrets (Settings → Secrets and"
+  echo "   variables → Actions) so the deploy workflow can sync them, or add"
+  echo "   them to .env on this server directly, then re-run."
+  exit 1
+fi
+
 echo "📥 1/4 Synchronizing latest changes from GitHub..."
 git fetch origin main
 git reset --hard origin/main

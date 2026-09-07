@@ -20,6 +20,10 @@ jobs:
           VPS_USERNAME: ${{ secrets.VPS_USERNAME }}
           VPS_SSH_KEY: ${{ secrets.VPS_SSH_KEY }}
           VPS_PORT: ${{ secrets.VPS_PORT || '22' }}
+          SUPER_ADMIN_EMAIL: ${{ secrets.SUPER_ADMIN_EMAIL }}
+          SUPER_ADMIN_PASSWORD: ${{ secrets.SUPER_ADMIN_PASSWORD }}
+          JWT_SECRET: ${{ secrets.JWT_SECRET }}
+          POSTGRES_PASSWORD: ${{ secrets.POSTGRES_PASSWORD }}
         run: |
           mkdir -p ~/.ssh
           echo "$VPS_SSH_KEY" > ~/.ssh/id_rsa
@@ -27,7 +31,15 @@ jobs:
 
           SSH_CMD="ssh -o StrictHostKeyChecking=no -o UserKnownHostsFile=/dev/null -o ConnectTimeout=30 -p $VPS_PORT $VPS_USERNAME@$VPS_HOST"
 
-          $SSH_CMD bash -s << 'EOF'
+          # Package the required secrets as a single base64 blob so their raw
+          # values never have to be embedded/quoted directly on the SSH command
+          # line — a secret containing $, `, quotes, or spaces could otherwise
+          # be mis-parsed (or worse, re-interpreted) by the remote shell. The
+          # blob itself is never echoed anywhere, so it never lands in logs.
+          ENV_BLOB=$(printf 'SUPER_ADMIN_EMAIL=%s\nSUPER_ADMIN_PASSWORD=%s\nJWT_SECRET=%s\nPOSTGRES_PASSWORD=%s\n' \
+            "$SUPER_ADMIN_EMAIL" "$SUPER_ADMIN_PASSWORD" "$JWT_SECRET" "$POSTGRES_PASSWORD" | base64 -w0)
+
+          $SSH_CMD "ENV_BLOB='$ENV_BLOB' bash -s" << 'EOF'
             set -e
             export DEBIAN_FRONTEND=noninteractive
 
@@ -52,6 +64,28 @@ jobs:
               echo "⚙️ Initializing .env configuration from template..."
               cp .env.production.example .env
             fi
+
+            # Sync required secrets from GitHub Actions into the server's .env,
+            # in place, without disturbing any other line already there. A key
+            # is only written if this workflow run actually supplied a
+            # non-empty value for it — an unconfigured GitHub secret leaves
+            # whatever is already in .env untouched instead of blanking out a
+            # working credential (e.g. an already-correct JWT_SECRET).
+            echo "🔐 Syncing required secrets into .env..."
+            echo "$ENV_BLOB" | base64 -d > /tmp/.env.secrets
+            while IFS='=' read -r KEY VALUE; do
+              [ -z "$KEY" ] && continue
+              if [ -z "$VALUE" ]; then
+                echo "  ⚠️  $KEY not provided by GitHub Secrets — keeping existing .env value"
+                continue
+              fi
+              if grep -q "^${KEY}=" .env 2>/dev/null; then
+                grep -v "^${KEY}=" .env > .env.tmp && mv .env.tmp .env
+              fi
+              printf '%s=%s\n' "$KEY" "$VALUE" >> .env
+              echo "  ✅ $KEY synced from GitHub Secrets"
+            done < /tmp/.env.secrets
+            rm -f /tmp/.env.secrets
 
             # Clean any dirty local state and synchronize with origin/main
             git fetch origin main
