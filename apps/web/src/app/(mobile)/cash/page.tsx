@@ -42,6 +42,9 @@ interface PopulatedCashLog {
   collectedAmount: number;
   expectedAmount: number;
   discrepancy: number;
+  isShortage?: boolean;
+  stockCleared?: boolean;
+  remarks?: string | null;
   createdAt: string;
   machine?: {
     id: string;
@@ -365,15 +368,36 @@ export default function MobileCashTrackingPage() {
                       }`}
                     >
                       <span className="text-[9px] font-bold uppercase tracking-wider block">
-                        Diff
+                        {hasDiscrepancy ? (Number(log.discrepancy) > 0 ? "Short" : "Over") : "Diff"}
                       </span>
                       <span className="font-mono font-black">
                         {hasDiscrepancy
-                          ? `-${formatMoney(Math.abs(Number(log.discrepancy)))}`
+                          ? `${Number(log.discrepancy) > 0 ? "-" : "+"}${formatMoney(Math.abs(Number(log.discrepancy)))}`
                           : formatMoney(0)}
                       </span>
                     </div>
                   </div>
+
+                  {/* Mismatch remark + reconciliation acknowledgement */}
+                  {hasDiscrepancy && log.remarks && (
+                    <p className="text-[10px] text-foreground/80 italic bg-muted/40 p-1.5 rounded-lg truncate">
+                      &ldquo;{log.remarks}&rdquo;
+                    </p>
+                  )}
+                  {hasDiscrepancy && (
+                    <div
+                      className={`inline-flex items-center gap-1 text-[10px] font-bold px-2 py-0.5 rounded-full ${
+                        log.stockCleared
+                          ? "bg-emerald-500/15 text-emerald-600 dark:text-emerald-400"
+                          : "bg-rose-500/15 text-rose-600 dark:text-rose-400"
+                      }`}
+                    >
+                      <ShieldCheck className="h-3 w-3" />
+                      <span>
+                        {log.stockCleared ? "Stock Cleared / Reconciled" : "Not Reconciled"}
+                      </span>
+                    </div>
+                  )}
 
                   {/* Agent row */}
                   <div className="flex items-center justify-between text-[11px] pt-0.5 text-muted-foreground">
@@ -475,11 +499,39 @@ export default function MobileCashTrackingPage() {
                     }`}
                   >
                     {Number(selectedLog.discrepancy) !== 0
-                      ? `-${formatMoney(Math.abs(Number(selectedLog.discrepancy)))} (Shortfall)`
+                      ? `${formatMoney(Math.abs(Number(selectedLog.discrepancy)))} (${
+                          Number(selectedLog.discrepancy) > 0 ? "Shortfall" : "Overage"
+                        })`
                       : `${formatMoney(0)} (Matched)`}
                   </span>
                 </div>
               </div>
+
+              {Number(selectedLog.discrepancy) !== 0 && (
+                <div className="p-4 rounded-2xl bg-card border border-border/50 space-y-2.5">
+                  <div className="flex justify-between items-center">
+                    <span className="text-muted-foreground font-semibold">Reconciliation Status:</span>
+                    <span
+                      className={`inline-flex items-center gap-1 text-[11px] font-bold px-2 py-0.5 rounded-full ${
+                        selectedLog.stockCleared
+                          ? "bg-emerald-500/15 text-emerald-600 dark:text-emerald-400"
+                          : "bg-rose-500/15 text-rose-600 dark:text-rose-400"
+                      }`}
+                    >
+                      <ShieldCheck className="h-3 w-3" />
+                      <span>{selectedLog.stockCleared ? "Stock Cleared / Reconciled" : "Not Reconciled"}</span>
+                    </span>
+                  </div>
+                  {selectedLog.remarks && (
+                    <div className="space-y-0.5">
+                      <span className="text-muted-foreground text-[10px] uppercase tracking-wider font-semibold block">
+                        Agent&apos;s Reason
+                      </span>
+                      <p className="text-foreground italic">&quot;{selectedLog.remarks}&quot;</p>
+                    </div>
+                  )}
+                </div>
+              )}
 
               <DrawerFooter className="p-0 pt-2">
                 <DrawerClose asChild>

@@ -196,8 +196,13 @@ export const cashLogs = pgTable(
       .references(() => users.id, { onDelete: "restrict" }),
     collectedAmount: numeric("collectedAmount", { precision: 10, scale: 2 }).notNull(),
     expectedAmount: numeric("expectedAmount", { precision: 10, scale: 2 }).notNull(),
+    // Signed: expectedAmount - collectedAmount. Positive = shortage, negative = overage.
     discrepancy: numeric("discrepancy", { precision: 10, scale: 2 }).notNull(),
     remarks: text("remarks"),
+    // Agent's explicit acknowledgement that they physically cleared/collected the
+    // machine despite a cash/expected mismatch ("Force Reconcile"). Required by
+    // cashCollectionHandler whenever collectedAmount !== expectedAmount.
+    stockCleared: boolean("stockCleared").default(false).notNull(),
     createdAt: timestamp("createdAt", { withTimezone: true, mode: "date" }).defaultNow().notNull(),
   },
   (table) => [

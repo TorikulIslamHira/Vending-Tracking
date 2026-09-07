@@ -66,6 +66,9 @@ export const CashCollectionSchema = z.object({
     .min(0, "Expected amount cannot be negative")
     .optional(),
   remarks: z.string().optional(),
+  // Agent's explicit "Force Reconcile" acknowledgement, required by the API
+  // whenever collectedAmount !== expectedAmount.
+  stockCleared: z.boolean().optional(),
 });
 
 export type CashCollectionInput = z.infer<typeof CashCollectionSchema>;

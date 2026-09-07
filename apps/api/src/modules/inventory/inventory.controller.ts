@@ -237,7 +237,7 @@ export async function cashCollectionHandler(
     });
   }
 
-  const { machineId, collectedAmount, remarks } = parseResult.data;
+  const { machineId, collectedAmount, remarks, stockCleared } = parseResult.data;
 
   // Resolve the fuzzy identifier (id, serial, or QR) to a machine row. Read-only,
   // not part of the race, so no lock needed yet.
@@ -281,15 +281,31 @@ export async function cashCollectionHandler(
         lockedMachine
       );
 
-      // Safety guardrail: Require mandatory remarks if collection strictly exceeds expected virtual cash balance
-      if (collectedAmount > expectedAmount && (!remarks || remarks.trim().length === 0)) {
-        throw new CashCollectionError(
-          400,
-          `A remark is required for cash collections exceeding the expected balance of $${expectedAmount.toFixed(2)}.`
-        );
+      // Safety guardrail: any mismatch — shortage OR overage — requires both a
+      // remark explaining it and explicit "Stock Cleared / Force Reconcile"
+      // acknowledgement that the agent collected anyway despite the discrepancy.
+      // (Previously only overage required a remark; a shortage — e.g. expected
+      // $25, collected $20 — went through silently, which is exactly the kind
+      // of shrinkage/theft signal that most needs a paper trail.)
+      const hasMismatch = collectedAmount !== expectedAmount;
+      if (hasMismatch) {
+        const direction = collectedAmount > expectedAmount ? "overage" : "shortage";
+        if (!remarks || remarks.trim().length === 0) {
+          throw new CashCollectionError(
+            400,
+            `A remark explaining the ${direction} is required (expected $${expectedAmount.toFixed(2)}, collected $${collectedAmount.toFixed(2)}).`
+          );
+        }
+        if (!stockCleared) {
+          throw new CashCollectionError(
+            400,
+            `Confirm "Stock Cleared / Force Reconcile" to proceed with a mismatched (${direction}) collection.`
+          );
+        }
       }
 
       const discrepancy = expectedAmount - collectedAmount;
+      const isShortage = discrepancy > 0;
 
       const [insertedCashLog] = await tx
         .insert(cashLogs)
@@ -301,6 +317,7 @@ export async function cashCollectionHandler(
           expectedAmount: String(expectedAmount),
           discrepancy: String(discrepancy),
           remarks: remarks || null,
+          stockCleared: hasMismatch ? Boolean(stockCleared) : false,
         })
         .returning();
 
@@ -330,6 +347,8 @@ export async function cashCollectionHandler(
         collectedAmount: Number(result.cashLog.collectedAmount),
         expectedAmount: Number(result.cashLog.expectedAmount),
         discrepancy: Number(result.cashLog.discrepancy),
+        isShortage: Number(result.cashLog.discrepancy) > 0,
+        stockCleared: result.cashLog.stockCleared,
         remarks: result.cashLog.remarks,
         newVirtualCashBalance: result.newVirtualCashBalance,
         createdAt: result.cashLog.createdAt,
@@ -452,6 +471,8 @@ export async function getInventoryLogsHandler(
         collectedAmount: Number(log.collectedAmount),
         expectedAmount: Number(log.expectedAmount),
         discrepancy: Number(log.discrepancy),
+        isShortage: Number(log.discrepancy) > 0,
+        stockCleared: log.stockCleared,
         remarks: log.remarks || `Physical cash collect: $${Number(log.collectedAmount).toFixed(2)} collected`,
         createdAt: log.createdAt,
         machine: log.machine,
@@ -543,6 +564,8 @@ export async function getMyLogsHandler(
       collectedAmount: Number(log.collectedAmount),
       expectedAmount: Number(log.expectedAmount),
       discrepancy: Number(log.discrepancy),
+      isShortage: Number(log.discrepancy) > 0,
+      stockCleared: log.stockCleared,
       remarks: log.remarks || `Physical cash collect: $${Number(log.collectedAmount).toFixed(2)} collected`,
       createdAt: log.createdAt,
       machine: log.machine,
@@ -644,7 +667,10 @@ export async function getCashLogsHandler(
 
     return reply.send({
       statusCode: 200,
-      data: filtered,
+      data: filtered.map((log) => ({
+        ...log,
+        isShortage: Number(log.discrepancy) > 0,
+      })),
     });
   } catch {
     return reply.send({
@@ -811,6 +837,8 @@ export async function getReportsHandler(
           collectedAmount: Number(log.collectedAmount || 0),
           expectedAmount: Number(log.expectedAmount || 0),
           discrepancy: Number(log.discrepancy || 0),
+          isShortage: Number(log.discrepancy || 0) > 0,
+          stockCleared: log.stockCleared,
           remarks: log.remarks,
           agentName: log.agent?.name || "Field Agent",
         })),

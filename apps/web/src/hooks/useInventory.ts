@@ -88,6 +88,8 @@ export interface MyHistoryLogItem {
   collectedAmount?: number | null;
   expectedAmount?: number | null;
   discrepancy?: number | null;
+  isShortage?: boolean | null;
+  stockCleared?: boolean | null;
   remarks?: string | null;
   createdAt: string;
 }
@@ -199,6 +201,7 @@ export function useCashCollection() {
       machineId: string;
       collectedAmount: number;
       remarks?: string;
+      stockCleared?: boolean;
     }) => {
       const res = await api.post("/inventory/cash-collection", data);
       return res.data;
@@ -259,6 +262,8 @@ export interface DetailedCashLog {
   collectedAmount: number;
   expectedAmount: number;
   discrepancy: number;
+  isShortage?: boolean;
+  stockCleared?: boolean;
   remarks?: string | null;
   agentName: string;
 }

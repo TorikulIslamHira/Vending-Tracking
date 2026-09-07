@@ -50,6 +50,7 @@ import {
   Loader2,
   Clock,
   ShieldAlert,
+  ShieldCheck,
   Lock,
   Boxes,
   TrendingDown,
@@ -74,6 +75,7 @@ export default function MachineOperationPage() {
   const [isReversing, setIsReversing] = useState(false);
   const [cashDropConfirmOpen, setCashDropConfirmOpen] = useState(false);
   const [pendingCashAmount, setPendingCashAmount] = useState<number | null>(null);
+  const [stockCleared, setStockCleared] = useState(false);
   const { format: formatMoney, symbol } = useCurrency();
 
   // 1. Query Machine Data
@@ -190,9 +192,14 @@ export default function MachineOperationPage() {
   const currentEstimatedStock = machine?.currentEstimatedStock ?? 0;
   const virtualCashBalance = Number(machine?.virtualCashBalance ?? 0);
 
-  // Cash Collect real-time calculation & overage guardrail
+  // Cash Collect real-time calculation & mismatch guardrail. Any difference
+  // from the expected balance — shortage OR overage — is a mismatch: both
+  // require a remark and explicit "Stock Cleared / Force Reconcile" ack
+  // before submit (mirrors the backend guardrail in cashCollectionHandler).
   const enteredCashAmount = Number(cashForm.watch("collectedAmount") || 0);
   const isCashOverage = enteredCashAmount > virtualCashBalance;
+  const hasCashMismatch = enteredCashAmount > 0 && enteredCashAmount !== virtualCashBalance;
+  const cashMismatchAmount = Math.abs(virtualCashBalance - enteredCashAmount);
   const approxUnitsSold = Math.floor(enteredCashAmount / machinePricePerPlay);
 
   // Selected Packet for piece calculation
@@ -272,10 +279,14 @@ export default function MachineOperationPage() {
       return res.data;
     },
     onSuccess: (data) => {
+      const discrepancy = Number(data?.data?.discrepancy || 0);
       toast.success(
-        `Cash Collect Processed: ${formatMoney(data.data.collectedAmount)} collected. Virtual balance reset!`
+        discrepancy !== 0
+          ? `Cash Collect Processed with ${data.data.isShortage ? "shortage" : "overage"} of ${formatMoney(Math.abs(discrepancy))} (reconciled). Virtual balance reset!`
+          : `Cash Collect Processed: ${formatMoney(data.data.collectedAmount)} collected. Virtual balance reset!`
       );
       cashForm.reset();
+      setStockCleared(false);
       setCashDropConfirmOpen(false);
       invalidateAndRefetchAll();
     },
@@ -311,13 +322,23 @@ export default function MachineOperationPage() {
   };
 
   const handleCashFormSubmit = (data: CashCollectionInput) => {
-    if (isCashOverage && (!data.remarks || !data.remarks.trim())) {
-      cashForm.setError("remarks", {
-        type: "manual",
-        message: `Reason required: Amount (${formatMoney(data.collectedAmount)}) exceeds virtual cash balance (${formatMoney(virtualCashBalance)}).`,
-      });
-      toast.error("A mandatory reason is required for cash collections exceeding the virtual balance.");
-      return;
+    if (hasCashMismatch) {
+      if (!data.remarks || !data.remarks.trim()) {
+        cashForm.setError("remarks", {
+          type: "manual",
+          message: `Reason required: Amount (${formatMoney(data.collectedAmount)}) does not match virtual cash balance (${formatMoney(virtualCashBalance)}).`,
+        });
+        toast.error(
+          `A mandatory reason is required for a cash ${isCashOverage ? "overage" : "shortage"}.`
+        );
+        return;
+      }
+      if (!stockCleared) {
+        toast.error(
+          'Check "Stock Cleared / Force Reconcile" to confirm you collected despite the mismatch.'
+        );
+        return;
+      }
     }
     setPendingCashAmount(data.collectedAmount);
     setCashDropConfirmOpen(true);
@@ -789,11 +810,21 @@ export default function MachineOperationPage() {
                     </div>
                   )}
 
-                  {/* Overage Warning Badge */}
-                  {isCashOverage && (
-                    <div className="flex items-center gap-1.5 text-xs text-amber-700 dark:text-amber-400 font-semibold bg-amber-500/10 px-3 py-2 rounded-xl border border-amber-500/30 animate-in fade-in slide-in-from-top-1 duration-200">
-                      <AlertTriangle className="h-4 w-4 shrink-0 text-amber-600 dark:text-amber-400" />
-                      <span>Amount exceeds expected balance. Reason required.</span>
+                  {/* Discrepancy / Mismatch Warning Box (shortage OR overage) */}
+                  {hasCashMismatch && (
+                    <div
+                      className={`flex items-center gap-1.5 text-xs font-semibold px-3 py-2 rounded-xl border animate-in fade-in slide-in-from-top-1 duration-200 ${
+                        isCashOverage
+                          ? "text-amber-700 dark:text-amber-400 bg-amber-500/10 border-amber-500/30"
+                          : "text-rose-700 dark:text-rose-400 bg-rose-500/10 border-rose-500/30"
+                      }`}
+                    >
+                      <AlertTriangle className="h-4 w-4 shrink-0" />
+                      <span>
+                        {isCashOverage ? "Overage" : "Shortage"} of{" "}
+                        {formatMoney(cashMismatchAmount)} vs. expected balance. Reason &amp;
+                        acknowledgement required.
+                      </span>
                     </div>
                   )}
                 </div>
@@ -802,34 +833,36 @@ export default function MachineOperationPage() {
                   <div className="flex items-center justify-between">
                     <label
                       className={`text-xs font-semibold ${
-                        isCashOverage
+                        hasCashMismatch
                           ? "text-amber-700 dark:text-amber-400 flex items-center gap-1"
                           : "text-muted-foreground"
                       }`}
                     >
-                      {isCashOverage ? (
+                      {hasCashMismatch ? (
                         <>
                           <AlertTriangle className="h-3 w-3" />
-                          <span>Mandatory Reason for Discrepancy *</span>
+                          <span>Mandatory Reason for {isCashOverage ? "Overage" : "Shortage"} *</span>
                         </>
                       ) : (
                         "Optional Collection Notes"
                       )}
                     </label>
-                    {isCashOverage && (
+                    {hasCashMismatch && (
                       <span className="text-[10px] font-bold text-amber-700 dark:text-amber-400 bg-amber-500/15 px-1.5 py-0.5 rounded">
-                        Required (&gt; {formatMoney(virtualCashBalance)})
+                        Required (&ne; {formatMoney(virtualCashBalance)})
                       </span>
                     )}
                   </div>
                   <Input
                     placeholder={
-                      isCashOverage
-                        ? "State reason (e.g. Unjammed extra bills / customer overpay / testing)"
+                      hasCashMismatch
+                        ? isCashOverage
+                          ? "State reason (e.g. Unjammed extra bills / customer overpay / testing)"
+                          : "State reason (e.g. Jammed coins / spillage / suspected shrinkage)"
                         : "e.g. Bag seal #8812 - clean coin chute"
                     }
                     className={`h-10 rounded-xl text-xs ${
-                      isCashOverage
+                      hasCashMismatch
                         ? "border-amber-500/50 bg-amber-500/5 focus-visible:ring-amber-500"
                         : ""
                     }`}
@@ -841,6 +874,34 @@ export default function MachineOperationPage() {
                     </p>
                   )}
                 </div>
+
+                {/* Stock Cleared / Force Reconcile — only relevant when there's a mismatch */}
+                {hasCashMismatch && (
+                  <label
+                    className={`flex items-start gap-2.5 rounded-xl border p-3 cursor-pointer transition-colors ${
+                      stockCleared
+                        ? "border-emerald-500/40 bg-emerald-500/10"
+                        : "border-amber-500/40 bg-amber-500/5"
+                    }`}
+                  >
+                    <input
+                      type="checkbox"
+                      checked={stockCleared}
+                      onChange={(e) => setStockCleared(e.target.checked)}
+                      className="mt-0.5 h-4 w-4 shrink-0 rounded border-border/60 accent-emerald-600"
+                    />
+                    <span className="text-xs">
+                      <span className="font-bold text-foreground flex items-center gap-1">
+                        <ShieldCheck className="h-3.5 w-3.5 text-emerald-600 dark:text-emerald-400" />
+                        Stock Cleared / Force Reconcile
+                      </span>
+                      <span className="text-[11px] text-muted-foreground block mt-0.5">
+                        Cash box physically cleared despite the mismatch — reset virtual balance
+                        to zero and log this as an acknowledged discrepancy.
+                      </span>
+                    </span>
+                  </label>
+                )}
 
                 <Button
                   type="submit"
@@ -912,8 +973,15 @@ export default function MachineOperationPage() {
                             <div className="flex items-center gap-1 text-[10px] text-rose-600 dark:text-rose-400 font-semibold bg-rose-500/10 px-2 py-1 rounded-lg border border-rose-500/20">
                               <AlertTriangle className="h-3 w-3 shrink-0" />
                               <span>
-                                Ledger Discrepancy: -{formatMoney(Math.abs(Number(log.discrepancy)))} (Expected: {formatMoney(Number(log.expectedAmount || 0))})
+                                {Number(log.discrepancy) > 0 ? "Shortage" : "Overage"}: {formatMoney(Math.abs(Number(log.discrepancy)))} (Expected: {formatMoney(Number(log.expectedAmount || 0))})
                               </span>
+                            </div>
+                          )}
+
+                          {log.stockCleared && (
+                            <div className="flex items-center gap-1 text-[10px] text-emerald-600 dark:text-emerald-400 font-semibold bg-emerald-500/10 px-2 py-1 rounded-lg border border-emerald-500/20">
+                              <ShieldCheck className="h-3 w-3 shrink-0" />
+                              <span>Stock Cleared / Force Reconciled</span>
                             </div>
                           )}
 
@@ -1046,11 +1114,10 @@ export default function MachineOperationPage() {
               <div className="p-3 rounded-xl bg-amber-500/10 border border-amber-500/30 text-amber-700 dark:text-amber-400 text-xs flex items-center gap-2">
                 <AlertTriangle className="h-4 w-4 shrink-0" />
                 <span>
-                  Discrepancy:{" "}
+                  {Number(pendingCashAmount || 0) > virtualCashBalance ? "Overage" : "Shortage"}:{" "}
                   <strong>
                     {formatMoney(
-                      virtualCashBalance -
-                      Number(pendingCashAmount || 0)
+                      Math.abs(virtualCashBalance - Number(pendingCashAmount || 0))
                     )}
                   </strong>
                 </span>
@@ -1060,11 +1127,27 @@ export default function MachineOperationPage() {
             {cashForm.getValues("remarks") && (
               <div className="p-3 rounded-xl bg-muted/50 border border-border/50 text-xs space-y-0.5">
                 <span className="font-semibold text-muted-foreground block text-[10px] uppercase tracking-wider">
-                  {Number(pendingCashAmount || 0) > virtualCashBalance
+                  {virtualCashBalance !== Number(pendingCashAmount || 0)
                     ? "Mandatory Discrepancy Reason"
                     : "Collection Notes"}
                 </span>
                 <p className="text-foreground italic">&quot;{cashForm.getValues("remarks")}&quot;</p>
+              </div>
+            )}
+
+            {hasCashMismatch && (
+              <div
+                className={`p-3 rounded-xl border text-xs flex items-center gap-2 ${
+                  stockCleared
+                    ? "bg-emerald-500/10 border-emerald-500/30 text-emerald-700 dark:text-emerald-400"
+                    : "bg-rose-500/10 border-rose-500/30 text-rose-700 dark:text-rose-400"
+                }`}
+              >
+                <ShieldCheck className="h-4 w-4 shrink-0" />
+                <span>
+                  Stock Cleared / Force Reconcile:{" "}
+                  <strong>{stockCleared ? "Acknowledged" : "Not confirmed"}</strong>
+                </span>
               </div>
             )}
           </div>
@@ -1085,10 +1168,11 @@ export default function MachineOperationPage() {
                     machineId: machine?.id || machineId,
                     collectedAmount: pendingCashAmount,
                     remarks: cashForm.getValues("remarks"),
+                    stockCleared,
                   });
                 }
               }}
-              disabled={cashMutation.isPending}
+              disabled={cashMutation.isPending || (hasCashMismatch && !stockCleared)}
             >
               {cashMutation.isPending && (
                 <Loader2 className="mr-2 h-4 w-4 animate-spin" />

@@ -26,6 +26,7 @@ import {
   Clock,
   User,
   AlertCircle,
+  ShieldCheck,
 } from "lucide-react";
 
 import { useAllStores, StoreItem } from "@/hooks/useStores";
@@ -416,6 +417,26 @@ export default function ReportsPage() {
                   <span>{log.storeName} ({log.locationName})</span>
                   <span>{new Date(log.createdAt).toLocaleString()}</span>
                 </div>
+                {log.discrepancy !== 0 && (
+                  <div className="flex items-center justify-between gap-2">
+                    <span className="inline-flex items-center gap-1 text-[10px] font-bold text-rose-600 dark:text-rose-400 bg-rose-500/10 px-1.5 py-0.5 rounded">
+                      <AlertCircle className="h-3 w-3" />
+                      <span>
+                        {log.isShortage ? "Shortage" : "Overage"}: {formatMoney(Math.abs(log.discrepancy))}
+                      </span>
+                    </span>
+                    <span
+                      className={`inline-flex items-center gap-1 text-[10px] font-bold px-1.5 py-0.5 rounded ${
+                        log.stockCleared
+                          ? "text-emerald-600 dark:text-emerald-400 bg-emerald-500/10"
+                          : "text-rose-600 dark:text-rose-400 bg-rose-500/10"
+                      }`}
+                    >
+                      <ShieldCheck className="h-3 w-3" />
+                      <span>{log.stockCleared ? "Reconciled" : "Not Reconciled"}</span>
+                    </span>
+                  </div>
+                )}
                 {log.remarks && (
                   <p className="text-[10px] text-foreground/80 italic bg-muted/40 p-1 rounded-md">
                     &ldquo;{log.remarks}&rdquo;
