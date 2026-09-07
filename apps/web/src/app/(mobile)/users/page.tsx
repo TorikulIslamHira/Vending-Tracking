@@ -23,6 +23,7 @@ import {
   Loader2,
   Edit2,
   UserX,
+  Lock,
 } from "lucide-react";
 
 export default function UserManagementPage() {
@@ -187,18 +188,27 @@ export default function UserManagementPage() {
                     >
                       <Edit2 className="h-3.5 w-3.5" />
                     </button>
-                    <button
-                      type="button"
-                      onClick={() => handleToggleDeactivate(user.id)}
-                      className={`h-8 w-8 rounded-xl flex items-center justify-center transition-colors ${
-                        isInactive
-                          ? "bg-emerald-500/10 text-emerald-600 hover:bg-emerald-500/20"
-                          : "bg-rose-500/10 text-rose-600 hover:bg-rose-500/20"
-                      }`}
-                      title={isInactive ? "Activate User" : "Deactivate User"}
-                    >
-                      <UserX className="h-3.5 w-3.5" />
-                    </button>
+                    {user.isRootAdmin ? (
+                      <div
+                        className="h-8 w-8 rounded-xl flex items-center justify-center bg-muted/40 text-muted-foreground/50 cursor-not-allowed"
+                        title="Root Super Admin — protected, cannot be deactivated"
+                      >
+                        <Lock className="h-3.5 w-3.5" />
+                      </div>
+                    ) : (
+                      <button
+                        type="button"
+                        onClick={() => handleToggleDeactivate(user.id)}
+                        className={`h-8 w-8 rounded-xl flex items-center justify-center transition-colors ${
+                          isInactive
+                            ? "bg-emerald-500/10 text-emerald-600 hover:bg-emerald-500/20"
+                            : "bg-rose-500/10 text-rose-600 hover:bg-rose-500/20"
+                        }`}
+                        title={isInactive ? "Activate User" : "Deactivate User"}
+                      >
+                        <UserX className="h-3.5 w-3.5" />
+                      </button>
+                    )}
                   </div>
                 </CardContent>
               </Card>

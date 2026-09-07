@@ -12,6 +12,8 @@ export interface AppUser {
   role: "ADMIN" | "MANAGER" | "RESTOCKER" | "FIELD_AGENT";
   status: "ACTIVE" | "INACTIVE";
   assignedCount: number;
+  /** The single root Super Admin bootstrapped from SUPER_ADMIN_EMAIL — cannot be deactivated. */
+  isRootAdmin?: boolean;
 }
 
 export function useUsers() {

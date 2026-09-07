@@ -3,6 +3,18 @@ import bcrypt from "bcryptjs";
 import { eq, and, desc } from "drizzle-orm";
 import { db, users } from "../../core/db";
 
+/**
+ * The root Super Admin is identified by matching against `SUPER_ADMIN_EMAIL`
+ * (the same env var the seed script bootstraps it from) rather than a stored
+ * flag — there is exactly one of these per deployment, and it must remain
+ * recoverable even if the database is wiped and re-seeded.
+ */
+function isRootSuperAdminEmail(email: string): boolean {
+  const rootEmail = process.env.SUPER_ADMIN_EMAIL;
+  if (!rootEmail) return false;
+  return email.trim().toLowerCase() === rootEmail.trim().toLowerCase();
+}
+
 export async function getUsersHandler(
   request: FastifyRequest,
   reply: FastifyReply
@@ -22,6 +34,7 @@ export async function getUsersHandler(
       role: u.role,
       status: u.isActive ? ("ACTIVE" as const) : ("INACTIVE" as const),
       assignedCount: 0,
+      isRootAdmin: isRootSuperAdminEmail(u.email),
     }));
 
     return reply.send({
@@ -77,6 +90,7 @@ export async function createUserHandler(
         role: createdUser.role,
         status: "ACTIVE",
         assignedCount: 0,
+        isRootAdmin: isRootSuperAdminEmail(createdUser.email),
       },
     });
   } catch (err: any) {
@@ -121,6 +135,14 @@ export async function toggleUserStatusHandler(
       });
     }
 
+    if (isRootSuperAdminEmail(targetUser.email)) {
+      return reply.status(403).send({
+        statusCode: 403,
+        error: "Forbidden",
+        message: "The root Super Admin account cannot be deactivated",
+      });
+    }
+
     const [updatedUser] = await db
       .update(users)
       .set({ isActive: !targetUser.isActive })
@@ -137,6 +159,7 @@ export async function toggleUserStatusHandler(
         role: updatedUser.role,
         status: updatedUser.isActive ? "ACTIVE" : "INACTIVE",
         assignedCount: 0,
+        isRootAdmin: isRootSuperAdminEmail(updatedUser.email),
       },
     });
   } catch (err: any) {
