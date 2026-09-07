@@ -30,13 +30,13 @@ Overview of the Multi-Tenant Vending Machine SaaS platform monorepo structure, c
 ## 📚 AI Memory Bank Navigation
 
 ### 🏛️ Architecture (`01-Architecture/`)
-- [[database-schema|🗄️ Database Schema Architecture (Prisma)]] (ID: `arch-db-schema-01`)
+- [[database-schema|🗄️ Database Schema Architecture (Drizzle ORM)]] (ID: `arch-db-schema-01`)
 - [[frontend-ui-guidelines|🎨 Frontend UI/UX Architecture & Guidelines]] (ID: `arch-frontend-ui-01`)
 - [[mobile-wireframe-journey|📱 Mobile-First User Journey & Wireframe Plan]] (ID: `arch-wireframe-journey-02`)
 
 ### ⚙️ Business Logic (`02-Business-Logic/`)
-- [[multi-tenant-saas|🏢 Multi-Tenant SaaS & White-Labeling]] (ID: `logic-saas-01`)
-- [[inventory-flow|📦 Inventory & Restock Flow]] (ID: `logic-inventory-01`)
+- [[multi-tenant-saas|🏢 Multi-Tenant SaaS, White-Labeling & RBAC]] (ID: `logic-saas-01`)
+- [[inventory-flow|📦 Inventory & Restock Flow, Virtual Cash Balance]] (ID: `logic-inventory-01`)
 
 ### 📋 Operations & Tracking
 - [[current-task|📌 Current Active Task]] (`03-Active-Tasks/`)
@@ -44,3 +44,4 @@ Overview of the Multi-Tenant Vending Machine SaaS platform monorepo structure, c
 - [[2026-08-24-logs|📝 AI Changelogs (2026-08-24)]] (`04-AI-Changelogs/`)
 - [[2026-08-25-logs|📝 AI Changelogs (2026-08-25)]] (`04-AI-Changelogs/`)
 - [[2026-08-26-logs|📝 AI Changelogs (2026-08-26)]] (`04-AI-Changelogs/`)
+- [[2026-09-07-logs|📝 AI Changelogs (2026-09-07) — Security, RBAC & VCB Hardening]] (`04-AI-Changelogs/`)

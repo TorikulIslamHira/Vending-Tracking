@@ -7,6 +7,18 @@ import { tenants, users } from "./schema.js";
 async function main() {
   console.log("🌱 Starting Drizzle Super Admin Provisioning (Clean Database)...");
 
+  // Fail fast: the Super Admin is bootstrapped strictly from the environment —
+  // no hardcoded fallback credentials. Additional users are created via the
+  // in-app admin UI (POST /api/v1/users) from this point on.
+  const adminEmail = process.env.SUPER_ADMIN_EMAIL;
+  const rawPassword = process.env.SUPER_ADMIN_PASSWORD;
+
+  if (!adminEmail || !rawPassword) {
+    throw new Error(
+      "SUPER_ADMIN_EMAIL and SUPER_ADMIN_PASSWORD environment variables are required to seed the Super Admin user. Set them in your .env file."
+    );
+  }
+
   // 1. Upsert Default Tenant
   const tenantId = "tenant-bee-novelty";
   const [tenant] = await db
@@ -32,8 +44,6 @@ async function main() {
   console.log(`✅ Tenant Provisioned: ${tenant.name} (${tenant.id})`);
 
   // 2. Hash Password and Provision Super Admin
-  const adminEmail = "admin@example.com";
-  const rawPassword = "Admin1234!";
   const saltRounds = 10;
   const hashedPassword = await bcrypt.hash(rawPassword, saltRounds);
 
@@ -49,6 +59,9 @@ async function main() {
         role: "ADMIN",
         passwordHash: hashedPassword,
         tenantId: tenant.id,
+        // Re-running the seed also reactivates the account, so rotating
+        // SUPER_ADMIN_PASSWORD doubles as a recovery path if it was deactivated.
+        isActive: true,
       })
       .where(eq(users.id, existingAdmin.id));
     console.log(`✅ Super Admin Password & Tenant Updated for: ${adminEmail}`);
@@ -63,7 +76,7 @@ async function main() {
     console.log(`✅ Super Admin Provisioned: Super Admin <${adminEmail}> (Role: ADMIN)`);
   }
 
-  console.log(`🔒 Credentials -> Email: ${adminEmail} | Password: ${rawPassword}`);
+  console.log(`🔒 Super Admin credentials applied for: ${adminEmail} (password not logged)`);
   console.log("✨ Zero demo machines, packets, or logs seeded. Database is pristine clean.");
   process.exit(0);
 }
