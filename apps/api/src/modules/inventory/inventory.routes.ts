@@ -4,6 +4,7 @@ import {
   manualRestockHandler,
   cashCollectionHandler,
   getInventoryLogsHandler,
+  getMyLogsHandler,
   getCashLogsHandler,
   getReportsHandler,
   reverseEntryHandler,
@@ -17,6 +18,7 @@ export async function inventoryRoutes(app: FastifyInstance): Promise<void> {
   app.addHook("onRequest", tenantHandler);
 
   app.get("/logs", getInventoryLogsHandler);
+  app.get("/logs/me", getMyLogsHandler);
   app.get("/cash-logs", getCashLogsHandler);
   app.get("/reports", getReportsHandler);
   app.post("/restock/standard", standardRestockHandler);

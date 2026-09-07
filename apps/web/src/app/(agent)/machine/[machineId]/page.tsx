@@ -215,6 +215,7 @@ export default function MachineOperationPage() {
       queryClient.invalidateQueries({ queryKey: ["cash-logs"] }),
       queryClient.invalidateQueries({ queryKey: ["reports"] }),
       queryClient.invalidateQueries({ queryKey: ["dashboard-metrics"] }),
+      queryClient.invalidateQueries({ queryKey: ["my-history"] }),
     ]);
     refetchMachine();
     refetchLogs();

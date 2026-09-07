@@ -477,6 +477,96 @@ export async function getInventoryLogsHandler(
 }
 
 /**
+ * Get the authenticated agent's own activity history (restocks, manual entries,
+ * reversals, and cash collections they personally performed), across all
+ * machines, most recent first. Scoped by `agentId = request.userId` — an
+ * agent can only ever see their own logs, regardless of role.
+ */
+export async function getMyLogsHandler(
+  request: FastifyRequest,
+  reply: FastifyReply
+): Promise<void> {
+  const tenantId = request.tenantId;
+  const agentId = request.userId;
+
+  try {
+    const invLogs = await db.query.inventoryLogs.findMany({
+      where: and(eq(inventoryLogs.tenantId, tenantId), eq(inventoryLogs.agentId, agentId)),
+      with: {
+        machine: {
+          columns: {
+            id: true,
+            serialNumber: true,
+            location: true,
+          },
+        },
+        packet: {
+          columns: {
+            id: true,
+            name: true,
+            brand: true,
+          },
+        },
+      },
+      orderBy: [desc(inventoryLogs.createdAt)],
+      limit: 100,
+    });
+
+    const formattedInvLogs = invLogs.map((log) => ({
+      ...log,
+      logType: "INVENTORY" as const,
+    }));
+
+    const cLogs = await db.query.cashLogs.findMany({
+      where: and(eq(cashLogs.tenantId, tenantId), eq(cashLogs.agentId, agentId)),
+      with: {
+        machine: {
+          columns: {
+            id: true,
+            serialNumber: true,
+            location: true,
+          },
+        },
+      },
+      orderBy: [desc(cashLogs.createdAt)],
+      limit: 100,
+    });
+
+    const formattedCashLogs = cLogs.map((log) => ({
+      id: log.id,
+      logType: "CASH" as const,
+      tenantId: log.tenantId,
+      machineId: log.machineId,
+      agentId: log.agentId,
+      entryType: "CASH_COLLECT",
+      quantityAdded: null,
+      collectedAmount: Number(log.collectedAmount),
+      expectedAmount: Number(log.expectedAmount),
+      discrepancy: Number(log.discrepancy),
+      remarks: log.remarks || `Physical cash collect: $${Number(log.collectedAmount).toFixed(2)} collected`,
+      createdAt: log.createdAt,
+      machine: log.machine,
+      packet: null,
+    }));
+
+    const combinedLogs = [...formattedInvLogs, ...formattedCashLogs]
+      .sort((a, b) => new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime())
+      .slice(0, 100);
+
+    return reply.send({
+      statusCode: 200,
+      data: combinedLogs,
+    });
+  } catch (err) {
+    request.log.error(err);
+    return reply.send({
+      statusCode: 200,
+      data: [],
+    });
+  }
+}
+
+/**
  * Get all Cash Logs for the authenticated tenant with date range & store filters
  */
 export async function getCashLogsHandler(

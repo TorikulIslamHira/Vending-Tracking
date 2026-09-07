@@ -69,6 +69,46 @@ export function useInventoryLogs(machineId?: string) {
   });
 }
 
+export interface MyHistoryLogItem {
+  id: string;
+  logType: "INVENTORY" | "CASH";
+  machineId: string;
+  machine?: {
+    id: string;
+    serialNumber: string;
+    location: string;
+  } | null;
+  packet?: {
+    id: string;
+    name: string;
+    brand: string;
+  } | null;
+  entryType: "STANDARD" | "MANUAL" | "REVERSE" | "CASH_COLLECT";
+  quantityAdded?: number | null;
+  collectedAmount?: number | null;
+  expectedAmount?: number | null;
+  discrepancy?: number | null;
+  remarks?: string | null;
+  createdAt: string;
+}
+
+/** The authenticated agent's own activity — restocks, manual entries, reversals,
+ * and cash collections they personally performed, across every machine. */
+export function useMyHistory() {
+  return useQuery<MyHistoryLogItem[]>({
+    queryKey: ["my-history"],
+    queryFn: async () => {
+      try {
+        const res = await api.get("/inventory/logs/me");
+        return res.data?.data || [];
+      } catch {
+        return [];
+      }
+    },
+    staleTime: 1000 * 15,
+  });
+}
+
 export function useStandardRestock() {
   const queryClient = useQueryClient();
 
@@ -86,6 +126,7 @@ export function useStandardRestock() {
       queryClient.invalidateQueries({ queryKey: ["inventory-logs"] });
       queryClient.invalidateQueries({ queryKey: ["dashboard-metrics"] });
       queryClient.invalidateQueries({ queryKey: ["machines"] });
+      queryClient.invalidateQueries({ queryKey: ["my-history"] });
       toast.success(
         `Added ${data?.data?.totalPiecesAdded || "units"} items via standard packet refill!`
       );
@@ -115,6 +156,7 @@ export function useManualRestock() {
       queryClient.invalidateQueries({ queryKey: ["inventory-logs"] });
       queryClient.invalidateQueries({ queryKey: ["dashboard-metrics"] });
       queryClient.invalidateQueries({ queryKey: ["machines"] });
+      queryClient.invalidateQueries({ queryKey: ["my-history"] });
       toast.success(data?.message || "Manual inventory entry recorded");
     },
     onError: (err: any) => {
@@ -140,6 +182,7 @@ export function useReverseLog() {
       queryClient.invalidateQueries({ queryKey: ["inventory-logs"] });
       queryClient.invalidateQueries({ queryKey: ["dashboard-metrics"] });
       queryClient.invalidateQueries({ queryKey: ["machines"] });
+      queryClient.invalidateQueries({ queryKey: ["my-history"] });
       toast.success("Refill log successfully reversed and inventory adjusted!");
     },
     onError: (err: any) => {
@@ -166,6 +209,7 @@ export function useCashCollection() {
       queryClient.invalidateQueries({ queryKey: ["reports"] });
       queryClient.invalidateQueries({ queryKey: ["dashboard-metrics"] });
       queryClient.invalidateQueries({ queryKey: ["machines"] });
+      queryClient.invalidateQueries({ queryKey: ["my-history"] });
       const discrepancy = data?.data?.discrepancy;
       if (discrepancy !== 0 && discrepancy !== undefined) {
         toast.warning(
