@@ -201,8 +201,13 @@ export const cashLogs = pgTable(
     remarks: text("remarks"),
     // Agent's explicit acknowledgement that they physically cleared/collected the
     // machine despite a cash/expected mismatch ("Force Reconcile"). Required by
-    // cashCollectionHandler whenever collectedAmount !== expectedAmount.
+    // cashCollectionHandler whenever collectedAmount !== expectedAmount and the
+    // collection is not a partial one.
     stockCleared: boolean("stockCleared").default(false).notNull(),
+    // Agent intentionally collected less than the expected balance and left the
+    // rest in the machine — not a discrepancy, so the mismatch guardrail
+    // (mandatory remark + stockCleared) does not apply.
+    isPartial: boolean("isPartial").default(false).notNull(),
     createdAt: timestamp("createdAt", { withTimezone: true, mode: "date" }).defaultNow().notNull(),
   },
   (table) => [

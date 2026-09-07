@@ -137,7 +137,16 @@ export default function AgentHistoryPage() {
                     )}
                   </div>
 
-                  {isCash && log.discrepancy !== 0 && log.discrepancy != null && (
+                  {isCash && log.isPartial && (
+                    <span className="inline-flex items-center gap-1 text-[10px] font-bold text-blue-600 dark:text-blue-400 bg-blue-500/10 px-1.5 py-0.5 rounded w-fit">
+                      <Boxes className="h-3 w-3" />
+                      <span>
+                        Partial Collection — {formatMoney(Math.abs(log.discrepancy ?? 0))} left in machine
+                      </span>
+                    </span>
+                  )}
+
+                  {isCash && !log.isPartial && log.discrepancy !== 0 && log.discrepancy != null && (
                     <div className="flex items-center justify-between gap-2">
                       <span className="inline-flex items-center gap-1 text-[10px] font-bold text-rose-600 dark:text-rose-400 bg-rose-500/10 px-1.5 py-0.5 rounded">
                         <AlertTriangle className="h-3 w-3" />

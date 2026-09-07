@@ -67,8 +67,11 @@ export const CashCollectionSchema = z.object({
     .optional(),
   remarks: z.string().optional(),
   // Agent's explicit "Force Reconcile" acknowledgement, required by the API
-  // whenever collectedAmount !== expectedAmount.
+  // whenever collectedAmount !== expectedAmount and the collection isn't partial.
   stockCleared: z.boolean().optional(),
+  // Agent intentionally left cash behind — not a discrepancy, bypasses the
+  // mismatch guardrail. Only honored when collectedAmount < expectedAmount.
+  isPartial: z.boolean().optional(),
 });
 
 export type CashCollectionInput = z.infer<typeof CashCollectionSchema>;

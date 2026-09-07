@@ -237,7 +237,7 @@ export async function cashCollectionHandler(
     });
   }
 
-  const { machineId, collectedAmount, remarks, stockCleared } = parseResult.data;
+  const { machineId, collectedAmount, remarks, stockCleared, isPartial } = parseResult.data;
 
   // Resolve the fuzzy identifier (id, serial, or QR) to a machine row. Read-only,
   // not part of the race, so no lock needed yet.
@@ -281,14 +281,20 @@ export async function cashCollectionHandler(
         lockedMachine
       );
 
+      // A "partial collection" is only meaningful when the agent is
+      // intentionally collecting less than what's expected and leaving the
+      // rest behind — resolved server-side rather than trusting the client's
+      // flag outright, so a client claiming isPartial on an overage (a
+      // nonsensical combination) doesn't dodge the mismatch guardrail below.
+      const isTruePartial = isPartial === true && collectedAmount < expectedAmount;
+
       // Safety guardrail: any mismatch — shortage OR overage — requires both a
       // remark explaining it and explicit "Stock Cleared / Force Reconcile"
       // acknowledgement that the agent collected anyway despite the discrepancy.
-      // (Previously only overage required a remark; a shortage — e.g. expected
-      // $25, collected $20 — went through silently, which is exactly the kind
-      // of shrinkage/theft signal that most needs a paper trail.)
+      // A true partial collection is exempt entirely: leaving cash behind on
+      // purpose isn't a discrepancy, so no remark/acknowledgement is required.
       const hasMismatch = collectedAmount !== expectedAmount;
-      if (hasMismatch) {
+      if (hasMismatch && !isTruePartial) {
         const direction = collectedAmount > expectedAmount ? "overage" : "shortage";
         if (!remarks || remarks.trim().length === 0) {
           throw new CashCollectionError(
@@ -305,7 +311,6 @@ export async function cashCollectionHandler(
       }
 
       const discrepancy = expectedAmount - collectedAmount;
-      const isShortage = discrepancy > 0;
 
       const [insertedCashLog] = await tx
         .insert(cashLogs)
@@ -317,7 +322,8 @@ export async function cashCollectionHandler(
           expectedAmount: String(expectedAmount),
           discrepancy: String(discrepancy),
           remarks: remarks || null,
-          stockCleared: hasMismatch ? Boolean(stockCleared) : false,
+          stockCleared: hasMismatch && !isTruePartial ? Boolean(stockCleared) : false,
+          isPartial: isTruePartial,
         })
         .returning();
 
@@ -347,8 +353,9 @@ export async function cashCollectionHandler(
         collectedAmount: Number(result.cashLog.collectedAmount),
         expectedAmount: Number(result.cashLog.expectedAmount),
         discrepancy: Number(result.cashLog.discrepancy),
-        isShortage: Number(result.cashLog.discrepancy) > 0,
+        isShortage: !result.cashLog.isPartial && Number(result.cashLog.discrepancy) > 0,
         stockCleared: result.cashLog.stockCleared,
+        isPartial: result.cashLog.isPartial,
         remarks: result.cashLog.remarks,
         newVirtualCashBalance: result.newVirtualCashBalance,
         createdAt: result.cashLog.createdAt,
@@ -471,8 +478,9 @@ export async function getInventoryLogsHandler(
         collectedAmount: Number(log.collectedAmount),
         expectedAmount: Number(log.expectedAmount),
         discrepancy: Number(log.discrepancy),
-        isShortage: Number(log.discrepancy) > 0,
+        isShortage: !log.isPartial && Number(log.discrepancy) > 0,
         stockCleared: log.stockCleared,
+        isPartial: log.isPartial,
         remarks: log.remarks || `Physical cash collect: $${Number(log.collectedAmount).toFixed(2)} collected`,
         createdAt: log.createdAt,
         machine: log.machine,
@@ -564,8 +572,9 @@ export async function getMyLogsHandler(
       collectedAmount: Number(log.collectedAmount),
       expectedAmount: Number(log.expectedAmount),
       discrepancy: Number(log.discrepancy),
-      isShortage: Number(log.discrepancy) > 0,
+      isShortage: !log.isPartial && Number(log.discrepancy) > 0,
       stockCleared: log.stockCleared,
+      isPartial: log.isPartial,
       remarks: log.remarks || `Physical cash collect: $${Number(log.collectedAmount).toFixed(2)} collected`,
       createdAt: log.createdAt,
       machine: log.machine,
@@ -669,7 +678,7 @@ export async function getCashLogsHandler(
       statusCode: 200,
       data: filtered.map((log) => ({
         ...log,
-        isShortage: Number(log.discrepancy) > 0,
+        isShortage: !log.isPartial && Number(log.discrepancy) > 0,
       })),
     });
   } catch {
@@ -837,8 +846,9 @@ export async function getReportsHandler(
           collectedAmount: Number(log.collectedAmount || 0),
           expectedAmount: Number(log.expectedAmount || 0),
           discrepancy: Number(log.discrepancy || 0),
-          isShortage: Number(log.discrepancy || 0) > 0,
+          isShortage: !log.isPartial && Number(log.discrepancy || 0) > 0,
           stockCleared: log.stockCleared,
+          isPartial: log.isPartial,
           remarks: log.remarks,
           agentName: log.agent?.name || "Field Agent",
         })),

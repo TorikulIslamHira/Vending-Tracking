@@ -44,6 +44,7 @@ interface PopulatedCashLog {
   discrepancy: number;
   isShortage?: boolean;
   stockCleared?: boolean;
+  isPartial?: boolean;
   remarks?: string | null;
   createdAt: string;
   machine?: {
@@ -284,7 +285,8 @@ export default function MobileCashTrackingPage() {
           </div>
         ) : (
           filteredLogs.map((log) => {
-            const hasDiscrepancy = Number(log.discrepancy) !== 0;
+            const hasDiscrepancy = !log.isPartial && Number(log.discrepancy) !== 0;
+            const isPartialCollection = Boolean(log.isPartial);
 
             return (
               <Card
@@ -293,6 +295,8 @@ export default function MobileCashTrackingPage() {
                 className={`border-border/50 shadow-xs hover:border-border/80 active:scale-[0.98] transition-all cursor-pointer overflow-hidden ${
                   hasDiscrepancy
                     ? "bg-rose-500/5 border-rose-500/30"
+                    : isPartialCollection
+                    ? "bg-blue-500/5 border-blue-500/30"
                     : "bg-card"
                 }`}
               >
@@ -315,15 +319,21 @@ export default function MobileCashTrackingPage() {
                       className={`inline-flex items-center gap-1 rounded-full px-2.5 py-0.5 text-[10px] font-bold ${
                         hasDiscrepancy
                           ? "bg-rose-500/15 text-rose-600 dark:text-rose-400"
+                          : isPartialCollection
+                          ? "bg-blue-500/15 text-blue-600 dark:text-blue-400"
                           : "bg-emerald-500/15 text-emerald-600 dark:text-emerald-400"
                       }`}
                     >
                       {hasDiscrepancy ? (
                         <AlertTriangle className="h-3 w-3" />
+                      ) : isPartialCollection ? (
+                        <Boxes className="h-3 w-3" />
                       ) : (
                         <CheckCircle2 className="h-3 w-3" />
                       )}
-                      <span>{hasDiscrepancy ? "Discrepancy" : "Matched"}</span>
+                      <span>
+                        {hasDiscrepancy ? "Discrepancy" : isPartialCollection ? "Partial" : "Matched"}
+                      </span>
                     </span>
                   </div>
 
@@ -364,22 +374,30 @@ export default function MobileCashTrackingPage() {
                       className={`p-2 rounded-xl ${
                         hasDiscrepancy
                           ? "bg-rose-500/15 text-rose-600 dark:text-rose-400"
+                          : isPartialCollection
+                          ? "bg-blue-500/15 text-blue-600 dark:text-blue-400"
                           : "bg-emerald-500/15 text-emerald-600 dark:text-emerald-400"
                       }`}
                     >
                       <span className="text-[9px] font-bold uppercase tracking-wider block">
-                        {hasDiscrepancy ? (Number(log.discrepancy) > 0 ? "Short" : "Over") : "Diff"}
+                        {hasDiscrepancy
+                          ? Number(log.discrepancy) > 0
+                            ? "Short"
+                            : "Over"
+                          : isPartialCollection
+                          ? "Left"
+                          : "Diff"}
                       </span>
                       <span className="font-mono font-black">
-                        {hasDiscrepancy
-                          ? `${Number(log.discrepancy) > 0 ? "-" : "+"}${formatMoney(Math.abs(Number(log.discrepancy)))}`
+                        {hasDiscrepancy || isPartialCollection
+                          ? `${formatMoney(Math.abs(Number(log.discrepancy)))}`
                           : formatMoney(0)}
                       </span>
                     </div>
                   </div>
 
                   {/* Mismatch remark + reconciliation acknowledgement */}
-                  {hasDiscrepancy && log.remarks && (
+                  {(hasDiscrepancy || isPartialCollection) && log.remarks && (
                     <p className="text-[10px] text-foreground/80 italic bg-muted/40 p-1.5 rounded-lg truncate">
                       &ldquo;{log.remarks}&rdquo;
                     </p>
@@ -490,15 +508,21 @@ export default function MobileCashTrackingPage() {
                   </span>
                 </div>
                 <div className="flex justify-between items-center pt-2 border-t border-border/40">
-                  <span className="text-muted-foreground font-semibold">Audit Discrepancy:</span>
+                  <span className="text-muted-foreground font-semibold">
+                    {selectedLog.isPartial ? "Remaining in Machine:" : "Audit Discrepancy:"}
+                  </span>
                   <span
                     className={`font-mono font-black text-sm ${
-                      Number(selectedLog.discrepancy) !== 0
+                      selectedLog.isPartial
+                        ? "text-blue-600 dark:text-blue-400"
+                        : Number(selectedLog.discrepancy) !== 0
                         ? "text-rose-600 dark:text-rose-400"
                         : "text-emerald-600 dark:text-emerald-400"
                     }`}
                   >
-                    {Number(selectedLog.discrepancy) !== 0
+                    {selectedLog.isPartial
+                      ? `${formatMoney(Math.abs(Number(selectedLog.discrepancy)))} (Partial Collection)`
+                      : Number(selectedLog.discrepancy) !== 0
                       ? `${formatMoney(Math.abs(Number(selectedLog.discrepancy)))} (${
                           Number(selectedLog.discrepancy) > 0 ? "Shortfall" : "Overage"
                         })`
@@ -507,7 +531,7 @@ export default function MobileCashTrackingPage() {
                 </div>
               </div>
 
-              {Number(selectedLog.discrepancy) !== 0 && (
+              {!selectedLog.isPartial && Number(selectedLog.discrepancy) !== 0 && (
                 <div className="p-4 rounded-2xl bg-card border border-border/50 space-y-2.5">
                   <div className="flex justify-between items-center">
                     <span className="text-muted-foreground font-semibold">Reconciliation Status:</span>
@@ -530,6 +554,15 @@ export default function MobileCashTrackingPage() {
                       <p className="text-foreground italic">&quot;{selectedLog.remarks}&quot;</p>
                     </div>
                   )}
+                </div>
+              )}
+
+              {selectedLog.isPartial && selectedLog.remarks && (
+                <div className="p-4 rounded-2xl bg-blue-500/5 border border-blue-500/30 space-y-0.5">
+                  <span className="text-muted-foreground text-[10px] uppercase tracking-wider font-semibold block">
+                    Agent&apos;s Note
+                  </span>
+                  <p className="text-foreground italic">&quot;{selectedLog.remarks}&quot;</p>
                 </div>
               )}
 

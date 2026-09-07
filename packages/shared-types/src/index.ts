@@ -100,6 +100,7 @@ export interface ICashLog {
   discrepancy: number;
   remarks?: string | null;
   stockCleared: boolean;
+  isPartial: boolean;
   createdAt: Date | string;
 }
 
@@ -124,6 +125,7 @@ export interface IMachineActivityLog {
   discrepancy?: number | null;
   isShortage?: boolean | null;
   stockCleared?: boolean | null;
+  isPartial?: boolean | null;
   remarks?: string | null;
   createdAt: Date | string;
   agent?: {
@@ -164,4 +166,5 @@ export interface CashCollectionPayload {
   expectedAmount?: number;
   remarks?: string;
   stockCleared?: boolean;
+  isPartial?: boolean;
 }

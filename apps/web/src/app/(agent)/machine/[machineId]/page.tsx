@@ -56,6 +56,18 @@ import {
   TrendingDown,
 } from "lucide-react";
 
+// Common real-world reasons for a cash mismatch — tapping one sets the mandatory
+// remark instantly instead of forcing the agent to type on a phone keyboard.
+// "Other" reveals a free-text input for anything not covered by the list.
+const QUICK_REMARK_OPTIONS = [
+  "Invalid Coins",
+  "Theft/Vandalism",
+  "Test Play",
+  "Coin Jam",
+  "Mechanical Fault",
+  "Other",
+] as const;
+
 export default function MachineOperationPage() {
   const params = useParams();
   const router = useRouter();
@@ -76,6 +88,8 @@ export default function MachineOperationPage() {
   const [cashDropConfirmOpen, setCashDropConfirmOpen] = useState(false);
   const [pendingCashAmount, setPendingCashAmount] = useState<number | null>(null);
   const [stockCleared, setStockCleared] = useState(false);
+  const [collectionType, setCollectionType] = useState<"EMPTY" | "PARTIAL">("EMPTY");
+  const [selectedRemarkChip, setSelectedRemarkChip] = useState<string | null>(null);
   const { format: formatMoney, symbol } = useCurrency();
 
   // 1. Query Machine Data
@@ -196,10 +210,15 @@ export default function MachineOperationPage() {
   // from the expected balance — shortage OR overage — is a mismatch: both
   // require a remark and explicit "Stock Cleared / Force Reconcile" ack
   // before submit (mirrors the backend guardrail in cashCollectionHandler).
+  // A "Partial Collection" is exempt entirely — the agent is intentionally
+  // leaving cash behind, so it's never treated as a discrepancy.
+  const isEmptyCollection = collectionType === "EMPTY";
   const enteredCashAmount = Number(cashForm.watch("collectedAmount") || 0);
   const isCashOverage = enteredCashAmount > virtualCashBalance;
-  const hasCashMismatch = enteredCashAmount > 0 && enteredCashAmount !== virtualCashBalance;
+  const hasCashMismatch =
+    isEmptyCollection && enteredCashAmount > 0 && enteredCashAmount !== virtualCashBalance;
   const cashMismatchAmount = Math.abs(virtualCashBalance - enteredCashAmount);
+  const partialRemainingBalance = Math.max(0, virtualCashBalance - enteredCashAmount);
   const approxUnitsSold = Math.floor(enteredCashAmount / machinePricePerPlay);
 
   // Selected Packet for piece calculation
@@ -280,13 +299,23 @@ export default function MachineOperationPage() {
     },
     onSuccess: (data) => {
       const discrepancy = Number(data?.data?.discrepancy || 0);
-      toast.success(
-        discrepancy !== 0
-          ? `Cash Collect Processed with ${data.data.isShortage ? "shortage" : "overage"} of ${formatMoney(Math.abs(discrepancy))} (reconciled). Virtual balance reset!`
-          : `Cash Collect Processed: ${formatMoney(data.data.collectedAmount)} collected. Virtual balance reset!`
-      );
+      if (data?.data?.isPartial) {
+        toast.success(
+          `Partial Collection Processed: ${formatMoney(data.data.collectedAmount)} collected. Remaining balance: ${formatMoney(data.data.newVirtualCashBalance)}.`
+        );
+      } else if (discrepancy !== 0) {
+        toast.success(
+          `Cash Collect Processed with ${data.data.isShortage ? "shortage" : "overage"} of ${formatMoney(Math.abs(discrepancy))} (reconciled). Virtual balance reset!`
+        );
+      } else {
+        toast.success(
+          `Cash Collect Processed: ${formatMoney(data.data.collectedAmount)} collected. Virtual balance reset!`
+        );
+      }
       cashForm.reset();
       setStockCleared(false);
+      setSelectedRemarkChip(null);
+      setCollectionType("EMPTY");
       setCashDropConfirmOpen(false);
       invalidateAndRefetchAll();
     },
@@ -322,6 +351,21 @@ export default function MachineOperationPage() {
   };
 
   const handleCashFormSubmit = (data: CashCollectionInput) => {
+    if (!isEmptyCollection) {
+      // Partial Collection: must be strictly less than the expected balance —
+      // otherwise it isn't "partial" at all, it's a full (or over-) collection
+      // that belongs on the "Empty Entire Cash Box" path with its own guardrail.
+      if (!(data.collectedAmount > 0 && data.collectedAmount < virtualCashBalance)) {
+        toast.error(
+          `Partial collection must be less than the expected balance (${formatMoney(virtualCashBalance)}). Use "Empty Entire Cash Box" to collect the full amount.`
+        );
+        return;
+      }
+      setPendingCashAmount(data.collectedAmount);
+      setCashDropConfirmOpen(true);
+      return;
+    }
+
     if (hasCashMismatch) {
       if (!data.remarks || !data.remarks.trim()) {
         cashForm.setError("remarks", {
@@ -771,6 +815,41 @@ export default function MachineOperationPage() {
                   </span>
                 </div>
 
+                {/* Collection Type Selector */}
+                <div className="space-y-1.5">
+                  <label className="text-xs font-semibold text-foreground">Collection Type</label>
+                  <div className="grid grid-cols-2 gap-1.5 p-1 bg-muted/50 rounded-2xl border border-border/40">
+                    <button
+                      type="button"
+                      onClick={() => setCollectionType("EMPTY")}
+                      className={`h-10 rounded-xl text-[11px] font-bold transition-colors flex items-center justify-center gap-1.5 ${
+                        isEmptyCollection
+                          ? "bg-card text-foreground shadow-xs"
+                          : "text-muted-foreground hover:text-foreground"
+                      }`}
+                    >
+                      <Coins className="h-3.5 w-3.5" />
+                      <span>Empty Entire Cash Box</span>
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() => {
+                        setCollectionType("PARTIAL");
+                        setStockCleared(false);
+                        setSelectedRemarkChip(null);
+                      }}
+                      className={`h-10 rounded-xl text-[11px] font-bold transition-colors flex items-center justify-center gap-1.5 ${
+                        !isEmptyCollection
+                          ? "bg-card text-foreground shadow-xs"
+                          : "text-muted-foreground hover:text-foreground"
+                      }`}
+                    >
+                      <Boxes className="h-3.5 w-3.5" />
+                      <span>Partial Collection</span>
+                    </button>
+                  </div>
+                </div>
+
                 <div className="space-y-1.5">
                   <div className="flex items-center justify-between">
                     <label className="text-xs font-semibold text-foreground">
@@ -810,22 +889,35 @@ export default function MachineOperationPage() {
                     </div>
                   )}
 
-                  {/* Discrepancy / Mismatch Warning Box (shortage OR overage) */}
-                  {hasCashMismatch && (
-                    <div
-                      className={`flex items-center gap-1.5 text-xs font-semibold px-3 py-2 rounded-xl border animate-in fade-in slide-in-from-top-1 duration-200 ${
-                        isCashOverage
-                          ? "text-amber-700 dark:text-amber-400 bg-amber-500/10 border-amber-500/30"
-                          : "text-rose-700 dark:text-rose-400 bg-rose-500/10 border-rose-500/30"
-                      }`}
-                    >
-                      <AlertTriangle className="h-4 w-4 shrink-0" />
-                      <span>
-                        {isCashOverage ? "Overage" : "Shortage"} of{" "}
-                        {formatMoney(cashMismatchAmount)} vs. expected balance. Reason &amp;
-                        acknowledgement required.
-                      </span>
-                    </div>
+                  {isEmptyCollection ? (
+                    /* Discrepancy / Mismatch Warning Box (shortage OR overage) */
+                    hasCashMismatch && (
+                      <div
+                        className={`flex items-center gap-1.5 text-xs font-semibold px-3 py-2 rounded-xl border animate-in fade-in slide-in-from-top-1 duration-200 ${
+                          isCashOverage
+                            ? "text-amber-700 dark:text-amber-400 bg-amber-500/10 border-amber-500/30"
+                            : "text-rose-700 dark:text-rose-400 bg-rose-500/10 border-rose-500/30"
+                        }`}
+                      >
+                        <AlertTriangle className="h-4 w-4 shrink-0" />
+                        <span>
+                          {isCashOverage ? "Overage" : "Shortage"} of{" "}
+                          {formatMoney(cashMismatchAmount)} vs. expected balance. Reason &amp;
+                          acknowledgement required.
+                        </span>
+                      </div>
+                    )
+                  ) : (
+                    /* Partial Collection: neutral preview, never a discrepancy warning */
+                    enteredCashAmount > 0 && (
+                      <div className="flex items-center gap-1.5 text-xs font-semibold px-3 py-2 rounded-xl border text-blue-700 dark:text-blue-400 bg-blue-500/10 border-blue-500/30 animate-in fade-in slide-in-from-top-1 duration-200">
+                        <Boxes className="h-4 w-4 shrink-0" />
+                        <span>
+                          Remaining Virtual Balance will be updated to{" "}
+                          <strong>{formatMoney(partialRemainingBalance)}</strong>.
+                        </span>
+                      </div>
+                    )
                   )}
                 </div>
 
@@ -853,21 +945,54 @@ export default function MachineOperationPage() {
                       </span>
                     )}
                   </div>
-                  <Input
-                    placeholder={
-                      hasCashMismatch
-                        ? isCashOverage
-                          ? "State reason (e.g. Unjammed extra bills / customer overpay / testing)"
-                          : "State reason (e.g. Jammed coins / spillage / suspected shrinkage)"
-                        : "e.g. Bag seal #8812 - clean coin chute"
-                    }
-                    className={`h-10 rounded-xl text-xs ${
-                      hasCashMismatch
-                        ? "border-amber-500/50 bg-amber-500/5 focus-visible:ring-amber-500"
-                        : ""
-                    }`}
-                    {...cashForm.register("remarks")}
-                  />
+
+                  {hasCashMismatch ? (
+                    <>
+                      {/* Quick Remark Chips — tap instead of typing on a phone keyboard */}
+                      <div className="flex flex-wrap gap-1.5">
+                        {QUICK_REMARK_OPTIONS.map((chip) => {
+                          const isSelected = selectedRemarkChip === chip;
+                          return (
+                            <button
+                              key={chip}
+                              type="button"
+                              onClick={() => {
+                                setSelectedRemarkChip(chip);
+                                cashForm.setValue("remarks", chip === "Other" ? "" : chip, {
+                                  shouldValidate: true,
+                                });
+                              }}
+                              className={`h-8 px-3 rounded-full text-[11px] font-semibold border transition-colors ${
+                                isSelected
+                                  ? "bg-amber-500 text-white border-amber-500 shadow-xs"
+                                  : "bg-card text-foreground border-border/60 hover:border-amber-500/50"
+                              }`}
+                            >
+                              {chip}
+                            </button>
+                          );
+                        })}
+                      </div>
+                      {selectedRemarkChip === "Other" && (
+                        <Input
+                          placeholder={
+                            isCashOverage
+                              ? "State reason (e.g. Unjammed extra bills / customer overpay / testing)"
+                              : "State reason (e.g. Jammed coins / spillage / suspected shrinkage)"
+                          }
+                          className="h-10 rounded-xl text-xs border-amber-500/50 bg-amber-500/5 focus-visible:ring-amber-500"
+                          {...cashForm.register("remarks")}
+                        />
+                      )}
+                    </>
+                  ) : (
+                    <Input
+                      placeholder="e.g. Bag seal #8812 - clean coin chute"
+                      className="h-10 rounded-xl text-xs"
+                      {...cashForm.register("remarks")}
+                    />
+                  )}
+
                   {cashForm.formState.errors.remarks && (
                     <p className="text-xs text-destructive font-medium">
                       {cashForm.formState.errors.remarks.message}
@@ -875,7 +1000,8 @@ export default function MachineOperationPage() {
                   )}
                 </div>
 
-                {/* Stock Cleared / Force Reconcile — only relevant when there's a mismatch */}
+                {/* Stock Cleared / Force Reconcile — only relevant for a mismatched
+                    full collection, never for a Partial Collection */}
                 {hasCashMismatch && (
                   <label
                     className={`flex items-start gap-2.5 rounded-xl border p-3 cursor-pointer transition-colors ${
@@ -969,13 +1095,22 @@ export default function MachineOperationPage() {
                             {log.remarks || "Physical cash collection recorded from coin mechanism."}
                           </p>
 
-                          {Number(log.discrepancy || 0) !== 0 && (
-                            <div className="flex items-center gap-1 text-[10px] text-rose-600 dark:text-rose-400 font-semibold bg-rose-500/10 px-2 py-1 rounded-lg border border-rose-500/20">
-                              <AlertTriangle className="h-3 w-3 shrink-0" />
+                          {log.isPartial ? (
+                            <div className="flex items-center gap-1 text-[10px] text-blue-600 dark:text-blue-400 font-semibold bg-blue-500/10 px-2 py-1 rounded-lg border border-blue-500/20">
+                              <Boxes className="h-3 w-3 shrink-0" />
                               <span>
-                                {Number(log.discrepancy) > 0 ? "Shortage" : "Overage"}: {formatMoney(Math.abs(Number(log.discrepancy)))} (Expected: {formatMoney(Number(log.expectedAmount || 0))})
+                                Partial Collection — {formatMoney(Math.abs(Number(log.discrepancy || 0)))} left in machine
                               </span>
                             </div>
+                          ) : (
+                            Number(log.discrepancy || 0) !== 0 && (
+                              <div className="flex items-center gap-1 text-[10px] text-rose-600 dark:text-rose-400 font-semibold bg-rose-500/10 px-2 py-1 rounded-lg border border-rose-500/20">
+                                <AlertTriangle className="h-3 w-3 shrink-0" />
+                                <span>
+                                  {Number(log.discrepancy) > 0 ? "Shortage" : "Overage"}: {formatMoney(Math.abs(Number(log.discrepancy)))} (Expected: {formatMoney(Number(log.expectedAmount || 0))})
+                                </span>
+                              </div>
+                            )
                           )}
 
                           {log.stockCleared && (
@@ -1093,7 +1228,9 @@ export default function MachineOperationPage() {
               <span>Confirm Cash Collection</span>
             </DialogTitle>
             <DialogDescription className="text-xs text-muted-foreground">
-              Please verify the physical currency counted. Finalizing will reset the machine&apos;s virtual ledger balance.
+              {isEmptyCollection
+                ? "Please verify the physical currency counted. Finalizing will reset the machine's virtual ledger balance."
+                : "Please verify the physical currency counted. The rest stays in the machine — finalizing will only reduce the virtual ledger balance."}
             </DialogDescription>
           </DialogHeader>
 
@@ -1110,15 +1247,28 @@ export default function MachineOperationPage() {
                 {formatMoney(Number(pendingCashAmount || 0))}
               </span>
             </div>
-            {virtualCashBalance !== Number(pendingCashAmount || 0) && (
-              <div className="p-3 rounded-xl bg-amber-500/10 border border-amber-500/30 text-amber-700 dark:text-amber-400 text-xs flex items-center gap-2">
-                <AlertTriangle className="h-4 w-4 shrink-0" />
+
+            {isEmptyCollection ? (
+              virtualCashBalance !== Number(pendingCashAmount || 0) && (
+                <div className="p-3 rounded-xl bg-amber-500/10 border border-amber-500/30 text-amber-700 dark:text-amber-400 text-xs flex items-center gap-2">
+                  <AlertTriangle className="h-4 w-4 shrink-0" />
+                  <span>
+                    {Number(pendingCashAmount || 0) > virtualCashBalance ? "Overage" : "Shortage"}:{" "}
+                    <strong>
+                      {formatMoney(
+                        Math.abs(virtualCashBalance - Number(pendingCashAmount || 0))
+                      )}
+                    </strong>
+                  </span>
+                </div>
+              )
+            ) : (
+              <div className="p-3 rounded-xl bg-blue-500/10 border border-blue-500/30 text-blue-700 dark:text-blue-400 text-xs flex items-center gap-2">
+                <Boxes className="h-4 w-4 shrink-0" />
                 <span>
-                  {Number(pendingCashAmount || 0) > virtualCashBalance ? "Overage" : "Shortage"}:{" "}
+                  Partial Collection — Remaining Balance:{" "}
                   <strong>
-                    {formatMoney(
-                      Math.abs(virtualCashBalance - Number(pendingCashAmount || 0))
-                    )}
+                    {formatMoney(Math.max(0, virtualCashBalance - Number(pendingCashAmount || 0)))}
                   </strong>
                 </span>
               </div>
@@ -1127,7 +1277,7 @@ export default function MachineOperationPage() {
             {cashForm.getValues("remarks") && (
               <div className="p-3 rounded-xl bg-muted/50 border border-border/50 text-xs space-y-0.5">
                 <span className="font-semibold text-muted-foreground block text-[10px] uppercase tracking-wider">
-                  {virtualCashBalance !== Number(pendingCashAmount || 0)
+                  {isEmptyCollection && virtualCashBalance !== Number(pendingCashAmount || 0)
                     ? "Mandatory Discrepancy Reason"
                     : "Collection Notes"}
                 </span>
@@ -1169,6 +1319,7 @@ export default function MachineOperationPage() {
                     collectedAmount: pendingCashAmount,
                     remarks: cashForm.getValues("remarks"),
                     stockCleared,
+                    isPartial: !isEmptyCollection,
                   });
                 }
               }}
@@ -1177,7 +1328,7 @@ export default function MachineOperationPage() {
               {cashMutation.isPending && (
                 <Loader2 className="mr-2 h-4 w-4 animate-spin" />
               )}
-              Confirm & Reset Ledger
+              {isEmptyCollection ? "Confirm & Reset Ledger" : "Confirm Partial Collection"}
             </Button>
           </DialogFooter>
         </DialogContent>
