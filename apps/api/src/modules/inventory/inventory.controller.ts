@@ -327,6 +327,39 @@ export async function cashCollectionHandler(
         })
         .returning();
 
+      // A Full Empty ("Stock Cleared") collection must leave the machine at
+      // exactly zero stock/balance — that's the entire point of physically
+      // emptying it. But the ledger-derived balance only ever counts cash that
+      // was ACTUALLY collected: a shortage (invalid coins, spillage, theft)
+      // means totalCashCollected undercounts what was really dispensed,
+      // leaving "ghost stock" behind forever — the formula has no way to know
+      // the machine is verified empty. Reconcile it with a permanent,
+      // auditable write-off log entry rather than patching a stored column
+      // the rest of the system doesn't even read (computeVirtualCashBalances
+      // always recomputes live from these logs). A true partial collection
+      // skips this entirely — the leftover stock there is real, not a ghost.
+      // For a match or an overage this is a no-op: the ledger already nets to
+      // zero on its own, so leftoverStock is 0 and nothing is inserted.
+      if (!isTruePartial) {
+        const { currentEstimatedStock: leftoverStock } = await computeVirtualCashBalanceForMachine(
+          tx,
+          tenantId,
+          lockedMachine
+        );
+
+        if (leftoverStock > 0) {
+          await tx.insert(inventoryLogs).values({
+            tenantId,
+            machineId: lockedMachine.id,
+            agentId,
+            packetId: null,
+            entryType: "MANUAL",
+            quantityAdded: -leftoverStock,
+            remarks: `[AUTO WRITE-OFF] Stock cleared during full cash collection — reconciling ${leftoverStock} unaccounted unit(s) after a $${discrepancy.toFixed(2)} shortage.`,
+          });
+        }
+      }
+
       const [updatedMachine] = await tx
         .update(machines)
         .set({ updatedAt: new Date() })
