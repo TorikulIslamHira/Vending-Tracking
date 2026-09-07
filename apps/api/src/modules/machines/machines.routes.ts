@@ -4,6 +4,7 @@ import {
   getMachineByIdHandler,
   createMachineHandler,
   getDashboardMetricsHandler,
+  deleteMachineHandler,
 } from "./machines.controller";
 import { tenantHandler } from "../../core/middlewares/tenantHandler";
 import { requireRole } from "../../core/middlewares/rbac";
@@ -17,6 +18,11 @@ export async function machineRoutes(app: FastifyInstance): Promise<void> {
   app.get("/metrics", getDashboardMetricsHandler);
   app.get("/:id", getMachineByIdHandler);
   app.post("/", { onRequest: [requireRole(UserRole.ADMIN)] }, createMachineHandler);
+  app.delete<{ Params: { id: string }; Body: { password: string } }>(
+    "/:id",
+    { onRequest: [requireRole(UserRole.ADMIN)] },
+    deleteMachineHandler
+  );
 }
 
 export default machineRoutes;

@@ -169,3 +169,25 @@ export const PacketConfigCreateSchema = z.object({
 
 export type PacketConfigCreateInput = z.infer<typeof PacketConfigCreateSchema>;
 export type PacketConfigCreateDto = PacketConfigCreateInput;
+
+/**
+ * MachineDeleteSchema: Validates machine soft-deletion requests.
+ * The acting user must re-enter their own password to confirm.
+ */
+export const MachineDeleteSchema = z.object({
+  password: z.string().min(1, "Password is required"),
+});
+
+export type MachineDeleteInput = z.infer<typeof MachineDeleteSchema>;
+export type MachineDeleteDto = MachineDeleteInput;
+
+/**
+ * ToggleDeletePermissionSchema: Root Super Admin grants/revokes a non-root
+ * ADMIN user's delegated power to delete machines.
+ */
+export const ToggleDeletePermissionSchema = z.object({
+  canDeleteMachines: z.boolean(),
+});
+
+export type ToggleDeletePermissionInput = z.infer<typeof ToggleDeletePermissionSchema>;
+export type ToggleDeletePermissionDto = ToggleDeletePermissionInput;

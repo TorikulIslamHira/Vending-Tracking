@@ -14,6 +14,8 @@ export interface AppUser {
   assignedCount: number;
   /** The single root Super Admin bootstrapped from SUPER_ADMIN_EMAIL — cannot be deactivated. */
   isRootAdmin?: boolean;
+  /** Effective permission to delete machines — always true for the root Super Admin. */
+  canDeleteMachines?: boolean;
 }
 
 export function useUsers() {
@@ -76,6 +78,30 @@ export function useToggleUserStatus() {
     onError: (err: any) => {
       toast.error(
         err?.response?.data?.message || err?.message || "Failed to update user status"
+      );
+    },
+  });
+}
+
+export function useToggleDeletePermission() {
+  const queryClient = useQueryClient();
+
+  return useMutation({
+    mutationFn: async ({ userId, canDeleteMachines }: { userId: string; canDeleteMachines: boolean }) => {
+      const res = await api.patch(`/users/${userId}/delete-permission`, { canDeleteMachines });
+      return res.data?.data as AppUser;
+    },
+    onSuccess: (updatedUser) => {
+      queryClient.invalidateQueries({ queryKey: ["users"] });
+      toast.success(
+        updatedUser?.canDeleteMachines
+          ? `Machine deletion permission granted to ${updatedUser.name}`
+          : `Machine deletion permission revoked from ${updatedUser?.name}`
+      );
+    },
+    onError: (err: any) => {
+      toast.error(
+        err?.response?.data?.message || err?.message || "Failed to update machine deletion permission"
       );
     },
   });

@@ -1,5 +1,10 @@
 import { FastifyInstance } from "fastify";
-import { getUsersHandler, createUserHandler, toggleUserStatusHandler } from "./users.controller";
+import {
+  getUsersHandler,
+  createUserHandler,
+  toggleUserStatusHandler,
+  toggleDeletePermissionHandler,
+} from "./users.controller";
 import { tenantHandler } from "../../core/middlewares/tenantHandler";
 import { requireRole } from "../../core/middlewares/rbac";
 import { UserRole } from "@vending/shared-types";
@@ -17,6 +22,11 @@ export async function usersRoutes(app: FastifyInstance): Promise<void> {
     "/:id/status",
     { onRequest: [requireRole(UserRole.ADMIN)] },
     toggleUserStatusHandler
+  );
+  app.patch<{ Params: { id: string }; Body: { canDeleteMachines: boolean } }>(
+    "/:id/delete-permission",
+    { onRequest: [requireRole(UserRole.ADMIN)] },
+    toggleDeletePermissionHandler
   );
 }
 

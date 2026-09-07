@@ -42,6 +42,7 @@ export interface IUser {
   email: string;
   passwordHash?: string;
   isActive: boolean;
+  canDeleteMachines: boolean;
   createdAt: Date | string;
   updatedAt?: Date | string;
 }
@@ -61,6 +62,7 @@ export interface IMachine {
   pricePerPlay?: number | string | null;
   currentEstimatedStock?: number;
   keyNumber?: string | null;
+  deletedAt?: Date | string | null;
   createdAt: Date | string;
   updatedAt?: Date | string;
 }
@@ -140,6 +142,21 @@ export interface IMachineActivityLog {
   } | null;
 }
 
+export interface IAdminAuditLog {
+  id: string;
+  tenantId: string;
+  action: string;
+  actorId: string;
+  targetId?: string | null;
+  details?: Record<string, any> | null;
+  createdAt: Date | string;
+  actor?: {
+    id: string;
+    name: string;
+    email: string;
+  } | null;
+}
+
 /**
  * API Request Payloads (Contracts across apps and services)
  */
@@ -167,4 +184,12 @@ export interface CashCollectionPayload {
   remarks?: string;
   stockCleared?: boolean;
   isPartial?: boolean;
+}
+
+export interface MachineDeletePayload {
+  password: string;
+}
+
+export interface ToggleDeletePermissionPayload {
+  canDeleteMachines: boolean;
 }

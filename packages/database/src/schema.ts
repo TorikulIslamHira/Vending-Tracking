@@ -47,6 +47,11 @@ export const users = pgTable(
     email: text("email").notNull(),
     passwordHash: text("passwordHash").notNull(),
     isActive: boolean("isActive").default(true).notNull(),
+    // Delegated permission to soft-delete machines. The root Super Admin
+    // (identified by SUPER_ADMIN_EMAIL, not this column) always has this
+    // power regardless of its stored value — only non-root ADMIN users need
+    // it explicitly granted. Defaults false: nobody starts with this power.
+    canDeleteMachines: boolean("canDeleteMachines").default(false).notNull(),
     createdAt: timestamp("createdAt", { withTimezone: true, mode: "date" }).defaultNow().notNull(),
     updatedAt: timestamp("updatedAt", { withTimezone: true, mode: "date" }).defaultNow().notNull().$onUpdate(() => new Date()),
   },
@@ -117,6 +122,12 @@ export const machines = pgTable(
     qrCode: text("qrCode").notNull(),
     virtualCashBalance: numeric("virtualCashBalance", { precision: 10, scale: 2 }).default("0.00").notNull(),
     keyNumber: text("keyNumber"),
+    // Soft delete: kept non-null (not hard-deleted) so existing inventory_logs
+    // and cash_logs rows referencing this machine never become orphaned. Every
+    // "active fleet" query (list, detail, dashboard, and any handler that
+    // mutates the machine) must filter isNull(deletedAt); historical log/report
+    // views intentionally do not, so past activity stays visible.
+    deletedAt: timestamp("deletedAt", { withTimezone: true, mode: "date" }),
     createdAt: timestamp("createdAt", { withTimezone: true, mode: "date" }).defaultNow().notNull(),
     updatedAt: timestamp("updatedAt", { withTimezone: true, mode: "date" }).defaultNow().notNull().$onUpdate(() => new Date()),
   },
@@ -217,6 +228,29 @@ export const cashLogs = pgTable(
   ]
 );
 
+// Admin Audit Logs Table — records sensitive administrative actions
+// (currently: machine deletion). Visible only to the root Super Admin.
+export const adminAuditLogs = pgTable(
+  "admin_audit_logs",
+  {
+    id: text("id").primaryKey().$defaultFn(() => crypto.randomUUID()),
+    tenantId: text("tenantId")
+      .notNull()
+      .references(() => tenants.id, { onDelete: "cascade" }),
+    action: text("action").notNull(),
+    actorId: text("actorId")
+      .notNull()
+      .references(() => users.id, { onDelete: "restrict" }),
+    targetId: text("targetId"),
+    details: jsonb("details"),
+    createdAt: timestamp("createdAt", { withTimezone: true, mode: "date" }).defaultNow().notNull(),
+  },
+  (table) => [
+    index("admin_audit_logs_tenantId_idx").on(table.tenantId),
+    index("admin_audit_logs_actorId_idx").on(table.actorId),
+  ]
+);
+
 // ==============================================================================
 // 3. Relations
 // ==============================================================================
@@ -229,6 +263,7 @@ export const tenantsRelations = relations(tenants, ({ many }) => ({
   packetConfigs: many(packetConfigs),
   inventoryLogs: many(inventoryLogs),
   cashLogs: many(cashLogs),
+  adminAuditLogs: many(adminAuditLogs),
 }));
 
 export const usersRelations = relations(users, ({ one, many }) => ({
@@ -238,6 +273,7 @@ export const usersRelations = relations(users, ({ one, many }) => ({
   }),
   inventoryLogs: many(inventoryLogs),
   cashLogs: many(cashLogs),
+  adminAuditLogs: many(adminAuditLogs),
 }));
 
 export const locationsRelations = relations(locations, ({ one, many }) => ({
@@ -315,6 +351,17 @@ export const cashLogsRelations = relations(cashLogs, ({ one }) => ({
   }),
 }));
 
+export const adminAuditLogsRelations = relations(adminAuditLogs, ({ one }) => ({
+  tenant: one(tenants, {
+    fields: [adminAuditLogs.tenantId],
+    references: [tenants.id],
+  }),
+  actor: one(users, {
+    fields: [adminAuditLogs.actorId],
+    references: [users.id],
+  }),
+}));
+
 // ==============================================================================
 // 4. Inferred Types
 // ==============================================================================
@@ -341,3 +388,6 @@ export type NewInventoryLog = InferInsertModel<typeof inventoryLogs>;
 
 export type CashLog = InferSelectModel<typeof cashLogs>;
 export type NewCashLog = InferInsertModel<typeof cashLogs>;
+
+export type AdminAuditLog = InferSelectModel<typeof adminAuditLogs>;
+export type NewAdminAuditLog = InferInsertModel<typeof adminAuditLogs>;

@@ -1,5 +1,5 @@
 import { FastifyReply, FastifyRequest } from "fastify";
-import { eq, and, or, gt, desc, gte, lte } from "drizzle-orm";
+import { eq, and, or, gt, desc, gte, lte, isNull } from "drizzle-orm";
 import {
   RestockSchema,
   ManualEntrySchema,
@@ -57,6 +57,7 @@ export async function standardRestockHandler(
   const machine = await db.query.machines.findFirst({
     where: and(
       eq(machines.tenantId, tenantId),
+      isNull(machines.deletedAt),
       or(eq(machines.id, machineId), eq(machines.serialNumber, machineId), eq(machines.qrCode, machineId))
     ),
   });
@@ -153,6 +154,7 @@ export async function manualRestockHandler(
   const machine = await db.query.machines.findFirst({
     where: and(
       eq(machines.tenantId, tenantId),
+      isNull(machines.deletedAt),
       or(eq(machines.id, machineId), eq(machines.serialNumber, machineId), eq(machines.qrCode, machineId))
     ),
   });
@@ -244,6 +246,7 @@ export async function cashCollectionHandler(
   const machine = await db.query.machines.findFirst({
     where: and(
       eq(machines.tenantId, tenantId),
+      isNull(machines.deletedAt),
       or(eq(machines.id, machineId), eq(machines.serialNumber, machineId), eq(machines.qrCode, machineId))
     ),
   });
@@ -265,7 +268,7 @@ export async function cashCollectionHandler(
       const [lockedMachine] = await tx
         .select()
         .from(machines)
-        .where(and(eq(machines.id, machine.id), eq(machines.tenantId, tenantId)))
+        .where(and(eq(machines.id, machine.id), eq(machines.tenantId, tenantId), isNull(machines.deletedAt)))
         .for("update");
 
       if (!lockedMachine) {
@@ -972,7 +975,13 @@ export async function reverseEntryHandler(
       const [lockedMachine] = await tx
         .select({ id: machines.id })
         .from(machines)
-        .where(and(eq(machines.id, candidateLog.machineId), eq(machines.tenantId, tenantId)))
+        .where(
+          and(
+            eq(machines.id, candidateLog.machineId),
+            eq(machines.tenantId, tenantId),
+            isNull(machines.deletedAt)
+          )
+        )
         .for("update");
 
       if (!lockedMachine) {

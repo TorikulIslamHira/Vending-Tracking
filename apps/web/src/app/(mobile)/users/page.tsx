@@ -3,10 +3,18 @@
 import React, { useState } from "react";
 import { useRouter } from "next/navigation";
 import { toast } from "sonner";
-import { useUsers, useCreateUser, useToggleUserStatus, AppUser } from "@/hooks/useUsers";
+import {
+  useUsers,
+  useCreateUser,
+  useToggleUserStatus,
+  useToggleDeletePermission,
+  AppUser,
+} from "@/hooks/useUsers";
+import { useAuthStore } from "@/store/useAuthStore";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Card, CardContent } from "@/components/ui/card";
+import { Switch } from "@/components/ui/switch";
 import {
   Drawer,
   DrawerContent,
@@ -24,6 +32,7 @@ import {
   Edit2,
   UserX,
   Lock,
+  ShieldCheck,
 } from "lucide-react";
 
 export default function UserManagementPage() {
@@ -31,6 +40,15 @@ export default function UserManagementPage() {
   const { data: users = [], isLoading } = useUsers();
   const createUserMutation = useCreateUser();
   const toggleUserStatusMutation = useToggleUserStatus();
+  const toggleDeletePermissionMutation = useToggleDeletePermission();
+  const currentUser = useAuthStore((s) => s.user);
+
+  const currentUserIsRoot =
+    users.find((u) => u.id === currentUser?.id)?.isRootAdmin ?? false;
+
+  const handleToggleDeletePermission = (userId: string, next: boolean) => {
+    toggleDeletePermissionMutation.mutate({ userId, canDeleteMachines: next });
+  };
 
   const [isAddDrawerOpen, setIsAddDrawerOpen] = useState(false);
   const [editingUserId, setEditingUserId] = useState<string | null>(null);
@@ -138,7 +156,8 @@ export default function UserManagementPage() {
                   isInactive ? "opacity-60" : ""
                 }`}
               >
-                <CardContent className="p-4 flex items-center justify-between gap-3">
+                <CardContent className="p-4 space-y-3">
+                  <div className="flex items-center justify-between gap-3">
                   <div className="flex items-center gap-3 min-w-0">
                     <div
                       className={`h-11 w-11 rounded-2xl flex items-center justify-center font-black text-sm shrink-0 shadow-xs ${
@@ -210,6 +229,23 @@ export default function UserManagementPage() {
                       </button>
                     )}
                   </div>
+                  </div>
+
+                  {currentUserIsRoot && isAdmin && !user.isRootAdmin && (
+                    <div className="flex items-center justify-between gap-3 pt-3 border-t border-border/40">
+                      <div className="flex items-center gap-1.5 min-w-0">
+                        <ShieldCheck className="h-3.5 w-3.5 text-muted-foreground shrink-0" />
+                        <span className="text-[11px] font-semibold text-foreground truncate">
+                          Allow Machine Deletion
+                        </span>
+                      </div>
+                      <Switch
+                        checked={Boolean(user.canDeleteMachines)}
+                        onCheckedChange={(next) => handleToggleDeletePermission(user.id, next)}
+                        disabled={toggleDeletePermissionMutation.isPending}
+                      />
+                    </div>
+                  )}
                 </CardContent>
               </Card>
             );

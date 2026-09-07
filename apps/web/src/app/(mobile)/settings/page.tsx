@@ -5,6 +5,7 @@ import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { useAuthStore } from "@/store/useAuthStore";
 import { useTenantSettings } from "@/hooks/useTenantSettings";
+import { useUsers } from "@/hooks/useUsers";
 import { CURRENCY_OPTIONS } from "@/lib/currency";
 import { toast } from "sonner";
 import { Button } from "@/components/ui/button";
@@ -19,12 +20,16 @@ import {
   Coins,
   LogOut,
   ChevronRight,
+  ShieldAlert,
 } from "lucide-react";
 
 export default function MobileSettingsPage() {
   const router = useRouter();
   const { user, logout } = useAuthStore();
   const { settings, updateSettings } = useTenantSettings();
+  const { data: appUsers = [] } = useUsers();
+  const currentUserIsRoot =
+    appUsers.find((u) => u.id === user?.id)?.isRootAdmin ?? false;
 
   const handleLogout = () => {
     logout();
@@ -203,6 +208,28 @@ export default function MobileSettingsPage() {
             </div>
             <ChevronRight className="h-4 w-4 text-muted-foreground" />
           </Link>
+
+          {currentUserIsRoot && (
+            <Link
+              href="/audit-log"
+              className="flex items-center justify-between p-3.5 rounded-2xl bg-card border border-border/50 hover:bg-accent/40 active:scale-[0.98] transition-all shadow-xs"
+            >
+              <div className="flex items-center gap-3">
+                <div className="h-9 w-9 rounded-xl bg-rose-500/15 flex items-center justify-center text-rose-600 dark:text-rose-400">
+                  <ShieldAlert className="h-4 w-4" />
+                </div>
+                <div>
+                  <span className="font-bold text-xs text-foreground block">
+                    Admin Audit Log
+                  </span>
+                  <span className="text-[11px] text-muted-foreground">
+                    Sensitive actions — visible to you only
+                  </span>
+                </div>
+              </div>
+              <ChevronRight className="h-4 w-4 text-muted-foreground" />
+            </Link>
+          )}
         </div>
       </div>
 

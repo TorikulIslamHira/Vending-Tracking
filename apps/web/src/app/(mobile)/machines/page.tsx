@@ -10,6 +10,8 @@ import { MachineCreateSchema, MachineCreateDto } from "@vending/validation";
 import { IMachine, MachineStatus } from "@vending/shared-types";
 import { apiClient } from "@/lib/api-client";
 import { useCurrency } from "@/hooks/useTenantSettings";
+import { useUsers } from "@/hooks/useUsers";
+import { useAuthStore } from "@/store/useAuthStore";
 import { toast } from "sonner";
 import { Card, CardContent } from "@/components/ui/card";
 import {
@@ -37,6 +39,8 @@ import {
   Sparkles,
   MapPin,
   KeyRound,
+  Trash2,
+  ShieldAlert,
 } from "lucide-react";
 
 const fallbackMachines: IMachine[] = [
@@ -77,8 +81,15 @@ export default function MobileMachinesPage() {
   const [isDrawerOpen, setIsDrawerOpen] = useState(false);
   const [searchQuery, setSearchQuery] = useState("");
   const [statusFilter, setStatusFilter] = useState<string>("ALL");
+  const [deletingMachine, setDeletingMachine] = useState<IMachine | null>(null);
+  const [deletePassword, setDeletePassword] = useState("");
   const queryClient = useQueryClient();
   const { format: formatMoney } = useCurrency();
+
+  const currentUser = useAuthStore((s) => s.user);
+  const { data: appUsers = [] } = useUsers();
+  const canDeleteMachines =
+    appUsers.find((u) => u.id === currentUser?.id)?.canDeleteMachines ?? false;
 
   const {
     register,
@@ -128,6 +139,35 @@ export default function MobileMachinesPage() {
 
   const onSubmit = (data: MachineCreateDto) => {
     createMutation.mutate(data);
+  };
+
+  // Deleting a machine requires the acting user to re-enter their own password —
+  // a deliberate friction step so a hijacked/unattended session can't silently
+  // destroy a fleet unit. The server also independently re-checks permission.
+  const deleteMutation = useMutation({
+    mutationFn: async ({ id, password }: { id: string; password: string }) => {
+      const response = await apiClient.delete(`/machines/${id}`, { data: { password } });
+      return response.data;
+    },
+    onSuccess: () => {
+      toast.success("Machine deleted successfully");
+      queryClient.invalidateQueries({ queryKey: ["machines"] });
+      setDeletingMachine(null);
+      setDeletePassword("");
+    },
+    onError: (error: any) => {
+      const msg = error.response?.data?.message || "Failed to delete machine";
+      toast.error(msg);
+    },
+  });
+
+  const handleConfirmDelete = () => {
+    if (!deletingMachine) return;
+    if (!deletePassword.trim()) {
+      toast.error("Enter your password to confirm deletion");
+      return;
+    }
+    deleteMutation.mutate({ id: deletingMachine.id, password: deletePassword });
   };
 
   const filteredMachines = machines.filter((machine) => {
@@ -324,6 +364,20 @@ export default function MobileMachinesPage() {
                         <span>QR Code</span>
                       </Link>
 
+                      {canDeleteMachines && (
+                        <button
+                          type="button"
+                          onClick={() => {
+                            setDeletingMachine(machine);
+                            setDeletePassword("");
+                          }}
+                          className="h-8 w-8 rounded-xl bg-rose-500/10 hover:bg-rose-500/20 flex items-center justify-center text-rose-600 dark:text-rose-400 transition-colors shadow-xs"
+                          title="Delete Machine"
+                        >
+                          <Trash2 className="h-3.5 w-3.5" />
+                        </button>
+                      )}
+
                       <Link
                         href={`/machine/${machine.serialNumber}`}
                         className="h-8 w-8 rounded-xl bg-primary/15 hover:bg-primary/25 flex items-center justify-center text-primary transition-colors shadow-xs"
@@ -451,6 +505,75 @@ export default function MobileMachinesPage() {
               </DrawerClose>
             </DrawerFooter>
           </form>
+        </DrawerContent>
+      </Drawer>
+
+      {/* 7. Vaul Bottom Drawer: Delete Machine — requires password re-entry */}
+      <Drawer
+        open={!!deletingMachine}
+        onOpenChange={(open) => {
+          if (!open) {
+            setDeletingMachine(null);
+            setDeletePassword("");
+          }
+        }}
+      >
+        <DrawerContent className="max-w-md mx-auto rounded-t-[28px] p-6 space-y-4">
+          <DrawerHeader className="p-0 text-left">
+            <div className="flex items-center gap-2">
+              <div className="h-8 w-8 rounded-xl bg-rose-500/15 flex items-center justify-center text-rose-600 dark:text-rose-400">
+                <ShieldAlert className="h-4 w-4" />
+              </div>
+              <DrawerTitle className="text-lg font-bold text-foreground">
+                Delete Machine
+              </DrawerTitle>
+            </div>
+            <DrawerDescription className="text-xs text-muted-foreground">
+              {deletingMachine
+                ? `This removes "${deletingMachine.serialNumber}" from the active fleet. Its restock and cash history is preserved for accounting. Confirm your password to continue.`
+                : ""}
+            </DrawerDescription>
+          </DrawerHeader>
+
+          <div className="space-y-3.5 pt-1">
+            <div className="space-y-1.5">
+              <label className="text-xs font-semibold text-foreground">
+                Your Password
+              </label>
+              <Input
+                type="password"
+                placeholder="Enter your account password"
+                value={deletePassword}
+                onChange={(e) => setDeletePassword(e.target.value)}
+                className="h-11 rounded-xl bg-muted/40 border-border/60 text-xs focus-visible:ring-primary shadow-xs"
+                autoFocus
+              />
+            </div>
+
+            <DrawerFooter className="p-0 pt-2 gap-2">
+              <Button
+                type="button"
+                onClick={handleConfirmDelete}
+                className="w-full h-12 rounded-2xl bg-rose-600 hover:bg-rose-700 text-white font-bold text-sm shadow-md active:scale-[0.97]"
+                disabled={deleteMutation.isPending}
+              >
+                {deleteMutation.isPending ? (
+                  <Loader2 className="h-4 w-4 animate-spin" />
+                ) : (
+                  "Confirm Deletion"
+                )}
+              </Button>
+              <DrawerClose asChild>
+                <Button
+                  type="button"
+                  variant="outline"
+                  className="w-full h-10 rounded-xl text-xs font-semibold"
+                >
+                  Cancel
+                </Button>
+              </DrawerClose>
+            </DrawerFooter>
+          </div>
         </DrawerContent>
       </Drawer>
     </div>

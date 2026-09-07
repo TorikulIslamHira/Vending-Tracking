@@ -2,18 +2,7 @@ import { FastifyReply, FastifyRequest } from "fastify";
 import bcrypt from "bcryptjs";
 import { eq, and, desc } from "drizzle-orm";
 import { db, users } from "../../core/db";
-
-/**
- * The root Super Admin is identified by matching against `SUPER_ADMIN_EMAIL`
- * (the same env var the seed script bootstraps it from) rather than a stored
- * flag — there is exactly one of these per deployment, and it must remain
- * recoverable even if the database is wiped and re-seeded.
- */
-function isRootSuperAdminEmail(email: string): boolean {
-  const rootEmail = process.env.SUPER_ADMIN_EMAIL;
-  if (!rootEmail) return false;
-  return email.trim().toLowerCase() === rootEmail.trim().toLowerCase();
-}
+import { isRootSuperAdminEmail } from "../../core/rootAdmin";
 
 export async function getUsersHandler(
   request: FastifyRequest,
@@ -35,6 +24,7 @@ export async function getUsersHandler(
       status: u.isActive ? ("ACTIVE" as const) : ("INACTIVE" as const),
       assignedCount: 0,
       isRootAdmin: isRootSuperAdminEmail(u.email),
+      canDeleteMachines: isRootSuperAdminEmail(u.email) || u.canDeleteMachines,
     }));
 
     return reply.send({
@@ -91,6 +81,7 @@ export async function createUserHandler(
         status: "ACTIVE",
         assignedCount: 0,
         isRootAdmin: isRootSuperAdminEmail(createdUser.email),
+        canDeleteMachines: isRootSuperAdminEmail(createdUser.email) || createdUser.canDeleteMachines,
       },
     });
   } catch (err: any) {
@@ -160,6 +151,7 @@ export async function toggleUserStatusHandler(
         status: updatedUser.isActive ? "ACTIVE" : "INACTIVE",
         assignedCount: 0,
         isRootAdmin: isRootSuperAdminEmail(updatedUser.email),
+        canDeleteMachines: isRootSuperAdminEmail(updatedUser.email) || updatedUser.canDeleteMachines,
       },
     });
   } catch (err: any) {
@@ -167,6 +159,83 @@ export async function toggleUserStatusHandler(
       statusCode: 500,
       error: "Internal Server Error",
       message: err?.message || "Failed to update user status",
+    });
+  }
+}
+
+/**
+ * Grants or revokes a non-root ADMIN user's delegated power to delete machines.
+ * Only the root Super Admin (identified by SUPER_ADMIN_EMAIL, not a role check)
+ * may call this — machine deletion is a root-owned power by default, delegable
+ * one Admin at a time at the root's discretion.
+ */
+export async function toggleDeletePermissionHandler(
+  request: FastifyRequest<{ Params: { id: string }; Body: { canDeleteMachines: boolean } }>,
+  reply: FastifyReply
+): Promise<void> {
+  const tenantId = request.tenantId;
+  const { id } = request.params;
+  const { canDeleteMachines } = request.body;
+
+  try {
+    const actor = await db.query.users.findFirst({
+      where: eq(users.id, request.userId),
+      columns: { email: true },
+    });
+
+    if (!actor || !isRootSuperAdminEmail(actor.email)) {
+      return reply.status(403).send({
+        statusCode: 403,
+        error: "Forbidden",
+        message: "Only the root Super Admin can delegate machine deletion permission",
+      });
+    }
+
+    const targetUser = await db.query.users.findFirst({
+      where: and(eq(users.id, id), eq(users.tenantId, tenantId)),
+    });
+
+    if (!targetUser) {
+      return reply.status(404).send({
+        statusCode: 404,
+        error: "Not Found",
+        message: "User not found in your organization",
+      });
+    }
+
+    if (targetUser.role !== "ADMIN" || isRootSuperAdminEmail(targetUser.email)) {
+      return reply.status(400).send({
+        statusCode: 400,
+        error: "Bad Request",
+        message: "Machine deletion permission can only be delegated to a non-root Admin user",
+      });
+    }
+
+    const [updatedUser] = await db
+      .update(users)
+      .set({ canDeleteMachines })
+      .where(and(eq(users.id, id), eq(users.tenantId, tenantId)))
+      .returning();
+
+    return reply.send({
+      statusCode: 200,
+      message: `Machine deletion permission ${canDeleteMachines ? "granted to" : "revoked from"} ${updatedUser.name}`,
+      data: {
+        id: updatedUser.id,
+        name: updatedUser.name,
+        email: updatedUser.email,
+        role: updatedUser.role,
+        status: updatedUser.isActive ? "ACTIVE" : "INACTIVE",
+        assignedCount: 0,
+        isRootAdmin: isRootSuperAdminEmail(updatedUser.email),
+        canDeleteMachines: isRootSuperAdminEmail(updatedUser.email) || updatedUser.canDeleteMachines,
+      },
+    });
+  } catch (err: any) {
+    return reply.status(500).send({
+      statusCode: 500,
+      error: "Internal Server Error",
+      message: err?.message || "Failed to update machine deletion permission",
     });
   }
 }

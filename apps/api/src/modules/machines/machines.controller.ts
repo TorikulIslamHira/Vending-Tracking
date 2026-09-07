@@ -1,8 +1,10 @@
 import { FastifyReply, FastifyRequest } from "fastify";
-import { eq, and, or, desc, count } from "drizzle-orm";
-import { MachineCreateSchema } from "@vending/validation";
-import { db, machines } from "../../core/db";
+import { eq, and, or, desc, count, isNull } from "drizzle-orm";
+import bcrypt from "bcryptjs";
+import { MachineCreateSchema, MachineDeleteSchema } from "@vending/validation";
+import { db, machines, users, adminAuditLogs } from "../../core/db";
 import { computeVirtualCashBalances, computeVirtualCashBalanceForMachine } from "./virtualCashBalance.service";
+import { isRootSuperAdminEmail } from "../../core/rootAdmin";
 
 /**
  * Fetch all machines scoped to the authenticated tenant, optionally filtered by storeId
@@ -17,8 +19,8 @@ export async function getMachinesHandler(
   try {
     const whereCondition =
       storeId && storeId !== "all"
-        ? and(eq(machines.tenantId, tenantId), eq(machines.storeId, storeId))
-        : eq(machines.tenantId, tenantId);
+        ? and(eq(machines.tenantId, tenantId), eq(machines.storeId, storeId), isNull(machines.deletedAt))
+        : and(eq(machines.tenantId, tenantId), isNull(machines.deletedAt));
 
     const machineList = await db.query.machines.findMany({
       where: whereCondition,
@@ -77,6 +79,7 @@ export async function getMachineByIdHandler(
     const machine = await db.query.machines.findFirst({
       where: and(
         eq(machines.tenantId, tenantId),
+        isNull(machines.deletedAt),
         or(eq(machines.id, id), eq(machines.qrCode, id), eq(machines.serialNumber, id))
       ),
       with: {
@@ -259,7 +262,10 @@ export async function getDashboardMetricsHandler(
 
   try {
     const [machinesCountResult, machinesList] = await Promise.all([
-      db.select({ value: count() }).from(machines).where(eq(machines.tenantId, tenantId)),
+      db
+        .select({ value: count() })
+        .from(machines)
+        .where(and(eq(machines.tenantId, tenantId), isNull(machines.deletedAt))),
       db
         .select({
           id: machines.id,
@@ -269,7 +275,7 @@ export async function getDashboardMetricsHandler(
           pricePerPlay: machines.pricePerPlay,
         })
         .from(machines)
-        .where(eq(machines.tenantId, tenantId)),
+        .where(and(eq(machines.tenantId, tenantId), isNull(machines.deletedAt))),
     ]);
 
     const totalMachines = machinesCountResult[0]?.value ?? 0;
@@ -322,6 +328,120 @@ export async function getDashboardMetricsHandler(
         missedVisitsCount: 0,
         attentionMachines: [],
       },
+    });
+  }
+}
+
+/**
+ * Soft-deletes a machine. Requires the acting user to re-enter their own
+ * password (defense against a hijacked/unattended session performing a
+ * destructive action) and requires machine-deletion permission: the root
+ * Super Admin always has it; any other Admin only if delegated via
+ * `canDeleteMachines`. The machine row is kept (deletedAt set, not removed)
+ * so existing inventory_logs/cash_logs never become orphaned, and the event
+ * is recorded in admin_audit_logs, visible only to the root Super Admin.
+ */
+export async function deleteMachineHandler(
+  request: FastifyRequest<{ Params: { id: string }; Body: { password: string } }>,
+  reply: FastifyReply
+): Promise<void> {
+  const tenantId = request.tenantId;
+  const { id } = request.params;
+
+  const parseResult = MachineDeleteSchema.safeParse(request.body);
+  if (!parseResult.success) {
+    return reply.status(400).send({
+      statusCode: 400,
+      error: "Bad Request",
+      message: "Validation failed",
+      issues: parseResult.error.issues,
+    });
+  }
+
+  const { password } = parseResult.data;
+
+  try {
+    const actor = await db.query.users.findFirst({
+      where: eq(users.id, request.userId),
+    });
+
+    if (!actor) {
+      return reply.status(401).send({
+        statusCode: 401,
+        error: "Unauthorized",
+        message: "Account no longer exists",
+      });
+    }
+
+    let isValidPassword = false;
+    if (
+      actor.passwordHash.startsWith("$2a$") ||
+      actor.passwordHash.startsWith("$2b$") ||
+      actor.passwordHash.startsWith("$2y$")
+    ) {
+      isValidPassword = await bcrypt.compare(password, actor.passwordHash);
+    } else {
+      isValidPassword = actor.passwordHash === password;
+    }
+
+    if (!isValidPassword) {
+      return reply.status(401).send({
+        statusCode: 401,
+        error: "Unauthorized",
+        message: "Incorrect password",
+      });
+    }
+
+    const canDelete = isRootSuperAdminEmail(actor.email) || (actor.role === "ADMIN" && actor.canDeleteMachines === true);
+
+    if (!canDelete) {
+      return reply.status(403).send({
+        statusCode: 403,
+        error: "Forbidden",
+        message: "You do not have permission to delete machines",
+      });
+    }
+
+    const machine = await db.query.machines.findFirst({
+      where: and(eq(machines.id, id), eq(machines.tenantId, tenantId), isNull(machines.deletedAt)),
+    });
+
+    if (!machine) {
+      return reply.status(404).send({
+        statusCode: 404,
+        error: "Not Found",
+        message: "Machine not found in your organization",
+      });
+    }
+
+    await db.transaction(async (tx) => {
+      await tx
+        .update(machines)
+        .set({ deletedAt: new Date() })
+        .where(and(eq(machines.id, id), eq(machines.tenantId, tenantId)));
+
+      await tx.insert(adminAuditLogs).values({
+        tenantId,
+        action: "MACHINE_DELETED",
+        actorId: actor.id,
+        targetId: machine.id,
+        details: {
+          serialNumber: machine.serialNumber,
+          location: machine.location,
+          qrCode: machine.qrCode,
+        },
+      });
+    });
+
+    return reply.send({
+      statusCode: 200,
+      message: "Machine deleted successfully",
+    });
+  } catch (error: any) {
+    return reply.status(500).send({
+      statusCode: 500,
+      error: "Internal Server Error",
+      message: error.message || "Failed to delete machine",
     });
   }
 }

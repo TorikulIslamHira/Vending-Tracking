@@ -13,6 +13,7 @@ import { usersRoutes } from "./modules/users";
 import { locationsRoutes } from "./modules/locations";
 import { storesRoutes, locationStoresRoutes } from "./modules/stores";
 import { settingsRoutes } from "./modules/settings";
+import { auditRoutes } from "./modules/audit";
 
 export function buildServer(): FastifyInstance {
   // Fail fast: a missing JWT_SECRET must never silently fall back to a
@@ -83,6 +84,7 @@ export function buildServer(): FastifyInstance {
   app.register(inventoryRoutes, { prefix: "/api/v1/inventory" });
   app.register(usersRoutes, { prefix: "/api/v1/users" });
   app.register(settingsRoutes, { prefix: "/api/v1/settings" });
+  app.register(auditRoutes, { prefix: "/api/v1/audit-logs" });
 
   return app;
 }
