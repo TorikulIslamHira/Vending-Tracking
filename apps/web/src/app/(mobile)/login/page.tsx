@@ -50,8 +50,18 @@ function LoginForm() {
       router.push(redirectTarget);
     },
     onError: (err: any) => {
-      const msg = err?.response?.data?.message || "Invalid email or password";
-      toast.error(msg);
+      // Distinguish "the API rejected these credentials" from "the request
+      // never reached the API as JSON" — collapsing both into the same
+      // "Invalid email or password" message hides real connectivity/routing
+      // problems (e.g. hitting the Next.js port directly instead of nginx,
+      // which 404s with an HTML page that has no `.message` field) behind a
+      // misleading credentials error.
+      if (!err?.response) {
+        toast.error("Cannot reach the server. Check your connection and try again.");
+        return;
+      }
+      const apiMessage = err.response.data?.message;
+      toast.error(apiMessage || `Login failed (HTTP ${err.response.status})`);
     },
   });
 
