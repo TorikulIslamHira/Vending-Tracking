@@ -1,8 +1,8 @@
 "use client";
 
-import React, { useEffect, useState, useRef } from "react";
+import React, { useEffect, useRef, useState } from "react";
 import { useRouter } from "next/navigation";
-import { Html5QrcodeScanner, Html5QrcodeSupportedFormats } from "html5-qrcode";
+import { Html5Qrcode, Html5QrcodeSupportedFormats } from "html5-qrcode";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -17,64 +17,103 @@ import {
   KeyRound,
   Loader2,
   Store,
-  Compass,
+  Camera,
+  X,
 } from "lucide-react";
+
+const QR_READER_ELEMENT_ID = "qr-reader-container";
+
+type ScannerStatus = "idle" | "starting" | "active" | "error";
+
+function isIOS(): boolean {
+  if (typeof navigator === "undefined") return false;
+  return (
+    /iPad|iPhone|iPod/.test(navigator.userAgent) ||
+    // iPadOS 13+ reports as "MacIntel" but exposes touch support
+    (navigator.platform === "MacIntel" && navigator.maxTouchPoints > 1)
+  );
+}
 
 export default function QRScannerPage() {
   const router = useRouter();
   const [manualCode, setManualCode] = useState("");
+  const [status, setStatus] = useState<ScannerStatus>("idle");
   const [cameraError, setCameraError] = useState<string | null>(null);
-  const scannerRef = useRef<Html5QrcodeScanner | null>(null);
+  const [permissionDenied, setPermissionDenied] = useState(false);
+  const html5QrCodeRef = useRef<Html5Qrcode | null>(null);
 
-  // Data queries
   const { data: machinesList = [], isLoading: isMachinesLoading } = useMachines();
 
+  const stopScanner = () => {
+    const instance = html5QrCodeRef.current;
+    if (instance && instance.isScanning) {
+      instance.stop().catch(() => {});
+    }
+  };
+
+  // Only ever tears the camera down — never starts it. iOS WebKit silently
+  // refuses navigator.mediaDevices.getUserMedia() unless it's invoked as the
+  // direct, synchronous result of a user gesture, so nothing here (mount,
+  // effects, timers) may ever call .start() on its own.
   useEffect(() => {
-    let isMounted = true;
+    return () => {
+      stopScanner();
+    };
+  }, []);
+
+  const handleStartScanner = async () => {
+    setCameraError(null);
+    setPermissionDenied(false);
+    setStatus("starting");
 
     try {
-      const scanner = new Html5QrcodeScanner(
-        "qr-reader-container",
-        {
-          fps: 10,
-          qrbox: { width: 250, height: 250 },
+      if (!html5QrCodeRef.current) {
+        html5QrCodeRef.current = new Html5Qrcode(QR_READER_ELEMENT_ID, {
           formatsToSupport: [Html5QrcodeSupportedFormats.QR_CODE],
-          rememberLastUsedCamera: true,
-        },
-        /* verbose= */ false
-      );
+          verbose: false,
+        });
+      }
 
-      scannerRef.current = scanner;
-
-      scanner.render(
+      await html5QrCodeRef.current.start(
+        { facingMode: "environment" },
+        { fps: 10, qrbox: { width: 250, height: 250 } },
         (decodedText) => {
-          if (!isMounted) return;
           toast.success(`QR Code Detected: ${decodedText}`);
-          // Stop scanner
-          scanner.clear().catch(() => {});
-          // Navigate to machine page
+          stopScanner();
+          setStatus("idle");
           const cleanCode = encodeURIComponent(decodedText.trim());
           router.push(`/machine/${cleanCode}`);
         },
-        (error) => {
-          // Ignored scanning frame error
+        () => {
+          // Ignored per-frame scan miss — expected while the camera hunts for a code.
         }
       );
+
+      setStatus("active");
     } catch (err: any) {
-      if (isMounted) {
-        setCameraError(
-          err?.message || "Camera access was denied or is not supported on this device."
-        );
+      const name = err?.name || "";
+      const message = String(err?.message || err || "");
+      const deniedByUser =
+        name === "NotAllowedError" ||
+        name === "PermissionDeniedError" ||
+        /permission/i.test(message);
+
+      setStatus("error");
+      if (deniedByUser) {
+        setPermissionDenied(true);
+        setCameraError("Camera access was denied.");
+      } else if (name === "NotFoundError" || name === "OverconstrainedError") {
+        setCameraError("No compatible camera was found on this device.");
+      } else {
+        setCameraError(message || "Camera access is unavailable on this device.");
       }
     }
+  };
 
-    return () => {
-      isMounted = false;
-      if (scannerRef.current) {
-        scannerRef.current.clear().catch(() => {});
-      }
-    };
-  }, [router]);
+  const handleStopScanner = () => {
+    stopScanner();
+    setStatus("idle");
+  };
 
   const handleManualSubmit = (e: React.FormEvent) => {
     e.preventDefault();
@@ -104,18 +143,76 @@ export default function QRScannerPage() {
       {/* Camera Scanner View */}
       <Card className="border-border/60 overflow-hidden shadow-sm">
         <CardContent className="p-3">
-          {cameraError ? (
-            <div className="flex flex-col items-center justify-center p-6 text-center bg-destructive/10 rounded-lg text-destructive">
-              <AlertCircle className="h-8 w-8 mb-2" />
-              <p className="text-sm font-semibold">Camera Access Unavailable</p>
-              <p className="text-xs text-muted-foreground mt-1 max-w-xs">
-                {cameraError}
-              </p>
-            </div>
-          ) : (
-            <div className="relative rounded-lg overflow-hidden bg-slate-900 border border-slate-800">
-              <div id="qr-reader-container" className="w-full" />
-            </div>
+          <div className="rounded-lg overflow-hidden bg-slate-900 border border-slate-800">
+            {/* Always present in the DOM (so html5-qrcode has an element to
+                bind to the instant a user taps Start) but collapsed to zero
+                height until scanning is actually active — no absolute
+                overlay, so there's nothing that could ever sit on top of the
+                Start button and swallow its click. */}
+            <div
+              id={QR_READER_ELEMENT_ID}
+              className={status === "active" ? "w-full" : "w-full h-0 overflow-hidden"}
+            />
+
+            {status !== "active" && (
+              <div className="flex flex-col items-center justify-center gap-3 p-8 text-center">
+                {status === "error" ? (
+                  <>
+                    <AlertCircle className="h-8 w-8 text-destructive" />
+                    <div className="space-y-1">
+                      <p className="text-sm font-semibold text-white">
+                        Camera Access Unavailable
+                      </p>
+                      <p className="text-xs text-slate-400 max-w-xs">{cameraError}</p>
+                      {permissionDenied && (
+                        <p className="text-xs text-slate-400 max-w-xs pt-1">
+                          {isIOS()
+                            ? "Enable it via Settings → Safari → Camera (or Settings → [Browser] → Camera), then reload this page and try again."
+                            : "Enable camera access for this site in your browser settings, then reload this page and try again."}
+                        </p>
+                      )}
+                    </div>
+                  </>
+                ) : (
+                  <Camera className="h-8 w-8 text-slate-500" />
+                )}
+
+                <Button
+                  type="button"
+                  onClick={handleStartScanner}
+                  disabled={status === "starting"}
+                  className="gap-2 h-11 px-5 font-semibold"
+                >
+                  {status === "starting" ? (
+                    <>
+                      <Loader2 className="h-4 w-4 animate-spin" />
+                      <span>Requesting Camera...</span>
+                    </>
+                  ) : status === "error" ? (
+                    <>
+                      <Camera className="h-4 w-4" />
+                      <span>Try Again</span>
+                    </>
+                  ) : (
+                    <>
+                      <Camera className="h-4 w-4" />
+                      <span>Tap to Start Scanner</span>
+                    </>
+                  )}
+                </Button>
+              </div>
+            )}
+          </div>
+
+          {status === "active" && (
+            <button
+              type="button"
+              onClick={handleStopScanner}
+              className="mt-2 w-full flex items-center justify-center gap-1.5 text-xs font-semibold text-muted-foreground hover:text-foreground py-2 active:scale-[0.98] transition-transform"
+            >
+              <X className="h-3.5 w-3.5" />
+              <span>Cancel Scan</span>
+            </button>
           )}
         </CardContent>
       </Card>
