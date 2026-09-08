@@ -34,6 +34,39 @@ function isIOS(): boolean {
   );
 }
 
+/**
+ * Machine QR codes encode a full destination URL (e.g.
+ * "https://app.example.com/machine/VM-NY-010"), not a bare ID — a phone's
+ * native camera app resolves that URL itself and lets Next.js routing pull
+ * the ID out of the path via useParams(). The in-app scanner instead hands
+ * us that raw decoded string directly, so it must do the same extraction
+ * itself: detect a URL, take the last pathname segment as the ID, and fall
+ * back to using the scanned text as-is if it isn't a URL at all (e.g. a
+ * plain serial number printed on an older label).
+ */
+function extractMachineIdFromScan(scannedText: string): string {
+  const trimmed = scannedText.trim();
+  let rawId = trimmed;
+
+  if (/^https?:\/\//i.test(trimmed)) {
+    try {
+      const url = new URL(trimmed);
+      const segments = url.pathname.split("/").filter(Boolean);
+      rawId = segments.pop() || trimmed;
+    } catch {
+      // Looked like a URL but failed to parse — fall back to the raw scan.
+      rawId = trimmed;
+    }
+  }
+
+  try {
+    return decodeURIComponent(rawId);
+  } catch {
+    // Not a valid percent-encoded sequence — use it verbatim.
+    return rawId;
+  }
+}
+
 export default function QRScannerPage() {
   const router = useRouter();
   const [manualCode, setManualCode] = useState("");
@@ -78,11 +111,11 @@ export default function QRScannerPage() {
         { facingMode: "environment" },
         { fps: 10, qrbox: { width: 250, height: 250 } },
         (decodedText) => {
-          toast.success(`QR Code Detected: ${decodedText}`);
+          const machineId = extractMachineIdFromScan(decodedText);
+          toast.success(`QR Code Detected: ${machineId}`);
           stopScanner();
           setStatus("idle");
-          const cleanCode = encodeURIComponent(decodedText.trim());
-          router.push(`/machine/${cleanCode}`);
+          router.push(`/machine/${encodeURIComponent(machineId)}`);
         },
         () => {
           // Ignored per-frame scan miss — expected while the camera hunts for a code.
