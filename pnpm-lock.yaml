@@ -390,6 +390,9 @@ importers:
       dotenv:
         specifier: ^16.4.7
         version: 16.6.1
+      drizzle-kit:
+        specifier: ^0.30.5
+        version: 0.30.6(supports-color@5.5.0)
       drizzle-orm:
         specifier: ^0.40.0
         version: 0.40.1(@prisma/client@6.19.3(prisma@6.19.3(typescript@5.9.3))(typescript@5.9.3))(gel@2.2.0(supports-color@7.2.0))(postgres@3.4.9)(prisma@6.19.3(typescript@5.9.3))
@@ -400,9 +403,6 @@ importers:
       '@types/node':
         specifier: ^22.13.5
         version: 22.20.1
-      drizzle-kit:
-        specifier: ^0.30.5
-        version: 0.30.6(supports-color@5.5.0)
       tsx:
         specifier: ^4.19.3
         version: 4.23.13

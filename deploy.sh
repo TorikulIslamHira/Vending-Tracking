@@ -82,12 +82,24 @@ $COMPOSE_CMD up -d
 echo "🗄️ 4/4 Synchronizing database schema (Drizzle db push)..."
 # Wait 5 seconds for PostgreSQL container to become ready
 sleep 5
-# Execute database schema push inside the running API container
-if $COMPOSE_CMD exec -T api pnpm --filter @vending/database run db:push; then
+# Invoke drizzle-kit's binary directly rather than through `pnpm run` / `pnpm
+# --filter`: pnpm wraps every `run` with a dependency-status check that tries
+# to reach the npm registry and write to /app, which fails under the api
+# container's non-root, network-restricted production runtime (the same class
+# of bug already worked around for the container's own CMD — see the
+# Dockerfile comment above `node dist/server.js`). No `|| true` here: if
+# schema sync genuinely fails, the deploy must fail loudly rather than
+# silently leave the live database drifted out of sync with the code that's
+# now running against it (exactly how a "column ... does not exist" error
+# reaches production).
+if $COMPOSE_CMD exec -T -w /app/packages/database api node_modules/.bin/drizzle-kit push --force; then
   echo "✅ Database schema in sync with Drizzle ORM."
 else
-  echo "⚠️ Fallback to direct drizzle-kit push..."
-  $COMPOSE_CMD exec -T -w /app/packages/database api npx drizzle-kit push || true
+  echo "❌ Database schema push failed."
+  echo "   Containers are running but may be serving against a stale schema."
+  echo "   Investigate immediately, e.g.:"
+  echo "     $COMPOSE_CMD exec -w /app/packages/database api node_modules/.bin/drizzle-kit push --force"
+  exit 1
 fi
 
 echo "🧹 4/4 Cleaning up obsolete Docker image layers..."
