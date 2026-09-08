@@ -71,6 +71,29 @@ git reset --hard origin/main
 echo "🛑 2/5 Stopping existing containers to free server RAM..."
 $COMPOSE_CMD down --remove-orphans || true
 
+echo "🧹 Freeing disk space before the build (prevents ENOSPC mid-build)..."
+# `docker system prune -af --volumes` is deliberately NOT used: --volumes
+# removes every volume Docker considers unused, and right after the `down`
+# above, the named postgres_data volume (docker-compose.yml) briefly has no
+# attached container — exactly the state --volumes would delete it in. That
+# risk isn't worth it for build-cache cleanup, so this only ever touches
+# images and the builder cache, never volumes.
+$DOCKER_CMD image prune -af || true
+
+# The builder cache (BuildKit's cache mounts, e.g. the pnpm store — see the
+# Dockerfiles) is usually worth keeping: wiping it on every deploy would
+# force a full dependency re-download from the registry each time. Only
+# clear it when disk space is actually tight, so the common case still gets
+# fast incremental builds and ENOSPC still can't happen when it matters.
+AVAILABLE_GB=$(df --output=avail -B1G / 2>/dev/null | tail -n1 | tr -d ' ')
+if [ -n "$AVAILABLE_GB" ] && [ "$AVAILABLE_GB" -lt 5 ]; then
+  echo "⚠️  Only ${AVAILABLE_GB}GB free on / — also clearing the Docker build cache..."
+  $DOCKER_CMD builder prune -af || true
+fi
+
+echo "💾 Disk space after cleanup:"
+df -h / 2>/dev/null | tail -n1 || true
+
 echo "🐳 3/5 Rebuilding and starting Docker containers..."
 export DOCKER_BUILDKIT=1
 export COMPOSE_DOCKER_CLI_BUILD=1
@@ -119,7 +142,9 @@ else
 fi
 
 echo "🧹 Cleaning up obsolete Docker image layers..."
-$DOCKER_CMD image prune -f
+# || true: a cleanup hiccup here must never mask an otherwise fully
+# successful deploy — set -e would abort before the success banner below.
+$DOCKER_CMD image prune -f || true
 
 echo "=========================================="
 echo "🎉 Deployment successfully completed!"
