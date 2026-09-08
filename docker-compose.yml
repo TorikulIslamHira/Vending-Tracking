@@ -37,6 +37,11 @@ services:
       # Required — not just set for the seed script — because that guard
       # silently does nothing (rather than erroring) if this is unset.
       SUPER_ADMIN_EMAIL: ${SUPER_ADMIN_EMAIL:?SUPER_ADMIN_EMAIL must be set in your .env file}
+      # Required so `db:seed` (run by deploy.sh after every schema push) can
+      # provision/repair the Super Admin's password hash from inside this
+      # container — previously absent here entirely, so the seed step had no
+      # way to know the account's password even when invoked.
+      SUPER_ADMIN_PASSWORD: ${SUPER_ADMIN_PASSWORD:?SUPER_ADMIN_PASSWORD must be set in your .env file}
       PORT: 3001
       HOST: 0.0.0.0
       NODE_ENV: production

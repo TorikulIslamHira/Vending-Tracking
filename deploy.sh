@@ -33,7 +33,7 @@ echo "=========================================="
 echo "🚀 Bee Novelty Vending Deployment Script"
 echo "=========================================="
 
-echo "🔍 0/4 Verifying required environment configuration..."
+echo "🔍 0/5 Verifying required environment configuration..."
 if [ ! -f .env ]; then
   echo "❌ No .env file found in $(pwd)."
   echo "   Copy .env.production.example to .env and fill in real values, or"
@@ -64,14 +64,14 @@ if [ -n "$MISSING_VARS" ]; then
   exit 1
 fi
 
-echo "📥 1/4 Synchronizing latest changes from GitHub..."
+echo "📥 1/5 Synchronizing latest changes from GitHub..."
 git fetch origin main
 git reset --hard origin/main
 
-echo "🛑 2/4 Stopping existing containers to free server RAM..."
+echo "🛑 2/5 Stopping existing containers to free server RAM..."
 $COMPOSE_CMD down --remove-orphans || true
 
-echo "🐳 3/4 Rebuilding and starting Docker containers..."
+echo "🐳 3/5 Rebuilding and starting Docker containers..."
 export DOCKER_BUILDKIT=1
 export COMPOSE_DOCKER_CLI_BUILD=1
 
@@ -79,7 +79,7 @@ export COMPOSE_DOCKER_CLI_BUILD=1
 $COMPOSE_CMD build --parallel=false
 $COMPOSE_CMD up -d
 
-echo "🗄️ 4/4 Synchronizing database schema (Drizzle db push)..."
+echo "🗄️ 4/5 Synchronizing database schema (Drizzle db push)..."
 # Wait 5 seconds for PostgreSQL container to become ready
 sleep 5
 # Invoke drizzle-kit's binary directly rather than through `pnpm run` / `pnpm
@@ -102,7 +102,23 @@ else
   exit 1
 fi
 
-echo "🧹 4/4 Cleaning up obsolete Docker image layers..."
+echo "🔑 5/5 Provisioning/repairing the Super Admin account..."
+# Runs the already-compiled dist/seed.js directly (plain `node`, no pnpm/tsx
+# wrapper — same reasoning as the drizzle-kit invocation above). Reads
+# SUPER_ADMIN_EMAIL/SUPER_ADMIN_PASSWORD from the container's own environment
+# (wired in via docker-compose.yml) and re-hashes + upserts on every deploy,
+# so the stored bcrypt hash can never drift from the current secret and the
+# account can never end up locked out or missing after a fresh deploy.
+if $COMPOSE_CMD exec -T -w /app/packages/database api node dist/seed.js; then
+  echo "✅ Super Admin account synced."
+else
+  echo "❌ Super Admin provisioning failed."
+  echo "   Investigate immediately, e.g.:"
+  echo "     $COMPOSE_CMD exec -w /app/packages/database api node dist/seed.js"
+  exit 1
+fi
+
+echo "🧹 Cleaning up obsolete Docker image layers..."
 $DOCKER_CMD image prune -f
 
 echo "=========================================="
