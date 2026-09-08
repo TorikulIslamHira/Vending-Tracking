@@ -6,6 +6,7 @@ import { toast } from "sonner";
 import {
   useUsers,
   useCreateUser,
+  useUpdateUser,
   useToggleUserStatus,
   useToggleDeletePermission,
   AppUser,
@@ -39,6 +40,7 @@ export default function UserManagementPage() {
   const router = useRouter();
   const { data: users = [], isLoading } = useUsers();
   const createUserMutation = useCreateUser();
+  const updateUserMutation = useUpdateUser();
   const toggleUserStatusMutation = useToggleUserStatus();
   const toggleDeletePermissionMutation = useToggleDeletePermission();
   const currentUser = useAuthStore((s) => s.user);
@@ -59,12 +61,14 @@ export default function UserManagementPage() {
   const [userRole, setUserRole] = useState<
     "ADMIN" | "MANAGER" | "RESTOCKER" | "FIELD_AGENT"
   >("FIELD_AGENT");
+  const [userPassword, setUserPassword] = useState("");
 
   const handleOpenAdd = () => {
     setEditingUserId(null);
     setUserName("");
     setUserEmail("");
     setUserRole("FIELD_AGENT");
+    setUserPassword("");
     setIsAddDrawerOpen(true);
   };
 
@@ -73,12 +77,15 @@ export default function UserManagementPage() {
     setUserName(u.name);
     setUserEmail(u.email);
     setUserRole(u.role);
+    setUserPassword("");
     setIsAddDrawerOpen(true);
   };
 
   const handleToggleDeactivate = (userId: string) => {
     toggleUserStatusMutation.mutate(userId);
   };
+
+  const isSavingUser = createUserMutation.isPending || updateUserMutation.isPending;
 
   const handleSaveUser = (e: React.FormEvent) => {
     e.preventDefault();
@@ -87,11 +94,40 @@ export default function UserManagementPage() {
       return;
     }
 
+    if (editingUserId) {
+      if (userPassword && userPassword.length < 6) {
+        toast.error("New password must be at least 6 characters");
+        return;
+      }
+
+      updateUserMutation.mutate(
+        {
+          userId: editingUserId,
+          name: userName.trim(),
+          email: userEmail.trim(),
+          role: userRole,
+          password: userPassword.trim() || undefined,
+        },
+        {
+          onSuccess: () => {
+            setIsAddDrawerOpen(false);
+          },
+        }
+      );
+      return;
+    }
+
+    if (!userPassword || userPassword.length < 6) {
+      toast.error("Password must be at least 6 characters");
+      return;
+    }
+
     createUserMutation.mutate(
       {
         name: userName.trim(),
         email: userEmail.trim(),
         role: userRole,
+        password: userPassword,
       },
       {
         onSuccess: () => {
@@ -313,13 +349,35 @@ export default function UserManagementPage() {
               </select>
             </div>
 
+            <div className="space-y-1.5">
+              <label className="text-xs font-semibold text-foreground">
+                {editingUserId ? "New Password" : "Password"}
+              </label>
+              <Input
+                type="password"
+                placeholder={
+                  editingUserId ? "Leave blank to keep current" : "Minimum 6 characters"
+                }
+                value={userPassword}
+                onChange={(e) => setUserPassword(e.target.value)}
+                className="h-11 rounded-xl bg-muted/40 border-border/60 text-xs focus-visible:ring-primary shadow-xs"
+                autoComplete="new-password"
+                required={!editingUserId}
+              />
+              {editingUserId && (
+                <p className="text-[11px] text-muted-foreground">
+                  Only fill this in if you want to reset their password.
+                </p>
+              )}
+            </div>
+
             <DrawerFooter className="p-0 pt-3 gap-2">
               <Button
                 type="submit"
                 className="w-full h-12 rounded-2xl bg-zinc-900 text-white dark:bg-zinc-100 dark:text-zinc-900 font-bold text-sm shadow-md active:scale-[0.97]"
-                disabled={createUserMutation.isPending}
+                disabled={isSavingUser}
               >
-                {createUserMutation.isPending ? (
+                {isSavingUser ? (
                   <Loader2 className="h-4 w-4 animate-spin" />
                 ) : editingUserId ? (
                   "Save Changes"

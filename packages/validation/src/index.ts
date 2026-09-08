@@ -128,6 +128,22 @@ export const UserCreateSchema = z.object({
 export type UserCreateInput = z.infer<typeof UserCreateSchema>;
 export type UserCreateDto = UserCreateInput;
 
+/**
+ * UserUpdateSchema: Validates admin edits to an existing user's profile.
+ * Every field is optional — the caller sends only what actually changed.
+ * `password`, when present, doubles as the admin "reset password" action;
+ * when omitted, the existing password hash is left untouched.
+ */
+export const UserUpdateSchema = z.object({
+  name: z.string().min(1, "User name is required").optional(),
+  email: z.string().email("Valid email is required").optional(),
+  role: UserRoleSchema.optional(),
+  password: z.string().min(6, "Password must be at least 6 characters").optional(),
+});
+
+export type UserUpdateInput = z.infer<typeof UserUpdateSchema>;
+export type UserUpdateDto = UserUpdateInput;
+
 export const UserLoginSchema = z.object({
   email: z.string().email("Valid email is required"),
   password: z.string().min(1, "Password is required"),

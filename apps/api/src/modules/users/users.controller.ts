@@ -1,6 +1,7 @@
 import { FastifyReply, FastifyRequest } from "fastify";
 import bcrypt from "bcryptjs";
-import { eq, and, desc } from "drizzle-orm";
+import { eq, and, desc, ne } from "drizzle-orm";
+import { UserCreateSchema, UserUpdateSchema } from "@vending/validation";
 import { db, users } from "../../core/db";
 import { isRootSuperAdminEmail } from "../../core/rootAdmin";
 
@@ -40,24 +41,38 @@ export async function getUsersHandler(
 }
 
 export async function createUserHandler(
-  request: FastifyRequest<{
-    Body: { name: string; email: string; role?: "ADMIN" | "FIELD_AGENT" };
-  }>,
+  request: FastifyRequest,
   reply: FastifyReply
 ): Promise<void> {
   const tenantId = request.tenantId;
-  const { name, email, role } = request.body;
 
-  if (!name || !email) {
+  const parseResult = UserCreateSchema.safeParse(request.body);
+
+  if (!parseResult.success) {
     return reply.status(400).send({
       statusCode: 400,
       error: "Bad Request",
-      message: "Name and email are required",
+      message: "Validation failed",
+      issues: parseResult.error.issues,
     });
   }
 
+  const { name, email, role, password } = parseResult.data;
+
   try {
-    const defaultHashedPassword = await bcrypt.hash("Password123!", 10);
+    const existing = await db.query.users.findFirst({
+      where: and(eq(users.tenantId, tenantId), eq(users.email, email)),
+    });
+
+    if (existing) {
+      return reply.status(409).send({
+        statusCode: 409,
+        error: "Conflict",
+        message: "A user with this email already exists in your organization",
+      });
+    }
+
+    const hashedPassword = await bcrypt.hash(password, 10);
 
     const [createdUser] = await db
       .insert(users)
@@ -65,8 +80,8 @@ export async function createUserHandler(
         tenantId,
         name,
         email,
-        role: role === "ADMIN" ? "ADMIN" : "FIELD_AGENT",
-        passwordHash: defaultHashedPassword,
+        role,
+        passwordHash: hashedPassword,
       })
       .returning();
 
@@ -89,6 +104,107 @@ export async function createUserHandler(
       statusCode: 500,
       error: "Internal Server Error",
       message: err?.message || "Failed to create user",
+    });
+  }
+}
+
+/**
+ * Edits an existing user's profile. Every field is optional — only what's
+ * actually provided gets updated. `password`, when present, is the admin
+ * "reset password" action; when omitted, the existing hash is left as-is
+ * (never cleared/regenerated as a side effect of an unrelated edit).
+ */
+export async function updateUserHandler(
+  request: FastifyRequest<{ Params: { id: string } }>,
+  reply: FastifyReply
+): Promise<void> {
+  const tenantId = request.tenantId;
+  const { id } = request.params;
+
+  const parseResult = UserUpdateSchema.safeParse(request.body);
+
+  if (!parseResult.success) {
+    return reply.status(400).send({
+      statusCode: 400,
+      error: "Bad Request",
+      message: "Validation failed",
+      issues: parseResult.error.issues,
+    });
+  }
+
+  const { name, email, role, password } = parseResult.data;
+
+  try {
+    const targetUser = await db.query.users.findFirst({
+      where: and(eq(users.id, id), eq(users.tenantId, tenantId)),
+    });
+
+    if (!targetUser) {
+      return reply.status(404).send({
+        statusCode: 404,
+        error: "Not Found",
+        message: "User not found in your organization",
+      });
+    }
+
+    // Changing the root Super Admin's email would silently strip its
+    // protected status (isRootSuperAdminEmail matches live email against
+    // SUPER_ADMIN_EMAIL, not a stored flag) without touching the env var
+    // that's supposed to be the single source of truth for who that is.
+    if (email && email !== targetUser.email && isRootSuperAdminEmail(targetUser.email)) {
+      return reply.status(403).send({
+        statusCode: 403,
+        error: "Forbidden",
+        message: "The root Super Admin's email is fixed by SUPER_ADMIN_EMAIL and cannot be changed here",
+      });
+    }
+
+    if (email && email !== targetUser.email) {
+      const emailTaken = await db.query.users.findFirst({
+        where: and(eq(users.tenantId, tenantId), eq(users.email, email), ne(users.id, id)),
+      });
+      if (emailTaken) {
+        return reply.status(409).send({
+          statusCode: 409,
+          error: "Conflict",
+          message: "A user with this email already exists in your organization",
+        });
+      }
+    }
+
+    const updateValues: Partial<typeof users.$inferInsert> = {};
+    if (name !== undefined) updateValues.name = name;
+    if (email !== undefined) updateValues.email = email;
+    if (role !== undefined) updateValues.role = role;
+    if (password) updateValues.passwordHash = await bcrypt.hash(password, 10);
+
+    const [updatedUser] = await db
+      .update(users)
+      .set(updateValues)
+      .where(and(eq(users.id, id), eq(users.tenantId, tenantId)))
+      .returning();
+
+    return reply.send({
+      statusCode: 200,
+      message: password
+        ? `${updatedUser.name}'s account updated and password reset`
+        : `${updatedUser.name}'s account updated`,
+      data: {
+        id: updatedUser.id,
+        name: updatedUser.name,
+        email: updatedUser.email,
+        role: updatedUser.role,
+        status: updatedUser.isActive ? "ACTIVE" : "INACTIVE",
+        assignedCount: 0,
+        isRootAdmin: isRootSuperAdminEmail(updatedUser.email),
+        canDeleteMachines: isRootSuperAdminEmail(updatedUser.email) || updatedUser.canDeleteMachines,
+      },
+    });
+  } catch (err: any) {
+    return reply.status(500).send({
+      statusCode: 500,
+      error: "Internal Server Error",
+      message: err?.message || "Failed to update user",
     });
   }
 }

@@ -2,6 +2,7 @@ import { FastifyInstance } from "fastify";
 import {
   getUsersHandler,
   createUserHandler,
+  updateUserHandler,
   toggleUserStatusHandler,
   toggleDeletePermissionHandler,
 } from "./users.controller";
@@ -13,10 +14,11 @@ export async function usersRoutes(app: FastifyInstance): Promise<void> {
   app.addHook("onRequest", tenantHandler);
 
   app.get("/", getUsersHandler);
-  app.post<{ Body: { name: string; email: string; role?: "ADMIN" | "FIELD_AGENT" } }>(
-    "/",
+  app.post("/", { onRequest: [requireRole(UserRole.ADMIN)] }, createUserHandler);
+  app.patch<{ Params: { id: string } }>(
+    "/:id",
     { onRequest: [requireRole(UserRole.ADMIN)] },
-    createUserHandler
+    updateUserHandler
   );
   app.patch<{ Params: { id: string } }>(
     "/:id/status",

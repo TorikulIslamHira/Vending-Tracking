@@ -41,11 +41,13 @@ export function useCreateUser() {
       name: string;
       email: string;
       role: "ADMIN" | "MANAGER" | "RESTOCKER" | "FIELD_AGENT";
+      password: string;
     }) => {
       const res = await api.post("/users", {
         name: data.name,
         email: data.email,
         role: data.role === "ADMIN" ? "ADMIN" : "FIELD_AGENT",
+        password: data.password,
       });
       return res.data?.data;
     },
@@ -55,6 +57,40 @@ export function useCreateUser() {
     },
     onError: (err: any) => {
       toast.error(err?.response?.data?.message || err?.message || "Failed to add user");
+    },
+  });
+}
+
+export function useUpdateUser() {
+  const queryClient = useQueryClient();
+
+  return useMutation({
+    mutationFn: async ({
+      userId,
+      ...data
+    }: {
+      userId: string;
+      name?: string;
+      email?: string;
+      role?: "ADMIN" | "MANAGER" | "RESTOCKER" | "FIELD_AGENT";
+      /** Omit (or leave blank) to keep the user's current password. */
+      password?: string;
+    }) => {
+      const payload: Record<string, string> = {};
+      if (data.name !== undefined) payload.name = data.name;
+      if (data.email !== undefined) payload.email = data.email;
+      if (data.role !== undefined) payload.role = data.role === "ADMIN" ? "ADMIN" : "FIELD_AGENT";
+      if (data.password) payload.password = data.password;
+
+      const res = await api.patch(`/users/${userId}`, payload);
+      return res.data?.data as AppUser;
+    },
+    onSuccess: (updatedUser) => {
+      queryClient.invalidateQueries({ queryKey: ["users"] });
+      toast.success(`"${updatedUser?.name || "User"}" updated successfully!`);
+    },
+    onError: (err: any) => {
+      toast.error(err?.response?.data?.message || err?.message || "Failed to update user");
     },
   });
 }
