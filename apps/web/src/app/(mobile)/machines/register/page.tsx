@@ -201,7 +201,7 @@ function RegisterMachineForm() {
           </div>
           <select
             {...register("storeId")}
-            className="w-full h-12 rounded-2xl bg-slate-100 dark:bg-zinc-800/80 border-transparent text-xs font-medium px-4 text-foreground focus:outline-hidden focus:ring-2 focus:ring-primary shadow-xs"
+            className="w-full h-12 rounded-2xl bg-slate-100 dark:bg-zinc-800/80 border-transparent text-base md:text-xs font-medium px-4 text-foreground focus:outline-hidden focus:ring-2 focus:ring-primary shadow-xs"
           >
             {storesList.length > 0 ? (
               storesList.map((st) => (
@@ -285,7 +285,7 @@ function RegisterMachineForm() {
             </label>
             <select
               {...register("dispenserType")}
-              className="w-full h-12 rounded-2xl bg-slate-100 dark:bg-zinc-800/80 border-transparent text-xs font-medium px-3 text-foreground focus:outline-hidden focus:ring-2 focus:ring-primary shadow-xs"
+              className="w-full h-12 rounded-2xl bg-slate-100 dark:bg-zinc-800/80 border-transparent text-base md:text-xs font-medium px-3 text-foreground focus:outline-hidden focus:ring-2 focus:ring-primary shadow-xs"
             >
               <option value="Spiral Chute">Spiral Chute</option>
               <option value="Rotary Wheel">Rotary Wheel</option>

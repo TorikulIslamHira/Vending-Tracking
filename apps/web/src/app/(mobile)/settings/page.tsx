@@ -254,7 +254,7 @@ export default function MobileSettingsPage() {
                 onChange={(e) => {
                   updateSettings({ currency: e.target.value });
                 }}
-                className="h-9 rounded-xl bg-muted/50 border-border/60 text-xs font-bold px-3 text-foreground focus:outline-hidden focus:ring-2 focus:ring-primary shadow-xs"
+                className="h-9 rounded-xl bg-muted/50 border-border/60 text-base md:text-xs font-bold px-3 text-foreground focus:outline-hidden focus:ring-2 focus:ring-primary shadow-xs"
               >
                 {CURRENCY_OPTIONS.map((opt) => (
                   <option key={opt.code} value={opt.code}>

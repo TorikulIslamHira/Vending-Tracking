@@ -640,7 +640,7 @@ export default function MachineOperationPage() {
                       Select Master Packet *
                     </label>
                     <select
-                      className="flex h-11 w-full rounded-xl border border-input bg-transparent px-3 py-2 text-sm shadow-xs focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
+                      className="flex h-11 w-full rounded-xl border border-input bg-transparent px-3 py-2 text-base md:text-sm shadow-xs focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
                       {...standardForm.register("packetId")}
                     >
                       {packets.map((pkt) => (

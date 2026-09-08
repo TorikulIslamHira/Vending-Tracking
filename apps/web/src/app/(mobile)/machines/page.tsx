@@ -474,7 +474,7 @@ export default function MobileMachinesPage() {
                 Initial Status
               </label>
               <select
-                className="flex h-11 w-full rounded-xl border border-border/60 bg-muted/30 px-3 text-xs font-bold text-foreground shadow-xs focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary"
+                className="flex h-11 w-full rounded-xl border border-border/60 bg-muted/30 px-3 text-base md:text-xs font-bold text-foreground shadow-xs focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary"
                 {...register("status")}
               >
                 <option value={MachineStatus.ONLINE}>ONLINE</option>

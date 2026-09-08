@@ -305,7 +305,7 @@ export default function UserManagementPage() {
               <select
                 value={userRole}
                 onChange={(e) => setUserRole(e.target.value as any)}
-                className="w-full h-11 rounded-xl bg-muted/40 border-border/60 text-xs font-medium px-3 text-foreground focus:outline-hidden focus:ring-2 focus:ring-primary shadow-xs"
+                className="w-full h-11 rounded-xl bg-muted/40 border-border/60 text-base md:text-xs font-medium px-3 text-foreground focus:outline-hidden focus:ring-2 focus:ring-primary shadow-xs"
               >
                 <option value="RESTOCKER">Restocker / Field Agent</option>
                 <option value="MANAGER">Store Manager</option>
