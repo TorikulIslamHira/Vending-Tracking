@@ -59,8 +59,15 @@
   * {
     @apply border-border;
   }
+  html {
+    /* Kills the elastic "bounce" past the top/bottom of the page and the
+       horizontal wobble from an accidental sideways swipe — set on both
+       html and body since browsers are inconsistent about which one owns
+       the document scroller. */
+    @apply overscroll-none overflow-x-hidden;
+  }
   body {
-    @apply bg-background text-foreground antialiased selection:bg-primary/30 selection:text-foreground;
+    @apply bg-background text-foreground antialiased selection:bg-primary/30 selection:text-foreground overscroll-none overflow-x-hidden;
     font-feature-settings: "rlig" 1, "calt" 1;
     -webkit-tap-highlight-color: transparent;
   }

@@ -98,9 +98,9 @@ export default function MachineQrDisplayPage() {
     <>
       {/* SCREEN VIEW ONLY (Completely hidden during print) */}
       <div className="w-full px-4 py-4 space-y-5 flex flex-col justify-between min-h-[780px] print:hidden">
-        {/* Top Header */}
+        {/* Top Header — sticky against the scrollable <main> */}
         <div className="space-y-4">
-          <div className="flex items-center gap-2 pt-1">
+          <div className="flex items-center gap-2 sticky top-0 z-20 -mx-4 px-4 py-3 bg-card/95 backdrop-blur-md border-b border-border/40">
             <button
               onClick={() => router.back()}
               className="h-10 w-10 rounded-2xl bg-muted/50 flex items-center justify-center text-muted-foreground hover:text-foreground active:scale-95 transition-transform shrink-0"

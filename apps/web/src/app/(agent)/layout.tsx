@@ -54,11 +54,18 @@ export default function AgentMobileLayout({
   ];
 
   return (
-    <div className="min-h-screen bg-slate-950 font-sans antialiased text-slate-100 flex flex-col justify-between print:bg-white print:text-black print:min-h-0">
+    // h-[100dvh], not min-h-screen: iOS Safari's address bar collapses and
+    // expands as the page scrolls, and 100vh is sized against the largest
+    // possible viewport, so a fixed bottom nav positioned against it can end
+    // up partly hidden below the visible area. dvh tracks the actual visible
+    // viewport instead. Combined with overflow-hidden here and
+    // overflow-y-auto on <main>, <main> becomes the only scrolling region —
+    // the header and bottom nav never move, matching a native app shell.
+    <div className="h-[100dvh] overflow-hidden bg-slate-950 font-sans antialiased text-slate-100 flex flex-col justify-between print:bg-white print:text-black print:h-auto print:overflow-visible">
       {/* Centered Mobile Container */}
-      <div className="w-full max-w-md mx-auto min-h-screen bg-card text-card-foreground flex flex-col border-x border-border/40 shadow-2xl relative pb-20 print:max-w-none print:w-full print:min-h-0 print:border-none print:shadow-none print:p-0">
+      <div className="w-full max-w-md mx-auto h-full bg-card text-card-foreground flex flex-col border-x border-border/40 shadow-2xl relative print:max-w-none print:w-full print:h-auto print:border-none print:shadow-none print:p-0">
         {/* Top Agent Header */}
-        <header className="sticky top-0 z-30 flex h-14 items-center justify-between border-b bg-card/90 px-4 backdrop-blur-md print:hidden">
+        <header className="sticky top-0 z-30 flex items-center justify-between border-b bg-card/90 px-4 pt-[env(safe-area-inset-top)] backdrop-blur-md print:hidden h-[calc(3.5rem+env(safe-area-inset-top))]">
           <div className="flex items-center gap-2">
             <div className="flex h-8 w-8 items-center justify-center rounded-lg bg-primary text-primary-foreground shadow-sm">
               <Sparkles className="h-4 w-4" />
@@ -93,11 +100,13 @@ export default function AgentMobileLayout({
           </div>
         </header>
 
-        {/* Dynamic Page Content */}
-        <main className="flex-1 p-4 overflow-y-auto print:p-0">{children}</main>
+        {/* Dynamic Page Content — the sole scroll container in this layout */}
+        <main className="flex-1 p-4 pb-24 overflow-y-auto overscroll-contain print:overflow-visible print:p-0">
+          {children}
+        </main>
 
         {/* Fixed Mobile Bottom Navigation Bar */}
-        <nav className="fixed bottom-0 left-0 right-0 z-40 max-w-md mx-auto border-t bg-card/95 backdrop-blur-lg px-3 py-2 flex items-center justify-around shadow-lg print:hidden">
+        <nav className="fixed bottom-0 left-0 right-0 z-40 max-w-md mx-auto border-t bg-card/95 backdrop-blur-lg px-3 pt-2 pb-[calc(0.5rem+env(safe-area-inset-bottom))] flex items-center justify-around shadow-lg print:hidden">
           {navItems.map((item) => {
             const Icon = item.icon;
             return (

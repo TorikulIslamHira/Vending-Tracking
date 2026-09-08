@@ -167,8 +167,8 @@ export default function MobileCashTrackingPage() {
 
   return (
     <div className="w-full px-4 py-4 space-y-4 font-sans">
-      {/* 1. Top Navigation Bar with Back Button */}
-      <div className="flex items-center justify-between pt-1">
+      {/* 1. Top Navigation Bar with Back Button — sticky against <main> */}
+      <div className="flex items-center justify-between sticky top-0 z-20 -mx-4 px-4 py-3 bg-card/95 backdrop-blur-md border-b border-border/40">
         <button
           onClick={() => router.push("/settings")}
           className="flex items-center gap-1.5 text-xs font-bold text-muted-foreground hover:text-foreground active:scale-95 transition-transform"

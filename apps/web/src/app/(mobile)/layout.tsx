@@ -113,20 +113,33 @@ export default function MobileLayout({
   };
 
   return (
-    <div className="w-full min-h-screen bg-background font-sans antialiased flex flex-col items-center justify-start selection:bg-primary/30 print:bg-white print:min-h-0 print:p-0">
+    // h-[100dvh] (not min-h-screen/100vh): iOS Safari's address bar
+    // collapses/expands as you scroll, and 100vh is sized against the
+    // largest possible viewport — a fixed bottom nav positioned against
+    // that can end up partly hidden below the visible area. dvh tracks the
+    // *actual* visible viewport. overflow-hidden here + overflow-y-auto on
+    // <main> below makes <main> the only scrolling region, so the header
+    // and bottom nav never move — the standard native-app-shell layout.
+    <div className="w-full h-[100dvh] overflow-hidden bg-background font-sans antialiased flex flex-col items-center justify-start selection:bg-primary/30 print:bg-white print:h-auto print:overflow-visible print:p-0">
       {/* Mobile-Constrained 100% Single-Column Layout (Zero Desktop Sidebars) */}
       <div
         className={cn(
-          "w-full max-w-md min-h-screen bg-card text-card-foreground flex flex-col relative shadow-md overflow-x-hidden border-x border-border/40 print:max-w-none print:w-full print:min-h-0 print:border-none print:shadow-none print:p-0 print:bg-white",
-          showBottomNav ? "pb-24 print:pb-0" : "pb-6 print:pb-0"
+          "w-full max-w-md h-full bg-card text-card-foreground flex flex-col relative shadow-md border-x border-border/40 print:max-w-none print:w-full print:h-auto print:border-none print:shadow-none print:p-0 print:bg-white"
         )}
       >
-        {/* Main Content Area */}
-        <main className="w-full flex-1 min-w-0 print:p-0">{children}</main>
+        {/* Main Content Area — the sole scroll container in this layout */}
+        <main
+          className={cn(
+            "w-full flex-1 min-w-0 overflow-y-auto overscroll-contain print:overflow-visible print:p-0",
+            showBottomNav ? "pb-24 print:pb-0" : "pb-6 print:pb-0"
+          )}
+        >
+          {children}
+        </main>
 
         {/* Fixed Mobile Bottom Navigation Bar */}
         {showBottomNav && (
-          <nav className="fixed bottom-0 left-0 right-0 z-50 w-full max-w-md mx-auto bg-card/95 backdrop-blur-xl border-t border-border/60 px-3 py-2 flex items-center justify-around shadow-lg print:hidden">
+          <nav className="fixed bottom-0 left-0 right-0 z-50 w-full max-w-md mx-auto bg-card/95 backdrop-blur-xl border-t border-border/60 px-3 pt-2 pb-[calc(0.5rem+env(safe-area-inset-bottom))] flex items-center justify-around shadow-lg print:hidden">
             {tabs.map((tab) => {
               const isActive = getIsActiveTab(tab.href);
               const Icon = tab.icon;
