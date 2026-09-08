@@ -29,7 +29,14 @@ jobs:
           echo "$VPS_SSH_KEY" > ~/.ssh/id_rsa
           chmod 600 ~/.ssh/id_rsa
 
-          SSH_CMD="ssh -o StrictHostKeyChecking=no -o UserKnownHostsFile=/dev/null -o ConnectTimeout=30 -p $VPS_PORT $VPS_USERNAME@$VPS_HOST"
+          # ServerAliveInterval/CountMax: send a keepalive probe every 60s and
+          # tolerate up to 10 missed replies (10 minutes) before giving up.
+          # deploy.sh can run silently for a while during `docker compose
+          # build`/prune, especially under CPU/RAM pressure on the VPS — long
+          # enough for an idle SSH connection to get dropped by the client or
+          # by NAT/firewall equipment in between, which is what
+          # "client_loop: send disconnect: Broken pipe" actually is.
+          SSH_CMD="ssh -o StrictHostKeyChecking=no -o UserKnownHostsFile=/dev/null -o ConnectTimeout=30 -o ServerAliveInterval=60 -o ServerAliveCountMax=10 -p $VPS_PORT $VPS_USERNAME@$VPS_HOST"
 
           # Package the required secrets as a single base64 blob so their raw
           # values never have to be embedded/quoted directly on the SSH command
