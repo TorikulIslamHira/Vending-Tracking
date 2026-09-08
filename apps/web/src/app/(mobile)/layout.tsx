@@ -113,33 +113,35 @@ export default function MobileLayout({
   };
 
   return (
-    // h-[100dvh] (not min-h-screen/100vh): iOS Safari's address bar
-    // collapses/expands as you scroll, and 100vh is sized against the
-    // largest possible viewport — a fixed bottom nav positioned against
-    // that can end up partly hidden below the visible area. dvh tracks the
-    // *actual* visible viewport. overflow-hidden here + overflow-y-auto on
-    // <main> below makes <main> the only scrolling region, so the header
-    // and bottom nav never move — the standard native-app-shell layout.
+    // Native app shell: h-[100dvh] + overflow-hidden here means this outer
+    // box is the only thing that ever owns the full viewport height, and
+    // <main> below is the only descendant with overflow-y-auto — so it's
+    // the only thing that ever scrolls. The bottom nav is placed as a
+    // plain flex-column sibling of <main>, not fixed: since the space
+    // around <main> never scrolls in the first place, it doesn't need
+    // viewport-relative positioning to "stay in place," which also
+    // sidesteps the iOS Safari/Chrome bug where a fixed element's position
+    // ends up stale (e.g. drifting under the address bar) after
+    // backgrounding and restoring the tab — there's no such position math
+    // to desync when the element is just sitting in normal document flow.
     <div className="w-full h-[100dvh] overflow-hidden bg-background font-sans antialiased flex flex-col items-center justify-start selection:bg-primary/30 print:bg-white print:h-auto print:overflow-visible print:p-0">
       {/* Mobile-Constrained 100% Single-Column Layout (Zero Desktop Sidebars) */}
       <div
         className={cn(
-          "w-full max-w-md h-full bg-card text-card-foreground flex flex-col relative shadow-md border-x border-border/40 print:max-w-none print:w-full print:h-auto print:border-none print:shadow-none print:p-0 print:bg-white"
+          "w-full max-w-md h-full overflow-hidden bg-card text-card-foreground flex flex-col relative shadow-md border-x border-border/40 print:max-w-none print:w-full print:h-auto print:border-none print:shadow-none print:p-0 print:bg-white"
         )}
       >
         {/* Main Content Area — the sole scroll container in this layout */}
-        <main
-          className={cn(
-            "w-full flex-1 min-w-0 overflow-y-auto overscroll-contain print:overflow-visible print:p-0",
-            showBottomNav ? "pb-24 print:pb-0" : "pb-6 print:pb-0"
-          )}
-        >
+        <main className="w-full flex-1 min-h-0 min-w-0 overflow-y-auto overscroll-contain print:overflow-visible print:p-0">
           {children}
         </main>
 
-        {/* Fixed Mobile Bottom Navigation Bar */}
+        {/* Bottom Navigation Bar — a plain flex sibling, never fixed. No
+            content-padding compensation needed on <main> either: since
+            this occupies real space in the flex column, <main> naturally
+            ends right above it instead of sliding underneath it. */}
         {showBottomNav && (
-          <nav className="fixed bottom-0 left-0 right-0 z-50 w-full max-w-md mx-auto bg-card/95 backdrop-blur-xl border-t border-border/60 px-3 pt-2 pb-[calc(0.5rem+env(safe-area-inset-bottom))] flex items-center justify-around shadow-lg print:hidden">
+          <nav className="shrink-0 w-full bg-card border-t border-border/60 px-3 pt-2 pb-[calc(0.5rem+env(safe-area-inset-bottom))] flex items-center justify-around print:hidden">
             {tabs.map((tab) => {
               const isActive = getIsActiveTab(tab.href);
               const Icon = tab.icon;

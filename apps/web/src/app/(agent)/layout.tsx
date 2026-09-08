@@ -54,18 +54,26 @@ export default function AgentMobileLayout({
   ];
 
   return (
-    // h-[100dvh], not min-h-screen: iOS Safari's address bar collapses and
-    // expands as the page scrolls, and 100vh is sized against the largest
-    // possible viewport, so a fixed bottom nav positioned against it can end
-    // up partly hidden below the visible area. dvh tracks the actual visible
-    // viewport instead. Combined with overflow-hidden here and
-    // overflow-y-auto on <main>, <main> becomes the only scrolling region —
-    // the header and bottom nav never move, matching a native app shell.
+    // Native app shell: h-[100dvh] + overflow-hidden here means this outer
+    // box is the only thing that ever owns the full viewport height, and
+    // <main> below is the only descendant with overflow-y-auto — so it's
+    // the only thing that ever scrolls. Header and bottom nav are placed
+    // as plain flex-column siblings of <main>, not fixed/sticky: since the
+    // space around <main> never scrolls in the first place, they don't
+    // need viewport-relative positioning to "stay in place," which also
+    // sidesteps the iOS Safari/Chrome bug where a fixed/sticky element's
+    // position ends up stale (e.g. drifting under the address bar) after
+    // backgrounding and restoring the tab — there's no such position math
+    // to desync when the element is just sitting in normal document flow.
     <div className="h-[100dvh] overflow-hidden bg-slate-950 font-sans antialiased text-slate-100 flex flex-col justify-between print:bg-white print:text-black print:h-auto print:overflow-visible">
       {/* Centered Mobile Container */}
       <div className="w-full max-w-md mx-auto h-full bg-card text-card-foreground flex flex-col border-x border-border/40 shadow-2xl relative print:max-w-none print:w-full print:h-auto print:border-none print:shadow-none print:p-0">
-        {/* Top Agent Header */}
-        <header className="sticky top-0 z-30 flex items-center justify-between border-b bg-card/90 px-4 pt-[env(safe-area-inset-top)] backdrop-blur-md print:hidden h-[calc(3.5rem+env(safe-area-inset-top))]">
+        {/* Top Agent Header — a plain flex sibling of <main>, never fixed/sticky.
+            The app shell (outer div) is the only thing that owns the full
+            viewport height, and only <main> scrolls, so the header simply
+            sits at the top of the flex column and can never end up
+            misplaced when iOS recalculates the viewport on tab restore. */}
+        <header className="shrink-0 flex items-center justify-between border-b bg-card px-4 py-3 pt-[calc(0.75rem+env(safe-area-inset-top))] print:hidden">
           <div className="flex items-center gap-2">
             <div className="flex h-8 w-8 items-center justify-center rounded-lg bg-primary text-primary-foreground shadow-sm">
               <Sparkles className="h-4 w-4" />
@@ -101,12 +109,15 @@ export default function AgentMobileLayout({
         </header>
 
         {/* Dynamic Page Content — the sole scroll container in this layout */}
-        <main className="flex-1 p-4 pb-24 overflow-y-auto overscroll-contain print:overflow-visible print:p-0">
+        <main className="flex-1 min-h-0 p-4 overflow-y-auto overscroll-contain print:overflow-visible print:p-0">
           {children}
         </main>
 
-        {/* Fixed Mobile Bottom Navigation Bar */}
-        <nav className="fixed bottom-0 left-0 right-0 z-40 max-w-md mx-auto border-t bg-card/95 backdrop-blur-lg px-3 pt-2 pb-[calc(0.5rem+env(safe-area-inset-bottom))] flex items-center justify-around shadow-lg print:hidden">
+        {/* Bottom Navigation Bar — a plain flex sibling, never fixed. No
+            more content-padding compensation needed either: since this
+            occupies real space in the flex column, <main> naturally ends
+            right above it instead of sliding underneath it. */}
+        <nav className="shrink-0 border-t bg-card px-3 pt-2 pb-[calc(0.5rem+env(safe-area-inset-bottom))] flex items-center justify-around print:hidden">
           {navItems.map((item) => {
             const Icon = item.icon;
             return (

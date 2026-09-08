@@ -59,15 +59,24 @@
   * {
     @apply border-border;
   }
-  html {
-    /* Kills the elastic "bounce" past the top/bottom of the page and the
-       horizontal wobble from an accidental sideways swipe — set on both
-       html and body since browsers are inconsistent about which one owns
-       the document scroller. */
-    @apply overscroll-none overflow-x-hidden;
+  html,
+  body {
+    /* The document itself never scrolls — height: 100% + overflow: hidden
+       fully disables it. Every route layout builds its own h-[100dvh] app
+       shell with a single flex-1 overflow-y-auto <main> as the only
+       scrolling region. This, not fixed/sticky chrome, is what keeps the
+       header and bottom nav from drifting when iOS Safari/Chrome
+       recalculates the viewport after the tab is backgrounded and
+       restored (the classic cause of chrome ending up hidden under the
+       address bar) — a fixed/sticky element's position math is exactly
+       what that recalculation can desync; a plain flex sibling of a
+       non-scrolling ancestor has no such math to get wrong. */
+    height: 100%;
+    overflow: hidden;
+    overscroll-behavior: none;
   }
   body {
-    @apply bg-background text-foreground antialiased selection:bg-primary/30 selection:text-foreground overscroll-none overflow-x-hidden;
+    @apply bg-background text-foreground antialiased selection:bg-primary/30 selection:text-foreground;
     font-feature-settings: "rlig" 1, "calt" 1;
     -webkit-tap-highlight-color: transparent;
   }

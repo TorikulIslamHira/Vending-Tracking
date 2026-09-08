@@ -71,7 +71,7 @@ export default function MobileDashboardPage() {
   return (
     <div className="w-full px-4 py-4 space-y-4 font-sans">
       {/* Top Bar Header — sticky against the scrollable <main>, not the page */}
-      <div className="w-full flex items-center justify-between sticky top-0 z-20 -mx-4 px-4 py-3 bg-card/95 backdrop-blur-md border-b border-border/40">
+      <div className="w-full flex items-center justify-between sticky top-0 z-20 -mx-4 px-4 pb-3 pt-[calc(0.75rem+env(safe-area-inset-top))] bg-card/95 backdrop-blur-md border-b border-border/40">
         <div className="flex items-center gap-2.5">
           <div className="flex h-10 w-10 items-center justify-center rounded-2xl bg-primary text-primary-foreground shadow-sm shadow-primary/30">
             <Sparkles className="h-5 w-5 text-foreground" />
