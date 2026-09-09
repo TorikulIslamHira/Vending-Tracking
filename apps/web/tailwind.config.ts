@@ -1,4 +1,5 @@
 import type { Config } from "tailwindcss";
+import defaultTheme from "tailwindcss/defaultTheme";
 
 const config: Config = {
   darkMode: ["class"],
@@ -55,6 +56,15 @@ const config: Config = {
         lg: "var(--radius)",
         md: "calc(var(--radius) - 2px)",
         sm: "calc(var(--radius) - 4px)",
+      },
+      // Inter is loaded via a <link> tag in app/layout.tsx (not
+      // next/font/google — see the comment there) rather than a
+      // next/font-generated CSS variable, so it has to be named directly
+      // here for the font-sans utility (used throughout the app) to
+      // actually resolve to it, with Tailwind's own default stack as the
+      // fallback if the stylesheet hasn't loaded yet.
+      fontFamily: {
+        sans: ["Inter", ...defaultTheme.fontFamily.sans],
       },
     },
   },

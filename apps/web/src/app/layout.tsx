@@ -1,12 +1,9 @@
 import type { Metadata, Viewport } from "next";
-import { Inter } from "next/font/google";
 import "./globals.css";
 import { Toaster } from "@/components/ui/toast";
 import { QueryProvider } from "@/components/providers/QueryProvider";
 import { KeyboardAvoidingProvider } from "@/components/providers/KeyboardAvoidingProvider";
 import defaultThemeConfig from "@/config/theme";
-
-const inter = Inter({ subsets: ["latin"] });
 
 export const metadata: Metadata = {
   title: `${defaultThemeConfig.appName} - Operator & Admin Dashboard`,
@@ -37,7 +34,31 @@ export default function RootLayout({
 }>) {
   return (
     <html lang="en" suppressHydrationWarning>
-      <body className={inter.className}>
+      <head>
+        {/*
+          next/font/google fetches and self-hosts font files at *build*
+          time — on a VPS build container with restricted/unreliable
+          outbound network access, that fetch can hang and fail the whole
+          `next build` with ETIMEDOUT (exactly what happened in CI/CD).
+          Loading Inter via a plain stylesheet link instead defers that
+          fetch to each visitor's browser at page-load time, so it can
+          never block a build again. preconnect warms up both origins
+          (the stylesheet host and the actual font-file host) before the
+          stylesheet request even resolves.
+        */}
+        <link rel="preconnect" href="https://fonts.googleapis.com" />
+        <link rel="preconnect" href="https://fonts.gstatic.com" crossOrigin="anonymous" />
+        {/* eslint-disable-next-line @next/next/no-page-custom-font --
+            this rule is warning as if this were a per-page <link> (which
+            really would only load the font on one page); this is the App
+            Router *root* layout, the direct equivalent of _document.js in
+            the Pages Router that the rule expects font links to live in. */}
+        <link
+          href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800;900&display=swap"
+          rel="stylesheet"
+        />
+      </head>
+      <body className="antialiased font-sans">
         <QueryProvider>
           <KeyboardAvoidingProvider>
             {children}
