@@ -88,23 +88,37 @@ export function useTenantSettings() {
         localStorage.setItem("bee-tenant-settings", JSON.stringify(updated));
       }
 
-      try {
-        await api.patch("/settings", {
-          currency: updated.currency,
-        });
-      } catch (err) {
-        console.warn("Failed to sync settings to API, kept locally:", err);
-      }
+      // Previously only ever sent `currency` here — every other field
+      // (defaultShopCut/defaultBizCut, the alert toggles) was silently
+      // dropped, so e.g. the commission-split slider only ever updated
+      // localStorage in this one browser and never reached the database
+      // at all. That's why the Dashboard (a separate API call, reading
+      // the tenant's real themeConfig) never reflected a "saved" change.
+      await api.patch("/settings", {
+        currency: updated.currency,
+        defaultShopCut: updated.defaultShopCut,
+        defaultBizCut: updated.defaultBizCut,
+        lowStockAlerts: updated.lowStockAlerts,
+        cashDropAlerts: updated.cashDropAlerts,
+        dailyReports: updated.dailyReports,
+      });
 
       return updated;
     },
     onSuccess: (updated) => {
       queryClient.setQueryData(["tenant-settings"], updated);
       queryClient.invalidateQueries({ queryKey: ["tenant-settings"] });
+      // The Dashboard's Revenue Split widget reads this same commission
+      // split from a different endpoint (/machines/metrics) — invalidate
+      // it too so a change is visible immediately, not just on next
+      // natural refetch.
+      queryClient.invalidateQueries({ queryKey: ["dashboard-metrics"] });
       toast.success("Settings saved successfully!");
     },
-    onError: () => {
-      toast.error("Failed to save settings");
+    onError: (err: any) => {
+      toast.error(
+        err?.response?.data?.message || err?.message || "Failed to save settings"
+      );
     },
   });
 

@@ -2,7 +2,7 @@ import { FastifyReply, FastifyRequest } from "fastify";
 import { eq, and, or, desc, count, isNull } from "drizzle-orm";
 import bcrypt from "bcryptjs";
 import { MachineCreateSchema, MachineDeleteSchema } from "@vending/validation";
-import { db, machines, users, adminAuditLogs } from "../../core/db";
+import { db, machines, users, tenants, adminAuditLogs } from "../../core/db";
 import { computeVirtualCashBalances, computeVirtualCashBalanceForMachine } from "./virtualCashBalance.service";
 import { isRootSuperAdminEmail } from "../../core/rootAdmin";
 
@@ -261,7 +261,7 @@ export async function getDashboardMetricsHandler(
   const tenantId = request.tenantId;
 
   try {
-    const [machinesCountResult, machinesList] = await Promise.all([
+    const [machinesCountResult, machinesList, tenant] = await Promise.all([
       db
         .select({ value: count() })
         .from(machines)
@@ -276,9 +276,18 @@ export async function getDashboardMetricsHandler(
         })
         .from(machines)
         .where(and(eq(machines.tenantId, tenantId), isNull(machines.deletedAt))),
+      db.query.tenants.findFirst({ where: eq(tenants.id, tenantId) }),
     ]);
 
     const totalMachines = machinesCountResult[0]?.value ?? 0;
+
+    // Same tenants.themeConfig the Settings page's slider actually writes to
+    // (see settings.controller.ts) — this used to be hardcoded to 30/70
+    // here regardless of what was configured, which is why the dashboard
+    // never reflected a saved commission split change.
+    const theme = (tenant?.themeConfig as any) || {};
+    const shopCutPercent = Number(theme.defaultShopCut ?? 30);
+    const businessCutPercent = Number(theme.defaultBizCut ?? 70);
 
     const balances = await computeVirtualCashBalances(db, tenantId, machinesList);
 
@@ -310,13 +319,18 @@ export async function getDashboardMetricsHandler(
         totalMachines,
         totalRestocked,
         totalVirtualCash,
-        shopCutPercent: 30,
-        businessCutPercent: 70,
+        shopCutPercent,
+        businessCutPercent,
         missedVisitsCount: offlineCount,
         attentionMachines,
       },
     });
-  } catch {
+  } catch (err) {
+    request.log.error(err);
+    // 30/70 here is only the same last-resort default getSettingsHandler
+    // itself falls back to when nothing has ever been configured — not a
+    // value that overrides a real saved setting, since this branch only
+    // runs when the query above failed and no real value was ever read.
     return reply.send({
       statusCode: 200,
       data: {
