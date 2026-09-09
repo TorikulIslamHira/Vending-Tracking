@@ -16,18 +16,24 @@
 
 workflows:
   android-release:
-    name: Android Release (APK + AAB)
+    name: Android Debug (testable APK, unsigned)
     max_build_duration: 60
     instance_type: linux_x2
     environment:
       node: 22
-      # android_signing references a keystore uploaded once under Codemagic
-      # → Team settings → Code signing identities → Android keystores.
-      # TODO: create that reference and put its name here — until you do,
-      # this workflow still runs and produces a real APK/AAB, just an
-      # *unsigned* one (see the guard in android/app/build.gradle).
-      android_signing:
-        - bee_vending_keystore
+      # android_signing intentionally disabled: it referenced a keystore
+      # ("bee_vending_keystore") that was never actually created under
+      # Codemagic → Team settings → Code signing identities → Android
+      # keystores, which failed the whole build with "No keystores with
+      # reference 'bee_vending_keystore' were found" before a single build
+      # script even ran. Debug builds (assembleDebug below) are signed
+      # automatically with Android's built-in debug keystore, so no
+      # Codemagic-side signing config is needed for this workflow at all.
+      # Re-enable this block (and switch the build step back to
+      # assembleRelease/bundleRelease) once that keystore reference
+      # actually exists in the dashboard:
+      # android_signing:
+      #   - bee_vending_keystore
       vars:
         PACKAGE_NAME: "com.beenovelty.vending"
     cache:
@@ -48,19 +54,19 @@ workflows:
       - name: Capacitor sync (Android)
         script: npx cap sync android
 
-      - name: Build Android release (APK + AAB)
-        # bundleRelease is added alongside the requested assembleRelease —
-        # assembleRelease alone only produces the .apk, and an .aab (the
-        # format Play Store submissions require) needs the separate
-        # bundleRelease Gradle task run too.
+      - name: Build Android debug APK
+        # assembleDebug, not assembleRelease: debug builds are signed with
+        # Android's built-in debug keystore automatically, so this produces
+        # an installable, testable APK with no Codemagic-side signing setup
+        # required at all. Not for Play Store distribution — switch back to
+        # assembleRelease/bundleRelease (and re-enable android_signing
+        # above) once a real keystore reference exists.
         script: |
           cd android
           chmod +x ./gradlew
-          ./gradlew assembleRelease bundleRelease
+          ./gradlew assembleDebug
     artifacts:
-      - android/app/build/outputs/**/*.apk
-      - android/app/build/outputs/**/*.aab
-      - android/app/build/outputs/**/mapping.txt
+      - android/app/build/outputs/apk/debug/**/*.apk
     publishing:
       email:
         recipients:
