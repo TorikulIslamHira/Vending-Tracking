@@ -48,7 +48,7 @@ export default function MobileLayout({
 }) {
   const pathname = usePathname();
   const router = useRouter();
-  const { isAuthenticated, token } = useAuthStore();
+  const { user, isAuthenticated, token } = useAuthStore();
   const [mounted, setMounted] = React.useState(false);
 
   React.useEffect(() => {
@@ -64,6 +64,18 @@ export default function MobileLayout({
       router.push(`/login?redirect=${redirectUrl}`);
     }
   }, [mounted, isAuthPage, isAuthenticated, token, pathname, router]);
+
+  // RBAC guard: every page in this layout is admin-tooling (fleet, users,
+  // reports, settings, ...) — a Field Agent has no legitimate reason to be
+  // here even if they type the URL directly or tap a stale link. Redirect
+  // them to their actual home instead of leaving the full admin nav/data
+  // visible (this is the client-side half; middleware.ts also blocks these
+  // paths at the edge so a direct navigation never even renders this far).
+  React.useEffect(() => {
+    if (mounted && !isAuthPage && isAuthenticated && user && user.role !== "ADMIN") {
+      router.replace("/scan");
+    }
+  }, [mounted, isAuthPage, isAuthenticated, user, router]);
 
   // Bottom Navigation Bar is displayed on primary and secondary operational list views (never on auth pages)
   const bottomNavRoutes = [

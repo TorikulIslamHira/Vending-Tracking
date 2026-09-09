@@ -50,7 +50,7 @@ export default function RestockerAssignmentPage() {
   const [isSaving, setIsSaving] = useState(false);
 
   const restockers: RestockerAgent[] = users
-    .filter((u) => u.role === "RESTOCKER" || u.role === "FIELD_AGENT" || u.role === "MANAGER")
+    .filter((u) => u.role === "FIELD_AGENT")
     .map((u) => ({
       id: u.id,
       name: u.name,

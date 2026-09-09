@@ -32,6 +32,14 @@ export const useAuthStore = create<AuthState>()(
       setAuth: (user, token) => {
         if (typeof document !== "undefined") {
           document.cookie = `auth-token=${token}; path=/; max-age=604800; SameSite=Lax`;
+          // Plain, readable (non-httpOnly) cookie purely for middleware's
+          // routing decisions — which home page to redirect to, which
+          // paths to block. It is NEVER trusted as an authorization
+          // boundary: a client could tamper with it, but every API call
+          // still re-verifies the actual JWT and role server-side (see
+          // tenantHandler/requireRole), so tampering here only ever
+          // affects which page you're bounced to, not what you can do.
+          document.cookie = `user-role=${user.role}; path=/; max-age=604800; SameSite=Lax`;
         }
         set({
           user,
@@ -46,6 +54,7 @@ export const useAuthStore = create<AuthState>()(
       logout: () => {
         if (typeof document !== "undefined") {
           document.cookie = "auth-token=; path=/; max-age=0; SameSite=Lax";
+          document.cookie = "user-role=; path=/; max-age=0; SameSite=Lax";
         }
         set({
           user: null,

@@ -5,11 +5,20 @@ import { toast } from "sonner";
 
 import { api } from "@/lib/api";
 
+/**
+ * The backend only ever stores exactly two roles — ADMIN and FIELD_AGENT
+ * (see @vending/shared-types UserRole). "MANAGER"/"RESTOCKER" used to exist
+ * only as dropdown labels on the frontend, mapped down to one of these two
+ * before ever reaching the API; that mapping silently dropped "MANAGER" to
+ * FIELD_AGENT instead of ADMIN, so selecting "Store Manager" never actually
+ * granted admin access. Fixed by dropping the extra UI-only values entirely
+ * — see the Edit/Add User dropdown in (mobile)/users/page.tsx.
+ */
 export interface AppUser {
   id: string;
   name: string;
   email: string;
-  role: "ADMIN" | "MANAGER" | "RESTOCKER" | "FIELD_AGENT";
+  role: "ADMIN" | "FIELD_AGENT";
   status: "ACTIVE" | "INACTIVE";
   assignedCount: number;
   /** The single root Super Admin bootstrapped from SUPER_ADMIN_EMAIL — cannot be deactivated. */
@@ -40,13 +49,13 @@ export function useCreateUser() {
     mutationFn: async (data: {
       name: string;
       email: string;
-      role: "ADMIN" | "MANAGER" | "RESTOCKER" | "FIELD_AGENT";
+      role: "ADMIN" | "FIELD_AGENT";
       password: string;
     }) => {
       const res = await api.post("/users", {
         name: data.name,
         email: data.email,
-        role: data.role === "ADMIN" ? "ADMIN" : "FIELD_AGENT",
+        role: data.role,
         password: data.password,
       });
       return res.data?.data;
@@ -72,14 +81,14 @@ export function useUpdateUser() {
       userId: string;
       name?: string;
       email?: string;
-      role?: "ADMIN" | "MANAGER" | "RESTOCKER" | "FIELD_AGENT";
+      role?: "ADMIN" | "FIELD_AGENT";
       /** Omit (or leave blank) to keep the user's current password. */
       password?: string;
     }) => {
       const payload: Record<string, string> = {};
       if (data.name !== undefined) payload.name = data.name;
       if (data.email !== undefined) payload.email = data.email;
-      if (data.role !== undefined) payload.role = data.role === "ADMIN" ? "ADMIN" : "FIELD_AGENT";
+      if (data.role !== undefined) payload.role = data.role;
       if (data.password) payload.password = data.password;
 
       const res = await api.patch(`/users/${userId}`, payload);

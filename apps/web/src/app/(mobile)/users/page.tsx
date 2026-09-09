@@ -58,9 +58,7 @@ export default function UserManagementPage() {
   // Form State
   const [userName, setUserName] = useState("");
   const [userEmail, setUserEmail] = useState("");
-  const [userRole, setUserRole] = useState<
-    "ADMIN" | "MANAGER" | "RESTOCKER" | "FIELD_AGENT"
-  >("FIELD_AGENT");
+  const [userRole, setUserRole] = useState<"ADMIN" | "FIELD_AGENT">("FIELD_AGENT");
   const [userPassword, setUserPassword] = useState("");
 
   const handleOpenAdd = () => {
@@ -182,8 +180,8 @@ export default function UserManagementPage() {
         ) : (
           users.map((user) => {
             const isAdmin = user.role === "ADMIN";
-            const isManager = user.role === "MANAGER";
             const isInactive = user.status === "INACTIVE";
+            const roleLabel = isAdmin ? "Admin" : "Field Agent";
 
             return (
               <Card
@@ -199,8 +197,6 @@ export default function UserManagementPage() {
                       className={`h-11 w-11 rounded-2xl flex items-center justify-center font-black text-sm shrink-0 shadow-xs ${
                         isAdmin
                           ? "bg-primary/20 text-foreground"
-                          : isManager
-                          ? "bg-purple-500/15 text-purple-600 dark:text-purple-400"
                           : "bg-secondary/15 text-secondary"
                       }`}
                     >
@@ -219,12 +215,10 @@ export default function UserManagementPage() {
                           className={`text-[9px] font-black uppercase tracking-wider px-2 py-0.5 rounded-full ${
                             isAdmin
                               ? "bg-primary/20 text-foreground"
-                              : isManager
-                              ? "bg-purple-500/15 text-purple-600 dark:text-purple-400"
                               : "bg-blue-500/15 text-blue-600 dark:text-blue-400"
                           }`}
                         >
-                          {user.role}
+                          {roleLabel}
                         </span>
                       </div>
                       <p className="text-[11px] text-muted-foreground truncate">
@@ -340,12 +334,11 @@ export default function UserManagementPage() {
               </label>
               <select
                 value={userRole}
-                onChange={(e) => setUserRole(e.target.value as any)}
+                onChange={(e) => setUserRole(e.target.value as "ADMIN" | "FIELD_AGENT")}
                 className="w-full h-11 rounded-xl bg-muted/40 border-border/60 text-base md:text-xs font-medium px-3 text-foreground focus:outline-hidden focus:ring-2 focus:ring-primary shadow-xs"
               >
-                <option value="RESTOCKER">Restocker / Field Agent</option>
-                <option value="MANAGER">Store Manager</option>
-                <option value="ADMIN">Tenant Administrator</option>
+                <option value="FIELD_AGENT">Field Agent (Restocker)</option>
+                <option value="ADMIN">Admin (Store Manager)</option>
               </select>
             </div>
 

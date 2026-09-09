@@ -12,6 +12,7 @@ import {
   ClipboardList,
   Sparkles,
   User,
+  UserCircle,
   ShieldAlert,
   Loader2,
   LogIn,
@@ -32,6 +33,12 @@ export default function AgentMobileLayout({
     setMounted(true);
   }, []);
 
+  // The third tab depends on role: an Admin using the scan/history flow
+  // still needs a way back to their dashboard, but a Field Agent has no
+  // legitimate reason to see (or reach) admin-only pages — RBAC UI fix,
+  // not just cosmetic, since /dashboard lives in the (mobile) route group
+  // which used to have no role check of its own (see that layout's guard).
+  const isAdmin = user?.role === "ADMIN";
   const navItems = [
     {
       label: "Scan QR",
@@ -45,12 +52,19 @@ export default function AgentMobileLayout({
       icon: ClipboardList,
       active: pathname === "/history",
     },
-    {
-      label: "Admin Portal",
-      href: "/dashboard",
-      icon: LayoutDashboard,
-      active: pathname === "/dashboard",
-    },
+    isAdmin
+      ? {
+          label: "Admin Portal",
+          href: "/dashboard",
+          icon: LayoutDashboard,
+          active: pathname === "/dashboard",
+        }
+      : {
+          label: "Profile",
+          href: "/profile",
+          icon: UserCircle,
+          active: pathname === "/profile",
+        },
   ];
 
   return (
