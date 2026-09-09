@@ -16,10 +16,33 @@ android {
             ignoreAssetsPattern = '!.svn:!.git:!.ds_store:!*.scc:.*:!CVS:!thumbs.db:!picasa.ini:!*~'
         }
     }
+    // Release signing, wired to Codemagic's standard keystore-reference env
+    // vars (CM_KEYSTORE_PATH/CM_KEYSTORE_PASSWORD/CM_KEY_ALIAS/
+    // CM_KEY_PASSWORD — set automatically when android_signing is
+    // configured in codemagic.yaml; see that file's comments for the
+    // one-time setup in the Codemagic dashboard). Guarded so a local
+    // `./gradlew assembleRelease` without those vars set still succeeds —
+    // it just produces an unsigned release artifact, exactly like this
+    // project did before any signing config existed — rather than failing
+    // outright for anyone building locally without CI credentials.
+    if (System.getenv("CM_KEYSTORE_PATH")) {
+        signingConfigs {
+            release {
+                storeFile file(System.getenv("CM_KEYSTORE_PATH"))
+                storePassword System.getenv("CM_KEYSTORE_PASSWORD")
+                keyAlias System.getenv("CM_KEY_ALIAS")
+                keyPassword System.getenv("CM_KEY_PASSWORD")
+            }
+        }
+    }
+
     buildTypes {
         release {
             minifyEnabled false
             proguardFiles getDefaultProguardFile('proguard-android.txt'), 'proguard-rules.pro'
+            if (System.getenv("CM_KEYSTORE_PATH")) {
+                signingConfig signingConfigs.release
+            }
         }
     }
 }

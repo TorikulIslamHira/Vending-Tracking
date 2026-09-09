@@ -1,0 +1,159 @@
+# Codemagic CI/CD — Bee Vending (Capacitor 8, pnpm monorepo, Hosted Web App)
+#
+# This is a Hosted Web App shell (capacitor.config.ts server.url points at
+# the live production site), so neither workflow builds the Next.js app —
+# there's nothing in apps/web that ends up in the native binary. Both
+# workflows exist purely to sync the native projects with the current
+# Capacitor config/plugins and produce a signed installable artifact.
+#
+# I could not validate this file against Codemagic's live schema/linter
+# from this environment (no Codemagic CLI or account access here) — the
+# structure below follows their long-documented, standard patterns, but
+# please run it through Codemagic's own YAML editor/validator (or a first
+# real build) before relying on it, and use their "Add iOS code signing"
+# setup wizard in the dashboard to double-check the ios_signing block below
+# matches your actual connected Apple Developer integration.
+
+workflows:
+  android-release:
+    name: Android Release (APK + AAB)
+    max_build_duration: 60
+    instance_type: linux_x2
+    environment:
+      node: 22
+      # android_signing references a keystore uploaded once under Codemagic
+      # → Team settings → Code signing identities → Android keystores.
+      # TODO: create that reference and put its name here — until you do,
+      # this workflow still runs and produces a real APK/AAB, just an
+      # *unsigned* one (see the guard in android/app/build.gradle).
+      android_signing:
+        - bee_vending_keystore
+      vars:
+        PACKAGE_NAME: "com.beenovelty.vending"
+    cache:
+      cache_paths:
+        - $HOME/.pnpm-store
+    scripts:
+      - name: Enable pnpm via Corepack
+        # pnpm isn't one of Codemagic's built-in versioned tools the way
+        # node/xcode/cocoapods are — enabling it through corepack (already
+        # how this repo's own Dockerfiles do it) is the standard approach.
+        script: |
+          corepack enable
+          corepack prepare pnpm@11.23.0 --activate
+
+      - name: Install workspace dependencies
+        script: pnpm install --frozen-lockfile
+
+      - name: Capacitor sync (Android)
+        script: npx cap sync android
+
+      - name: Build Android release (APK + AAB)
+        # bundleRelease is added alongside the requested assembleRelease —
+        # assembleRelease alone only produces the .apk, and an .aab (the
+        # format Play Store submissions require) needs the separate
+        # bundleRelease Gradle task run too.
+        script: |
+          cd android
+          chmod +x ./gradlew
+          ./gradlew assembleRelease bundleRelease
+    artifacts:
+      - android/app/build/outputs/**/*.apk
+      - android/app/build/outputs/**/*.aab
+      - android/app/build/outputs/**/mapping.txt
+    publishing:
+      email:
+        recipients:
+          - your-email@example.com # TODO: replace with a real recipient
+        notify:
+          success: true
+          failure: true
+      # Uncomment once you have a Google Play service account JSON stored
+      # as a Codemagic environment variable group, to auto-upload the AAB:
+      # google_play:
+      #   credentials: $GCLOUD_SERVICE_ACCOUNT_CREDENTIALS
+      #   track: internal
+      #   submit_as_draft: true
+
+  ios-release:
+    name: iOS Release (.ipa)
+    max_build_duration: 60
+    # Adjust to whichever Apple Silicon/Intel instance type your Codemagic
+    # plan currently offers — instance naming has changed across Codemagic
+    # generations and I can't confirm the current one from here.
+    instance_type: mac_mini_m2
+    environment:
+      node: 22
+      xcode: latest
+      # No `cocoapods:` key here on purpose: this project's iOS platform
+      # (Capacitor 8's current default) resolves plugin dependencies via
+      # Swift Package Manager — see ios/App/CapApp-SPM/Package.swift — not
+      # CocoaPods. There is no Podfile in ios/App, so a `pod install` step
+      # would fail with "No Podfile found" rather than being a harmless
+      # no-op. xcodebuild resolves the SPM packages itself during the
+      # archive step below; nothing extra is needed for that.
+      ios_signing:
+        # app_store | ad_hoc | enterprise | development — pick per how
+        # you intend to distribute this build.
+        distribution_type: app_store
+        bundle_identifier: com.beenovelty.vending
+      vars:
+        XCODE_PROJECT: "ios/App/App.xcodeproj"
+        XCODE_SCHEME: "App"
+        # These two are documentation for whoever sets this up, not values
+        # a script below reads directly — the actual team/profile
+        # resolution happens through Codemagic's connected Apple Developer
+        # integration (ios_signing above) via `xcode-project use-profiles`.
+        # TODO: fill in from https://developer.apple.com/account (Membership
+        # for the Team ID) and your provisioning profile's name in App Store
+        # Connect / the Apple Developer portal.
+        APPLE_TEAM_ID: "YOUR_APPLE_TEAM_ID"
+        PROVISIONING_PROFILE_NAME: "YOUR_PROVISIONING_PROFILE_NAME"
+    scripts:
+      - name: Enable pnpm via Corepack
+        script: |
+          corepack enable
+          corepack prepare pnpm@11.23.0 --activate
+
+      - name: Install workspace dependencies
+        script: pnpm install --frozen-lockfile
+
+      - name: Capacitor sync (iOS)
+        script: npx cap sync ios
+
+      - name: Set up code signing
+        # keychain initialize: prepares a clean local keychain on the build
+        # machine for the certificate(s) Codemagic fetches.
+        # xcode-project use-profiles: pulls the certificate + provisioning
+        # profile matching ios_signing above (via your connected Apple
+        # Developer Portal / App Store Connect integration) and wires them
+        # into the Xcode project automatically — this is what actually
+        # resolves the Team ID / profile, not the two vars above.
+        script: |
+          keychain initialize
+          xcode-project use-profiles
+
+      - name: Build .ipa (Codemagic's xcodebuild integration)
+        # xcode-project build-ipa wraps `xcodebuild archive` +
+        # `xcodebuild -exportArchive` (Codemagic's documented "native
+        # xcodebuild integration" helper) using the project/scheme above
+        # and whatever export options use-profiles just configured.
+        script: |
+          xcode-project build-ipa \
+            --project "$XCODE_PROJECT" \
+            --scheme "$XCODE_SCHEME"
+    artifacts:
+      - build/ios/ipa/*.ipa
+      - /tmp/xcodebuild_logs/*.log
+    publishing:
+      email:
+        recipients:
+          - your-email@example.com # TODO: replace with a real recipient
+        notify:
+          success: true
+          failure: true
+      # Uncomment once ready to auto-upload to TestFlight/App Store Connect
+      # (requires an App Store Connect API key configured in Codemagic):
+      # app_store_connect:
+      #   auth: integration
+      #   submit_to_testflight: true
