@@ -10,7 +10,10 @@
     "build": "pnpm -r run build",
     "typecheck": "pnpm -r run typecheck",
     "lint": "eslint .",
-    "format": "prettier --write ."
+    "format": "prettier --write .",
+    "cap:sync": "cap sync",
+    "build:android": "cap sync android && cap open android",
+    "build:ios": "cap sync ios && cap open ios"
   },
   "keywords": [
     "vending",
@@ -29,9 +32,16 @@
   "packageManager": "pnpm@11.23.0",
   "type": "module",
   "dependencies": {
+    "@capacitor/android": "^8.5.1",
+    "@capacitor/core": "^8.5.1",
+    "@capacitor/ios": "^8.5.1",
+    "@capacitor/keyboard": "^8.0.5",
+    "@capacitor/splash-screen": "^8.0.2",
+    "@capacitor/status-bar": "^8.0.3",
     "bcryptjs": "^3.0.3"
   },
   "devDependencies": {
+    "@capacitor/cli": "^8.5.1",
     "@eslint/eslintrc": "^3.3.7",
     "@eslint/js": "^9.39.5",
     "@types/bcryptjs": "^3.0.0",

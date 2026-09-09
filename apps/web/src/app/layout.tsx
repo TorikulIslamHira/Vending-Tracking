@@ -3,6 +3,7 @@ import "./globals.css";
 import { Toaster } from "@/components/ui/toast";
 import { QueryProvider } from "@/components/providers/QueryProvider";
 import { KeyboardAvoidingProvider } from "@/components/providers/KeyboardAvoidingProvider";
+import { NativeSplashScreenProvider } from "@/components/providers/NativeSplashScreenProvider";
 import defaultThemeConfig from "@/config/theme";
 
 export const metadata: Metadata = {
@@ -60,10 +61,12 @@ export default function RootLayout({
       </head>
       <body className="antialiased font-sans">
         <QueryProvider>
-          <KeyboardAvoidingProvider>
-            {children}
-            <Toaster position="top-right" richColors />
-          </KeyboardAvoidingProvider>
+          <NativeSplashScreenProvider>
+            <KeyboardAvoidingProvider>
+              {children}
+              <Toaster position="top-right" richColors />
+            </KeyboardAvoidingProvider>
+          </NativeSplashScreenProvider>
         </QueryProvider>
       </body>
     </html>
