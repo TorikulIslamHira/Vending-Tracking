@@ -48,7 +48,8 @@ export default function BrowseMachinesDirectoryPage() {
         !searchLower ||
         store.name.toLowerCase().includes(searchLower) ||
         (store.locationName && store.locationName.toLowerCase().includes(searchLower)) ||
-        (store.category && store.category.toLowerCase().includes(searchLower));
+        (store.category && store.category.toLowerCase().includes(searchLower)) ||
+        (store.eircode && store.eircode.toLowerCase().includes(searchLower));
 
       const matchingMachines = storeMachines.filter((m: StoreMachineItem) => {
         if (!searchLower || storeMatches) return true;
@@ -117,7 +118,7 @@ export default function BrowseMachinesDirectoryPage() {
         <Search className="absolute left-3.5 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground pointer-events-none" />
         <Input
           type="text"
-          placeholder="Search store, venue, serial, or key number..."
+          placeholder="Search store, venue, eircode, serial, or key number..."
           value={searchQuery}
           onChange={(e) => setSearchQuery(e.target.value)}
           className="h-11 rounded-2xl bg-card border-border/60 pl-10 pr-8 text-xs focus-visible:ring-primary shadow-xs"

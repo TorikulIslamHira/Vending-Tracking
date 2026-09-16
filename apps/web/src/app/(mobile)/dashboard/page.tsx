@@ -1,10 +1,10 @@
 "use client";
 
-import React, { useState } from "react";
+import React from "react";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { useAuthStore } from "@/store/useAuthStore";
-import { useDashboardMetrics, AttentionMachineItem } from "@/hooks/useDashboardMetrics";
+import { useDashboardMetrics } from "@/hooks/useDashboardMetrics";
 import { useCurrency } from "@/hooks/useTenantSettings";
 import defaultThemeConfig from "@/config/theme";
 import { toast } from "sonner";
@@ -13,16 +13,12 @@ import { Card, CardContent } from "@/components/ui/card";
 import {
   Sparkles,
   Boxes,
-  Layers,
   Coins,
   AlertTriangle,
   ChevronRight,
   Plus,
-  Check,
   MapPin,
   TrendingUp,
-  Percent,
-  CheckCircle2,
   QrCode,
   RotateCw,
 } from "lucide-react";
@@ -33,37 +29,11 @@ export default function MobileDashboardPage() {
   const { data: metrics, isLoading, isRefetching, refetch } = useDashboardMetrics();
   const { format: formatMoney } = useCurrency();
 
-  const [selectedMachineIds, setSelectedMachineIds] = useState<string[]>([]);
-
-  const attentionList = metrics?.attentionMachines || [];
-
-  const handleToggleSelect = (id: string) => {
-    setSelectedMachineIds((prev) =>
-      prev.includes(id) ? prev.filter((mId) => mId !== id) : [...prev, id]
-    );
-  };
-
-  const selectedCount = selectedMachineIds.length;
-
-  const handleBatchAction = () => {
-    if (selectedCount === 0) return;
-    toast.success(
-      `Dispatched restock route for ${selectedCount} flagged machine${
-        selectedCount > 1 ? "s" : ""
-      }!`
-    );
-    setSelectedMachineIds([]);
-  };
-
-  // Metrics Data Calculations
+  // Metrics Data Calculations — exactly the 3 streamlined dashboard metrics.
   const totalMachines = metrics?.totalMachines ?? 0;
-  const totalRestockedUnits = metrics?.totalRestocked ?? 0;
-  const totalVirtualCash = metrics?.totalVirtualCash ?? 0;
-  const shopCutPercent = metrics?.shopCutPercent ?? 30;
-  const businessCutPercent = metrics?.businessCutPercent ?? 70;
-  const shopCutAmount = totalVirtualCash * (shopCutPercent / 100);
-  const businessCutAmount = totalVirtualCash * (businessCutPercent / 100);
-  const missedVisitsCount = metrics?.missedVisitsCount ?? 0;
+  const totalCollection = metrics?.totalCollection ?? 0;
+  const activeMachinesCount = metrics?.activeMachinesCount ?? 0;
+  const attentionNeededCount = metrics?.attentionNeededCount ?? 0;
 
   // True empty state when fleet is empty
   const isFleetEmpty = !isLoading && totalMachines === 0;
@@ -141,251 +111,89 @@ export default function MobileDashboardPage() {
           </Button>
         </div>
       ) : (
-        /* SCREEN 2: MAIN DASHBOARD VIEW */
-        <div className="w-full space-y-3.5">
-          {/* 1. Stacked Metric Cards (Vertical Stack for Mobile Viewports) */}
-          <div className="flex flex-col gap-2.5 w-full">
-            {/* Metric Card 1: Total Machines */}
-            <Card className="w-full border-border/50 bg-gradient-to-r from-card to-card/60 shadow-xs">
-              <CardContent className="p-3.5 flex items-center justify-between">
-                <div className="space-y-0.5">
-                  <span className="text-[10px] font-bold uppercase tracking-wider text-muted-foreground">
-                    Total Machines
-                  </span>
-                  {isLoading ? (
-                    <div className="h-7 w-24 bg-muted/60 rounded-lg animate-pulse my-1" />
-                  ) : (
-                    <div className="text-2xl font-black text-foreground font-mono">
-                      {totalMachines}{" "}
-                      <span className="text-xs font-normal text-muted-foreground font-sans">
-                        Units
-                      </span>
-                    </div>
-                  )}
-                  <div className="flex items-center gap-1 text-[10px] text-emerald-600 dark:text-emerald-400 font-semibold">
-                    <TrendingUp className="h-3 w-3" />
-                    <span>100% Online & Active</span>
-                  </div>
-                </div>
-                <div className="h-10 w-10 rounded-2xl bg-primary/15 flex items-center justify-center text-primary shadow-xs shrink-0">
-                  <Boxes className="h-5 w-5" />
-                </div>
-              </CardContent>
-            </Card>
-
-            {/* Metric Card 2: Restocked Inventory */}
-            <Card className="w-full border-border/50 bg-gradient-to-r from-card to-card/60 shadow-xs">
-              <CardContent className="p-3.5 flex items-center justify-between">
-                <div className="space-y-0.5">
-                  <span className="text-[10px] font-bold uppercase tracking-wider text-muted-foreground">
-                    Inventory Restocked
-                  </span>
-                  {isLoading ? (
-                    <div className="h-7 w-28 bg-muted/60 rounded-lg animate-pulse my-1" />
-                  ) : (
-                    <div className="text-2xl font-black text-foreground font-mono">
-                      {totalRestockedUnits.toLocaleString()}{" "}
-                      <span className="text-xs font-normal text-muted-foreground font-sans">
-                        pcs
-                      </span>
-                    </div>
-                  )}
-                  <div className="flex items-center gap-1 text-[10px] text-blue-600 dark:text-blue-400 font-semibold">
-                    <span>Active Telemetry Logs</span>
-                  </div>
-                </div>
-                <div className="h-10 w-10 rounded-2xl bg-blue-500/15 flex items-center justify-center text-blue-600 dark:text-blue-400 shadow-xs shrink-0">
-                  <Layers className="h-5 w-5" />
-                </div>
-              </CardContent>
-            </Card>
-
-            {/* Metric Card 3: Virtual Cash */}
-            <Card className="w-full border-border/50 bg-gradient-to-r from-card to-card/60 shadow-xs">
-              <CardContent className="p-3.5 flex items-center justify-between">
-                <div className="space-y-0.5">
-                  <span className="text-[10px] font-bold uppercase tracking-wider text-muted-foreground">
-                    Virtual Cash Balance
-                  </span>
-                  {isLoading ? (
-                    <div className="h-7 w-32 bg-muted/60 rounded-lg animate-pulse my-1" />
-                  ) : (
-                    <div className="text-2xl font-black text-foreground font-mono">
-                      {formatMoney(totalVirtualCash)}
-                    </div>
-                  )}
-                  <div className="flex items-center gap-1 text-[10px] text-amber-600 dark:text-amber-400 font-semibold">
-                    <span>Ready for agent collection</span>
-                  </div>
-                </div>
-                <div className="h-10 w-10 rounded-2xl bg-amber-500/15 flex items-center justify-center text-amber-600 dark:text-amber-400 shadow-xs shrink-0">
-                  <Coins className="h-5 w-5" />
-                </div>
-              </CardContent>
-            </Card>
-          </div>
-
-          {/* 2. Custom Progress Bar: Shop Cut vs Business Cut */}
-          <Card className="w-full border-border/50 bg-card shadow-xs">
-            <CardContent className="p-3.5 space-y-2">
-              <div className="flex items-center justify-between text-xs">
-                <div className="flex items-center gap-1.5 font-bold text-foreground">
-                  <Percent className="h-3.5 w-3.5 text-primary" />
-                  <span>Revenue Split Allocation</span>
-                </div>
-                <span className="text-[10px] font-bold text-muted-foreground">
-                  {shopCutPercent}% Shop / {businessCutPercent}% Business
+        /* SCREEN 2: MAIN DASHBOARD VIEW — exactly 3 metric cards */
+        <div className="w-full space-y-2.5">
+          {/* Metric Card 1: Total Collection */}
+          <Card className="w-full border-border/50 bg-gradient-to-r from-card to-card/60 shadow-xs">
+            <CardContent className="p-3.5 flex items-center justify-between">
+              <div className="space-y-0.5">
+                <span className="text-[10px] font-bold uppercase tracking-wider text-muted-foreground">
+                  Total Collection
                 </span>
-              </div>
-
-              {/* Progress Bar Track */}
-              <div className="h-3 w-full bg-slate-100 dark:bg-zinc-800 rounded-full overflow-hidden flex p-0.5 shadow-inner">
-                {/* Shop Cut (Sky Blue) */}
-                <div
-                  className="h-full bg-secondary rounded-l-full transition-all duration-500 ease-out"
-                  style={{ width: `${shopCutPercent}%` }}
-                />
-                {/* Business Cut (Vibrant Yellow) */}
-                <div
-                  className="h-full bg-primary rounded-r-full transition-all duration-500 ease-out"
-                  style={{ width: `${businessCutPercent}%` }}
-                />
-              </div>
-
-              <div className="flex items-center justify-between text-[11px] pt-0.5">
-                <div className="flex items-center gap-1.5">
-                  <span className="h-2 w-2 rounded-full bg-secondary" />
-                  <span className="text-muted-foreground">
-                    Shop:{" "}
-                    <strong className="text-foreground font-mono">
-                      {formatMoney(shopCutAmount)}
-                    </strong>
-                  </span>
+                {isLoading ? (
+                  <div className="h-7 w-32 bg-muted/60 rounded-lg animate-pulse my-1" />
+                ) : (
+                  <div className="text-2xl font-black text-foreground font-mono">
+                    {formatMoney(totalCollection)}
+                  </div>
+                )}
+                <div className="flex items-center gap-1 text-[10px] text-amber-600 dark:text-amber-400 font-semibold">
+                  <span>All-time cash collected</span>
                 </div>
-                <div className="flex items-center gap-1.5">
-                  <span className="h-2 w-2 rounded-full bg-primary" />
-                  <span className="text-muted-foreground">
-                    Business:{" "}
-                    <strong className="text-foreground font-mono">
-                      {formatMoney(businessCutAmount)}
-                    </strong>
-                  </span>
-                </div>
+              </div>
+              <div className="h-10 w-10 rounded-2xl bg-amber-500/15 flex items-center justify-center text-amber-600 dark:text-amber-400 shadow-xs shrink-0">
+                <Coins className="h-5 w-5" />
               </div>
             </CardContent>
           </Card>
 
-          {/* 3. Missed Visits Alert Banner */}
-          <Link
-            href="/inventory-logs"
-            className="w-full flex items-center justify-between p-3.5 rounded-2xl bg-amber-500/10 border border-amber-500/30 text-xs text-amber-800 dark:text-amber-300 active:scale-[0.98] transition-transform duration-150 shadow-xs"
-          >
-            <div className="flex items-center gap-2.5 min-w-0">
-              <div className="h-8 w-8 rounded-xl bg-amber-500/20 flex items-center justify-center text-amber-700 dark:text-amber-300 shrink-0">
-                <AlertTriangle className="h-4 w-4" />
-              </div>
-              <div className="flex flex-col min-w-0">
-                <span className="font-bold text-foreground truncate">
-                  {missedVisitsCount} Missed Visits Flagged
+          {/* Metric Card 2: Active Machines */}
+          <Card className="w-full border-border/50 bg-gradient-to-r from-card to-card/60 shadow-xs">
+            <CardContent className="p-3.5 flex items-center justify-between">
+              <div className="space-y-0.5">
+                <span className="text-[10px] font-bold uppercase tracking-wider text-muted-foreground">
+                  Active Machines
                 </span>
-                <span className="text-[11px] text-muted-foreground truncate">
-                  Scheduled venue maintenance required
-                </span>
-              </div>
-            </div>
-            <ChevronRight className="h-4 w-4 text-muted-foreground shrink-0 ml-2" />
-          </Link>
-
-          {/* 4. Checklist: Machines Needing Attention */}
-          <div className="w-full space-y-2 pt-1">
-            <div className="flex items-center justify-between">
-              <div className="flex items-center gap-1.5">
-                <h2 className="text-xs font-bold uppercase tracking-wider text-foreground">
-                  Machines Needing Attention
-                </h2>
-                <span className="rounded-full bg-rose-500/10 text-rose-600 dark:text-rose-400 text-[10px] font-black px-2 py-0.5">
-                  {attentionList.length}
-                </span>
-              </div>
-
-              {selectedCount > 0 && (
-                <button
-                  onClick={handleBatchAction}
-                  className="text-[11px] font-bold text-primary hover:underline flex items-center gap-1"
-                >
-                  <CheckCircle2 className="h-3 w-3" />
-                  <span>Dispatch {selectedCount}</span>
-                </button>
-              )}
-            </div>
-
-            {/* Checklist items */}
-            <div className="w-full space-y-2">
-              {attentionList.map((m) => {
-                const isSelected = selectedMachineIds.includes(m.id);
-                const isLow = m.issue === "LOW_STOCK";
-                const isOffline = m.issue === "OFFLINE";
-
-                return (
-                  <div
-                    key={m.id}
-                    onClick={() => handleToggleSelect(m.id)}
-                    className={`w-full flex items-center gap-3 p-3.5 rounded-2xl border transition-all duration-150 cursor-pointer select-none active:scale-[0.98] ${
-                      isSelected
-                        ? "bg-primary/10 border-primary/50 shadow-xs"
-                        : "bg-card border-border/50 hover:border-border/80 shadow-xs"
-                    }`}
-                  >
-                    {/* Custom Animated Checkbox */}
-                    <div
-                      className={`h-6 w-6 rounded-lg flex items-center justify-center shrink-0 transition-[background-color,border-color,transform] duration-150 ${
-                        isSelected
-                          ? "bg-primary text-foreground scale-105 shadow-xs"
-                          : "border border-muted-foreground/30 bg-muted/30"
-                      }`}
-                    >
-                      {isSelected && <Check className="h-3.5 w-3.5 stroke-[3]" />}
-                    </div>
-
-                    {/* Machine Details */}
-                    <div className="flex-1 min-w-0">
-                      <div className="flex items-center justify-between gap-1">
-                        <span className="font-bold text-xs font-mono text-foreground truncate">
-                          {m.serialNumber}
-                        </span>
-                        <span
-                          className={`text-[10px] font-bold px-2 py-0.5 rounded-full shrink-0 ${
-                            isLow
-                              ? "bg-rose-500/10 text-rose-600 dark:text-rose-400"
-                              : isOffline
-                              ? "bg-zinc-500/10 text-zinc-600 dark:text-zinc-400"
-                              : "bg-amber-500/10 text-amber-600 dark:text-amber-400"
-                          }`}
-                        >
-                          {isLow
-                            ? `${m.itemsRemaining} pcs left`
-                            : isOffline
-                            ? "Offline"
-                            : "Coin Box Full"}
-                        </span>
-                      </div>
-                      <p className="text-[11px] text-muted-foreground truncate mt-0.5">
-                        {m.location} • {m.storeName}
-                      </p>
-                    </div>
-
-                    <Link
-                      href={`/machine/${m.serialNumber}`}
-                      onClick={(e) => e.stopPropagation()}
-                      className="h-8 w-8 rounded-xl bg-muted/60 flex items-center justify-center text-muted-foreground hover:text-foreground transition-colors shrink-0"
-                    >
-                      <ChevronRight className="h-4 w-4" />
-                    </Link>
+                {isLoading ? (
+                  <div className="h-7 w-24 bg-muted/60 rounded-lg animate-pulse my-1" />
+                ) : (
+                  <div className="text-2xl font-black text-foreground font-mono">
+                    {activeMachinesCount}{" "}
+                    <span className="text-xs font-normal text-muted-foreground font-sans">
+                      / {totalMachines}
+                    </span>
                   </div>
-                );
-              })}
-            </div>
-          </div>
+                )}
+                <div className="flex items-center gap-1 text-[10px] text-emerald-600 dark:text-emerald-400 font-semibold">
+                  <TrendingUp className="h-3 w-3" />
+                  <span>Online & not flagged</span>
+                </div>
+              </div>
+              <div className="h-10 w-10 rounded-2xl bg-primary/15 flex items-center justify-center text-primary shadow-xs shrink-0">
+                <Boxes className="h-5 w-5" />
+              </div>
+            </CardContent>
+          </Card>
+
+          {/* Metric Card 3: Attention Needed */}
+          <Link href="/browse" className="block">
+            <Card className="w-full border-border/50 bg-gradient-to-r from-card to-card/60 shadow-xs hover:border-rose-500/40 active:scale-[0.99] transition-all">
+              <CardContent className="p-3.5 flex items-center justify-between">
+                <div className="space-y-0.5">
+                  <span className="text-[10px] font-bold uppercase tracking-wider text-muted-foreground">
+                    Attention Needed
+                  </span>
+                  {isLoading ? (
+                    <div className="h-7 w-16 bg-muted/60 rounded-lg animate-pulse my-1" />
+                  ) : (
+                    <div className="text-2xl font-black text-foreground font-mono">
+                      {attentionNeededCount}
+                    </div>
+                  )}
+                  <div className="flex items-center gap-1 text-[10px] text-rose-600 dark:text-rose-400 font-semibold">
+                    <AlertTriangle className="h-3 w-3" />
+                    <span>Flagged via cash-collect reports</span>
+                  </div>
+                </div>
+                <div className="flex items-center gap-2 shrink-0">
+                  <div className="h-10 w-10 rounded-2xl bg-rose-500/15 flex items-center justify-center text-rose-600 dark:text-rose-400 shadow-xs">
+                    <AlertTriangle className="h-5 w-5" />
+                  </div>
+                  <ChevronRight className="h-4 w-4 text-muted-foreground" />
+                </div>
+              </CardContent>
+            </Card>
+          </Link>
         </div>
       )}
     </div>

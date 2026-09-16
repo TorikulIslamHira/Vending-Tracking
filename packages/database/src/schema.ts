@@ -18,6 +18,8 @@ import { relations, type InferSelectModel, type InferInsertModel } from "drizzle
 export const userRoleEnum = pgEnum("UserRole", ["ADMIN", "FIELD_AGENT"]);
 export const machineStatusEnum = pgEnum("MachineStatus", ["ONLINE", "OFFLINE"]);
 export const entryTypeEnum = pgEnum("EntryType", ["STANDARD", "MANUAL", "REVERSE"]);
+export const paymentModeEnum = pgEnum("PaymentMode", ["CASH", "BANK"]);
+export const shopPaymentStatusEnum = pgEnum("ShopPaymentStatus", ["PAID", "PENDING"]);
 
 // ==============================================================================
 // 2. Tables (matching exact PostgreSQL column identifiers)
@@ -94,12 +96,16 @@ export const stores = pgTable(
     category: text("category").default("Confectionery & Toys"),
     shopCutPercent: integer("shopCutPercent").default(30).notNull(),
     businessCutPercent: integer("businessCutPercent").default(70).notNull(),
+    eircode: text("eircode"),
+    paymentMode: paymentModeEnum("paymentMode").default("CASH").notNull(),
+    qrCode: text("qrCode"),
     createdAt: timestamp("createdAt", { withTimezone: true, mode: "date" }).defaultNow().notNull(),
     updatedAt: timestamp("updatedAt", { withTimezone: true, mode: "date" }).defaultNow().notNull().$onUpdate(() => new Date()),
   },
   (table) => [
     index("stores_tenantId_idx").on(table.tenantId),
     index("stores_locationId_idx").on(table.locationId),
+    unique("stores_tenantId_qrCode_key").on(table.tenantId, table.qrCode),
   ]
 );
 
@@ -122,6 +128,11 @@ export const machines = pgTable(
     qrCode: text("qrCode").notNull(),
     virtualCashBalance: numeric("virtualCashBalance", { precision: 10, scale: 2 }).default("0.00").notNull(),
     keyNumber: text("keyNumber"),
+    // Independent of `status`: a machine can be ONLINE and still flagged (e.g.
+    // "Key Lost") without being taken offline. Set via the cash-collection
+    // quick-action presets (Malfunction / Key Lost / Locker Broken).
+    attentionNeeded: boolean("attentionNeeded").default(false).notNull(),
+    attentionReason: text("attentionReason"),
     // Soft delete: kept non-null (not hard-deleted) so existing inventory_logs
     // and cash_logs rows referencing this machine never become orphaned. Every
     // "active fleet" query (list, detail, dashboard, and any handler that
@@ -219,6 +230,11 @@ export const cashLogs = pgTable(
     // rest in the machine — not a discrepancy, so the mismatch guardrail
     // (mandatory remark + stockCleared) does not apply.
     isPartial: boolean("isPartial").default(false).notNull(),
+    // Tracks the shopkeeper's cut of this collection. Auto-set to PAID when the
+    // store's paymentMode is CASH (paid out on the spot); left for the agent to
+    // set explicitly (PAID or PENDING + expectedPaymentDate) when BANK.
+    shopPaymentStatus: shopPaymentStatusEnum("shopPaymentStatus"),
+    expectedPaymentDate: timestamp("expectedPaymentDate", { withTimezone: true, mode: "date" }),
     createdAt: timestamp("createdAt", { withTimezone: true, mode: "date" }).defaultNow().notNull(),
   },
   (table) => [

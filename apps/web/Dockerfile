@@ -29,7 +29,12 @@ COPY packages/shared-types ./packages/shared-types
 COPY packages/validation ./packages/validation
 COPY apps/web ./apps/web
 
-# Set build-time env
+# Set build-time env. NEXT_PUBLIC_* vars are inlined into the client bundle
+# by `next build` — they can't be supplied at container runtime like a
+# normal env var, so this one is threaded through as a build ARG instead
+# (see docker-compose.yml's `build.args` for the web service).
+ARG NEXT_PUBLIC_GOOGLE_MAPS_API_KEY=""
+ENV NEXT_PUBLIC_GOOGLE_MAPS_API_KEY=$NEXT_PUBLIC_GOOGLE_MAPS_API_KEY
 ENV NEXT_PUBLIC_API_URL=/api/v1
 ENV NODE_ENV=production
 ENV NODE_OPTIONS="--max-old-space-size=1024"

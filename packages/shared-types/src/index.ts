@@ -20,6 +20,18 @@ export const EntryType = {
 } as const;
 export type EntryType = (typeof EntryType)[keyof typeof EntryType];
 
+export const PaymentMode = {
+  CASH: "CASH",
+  BANK: "BANK",
+} as const;
+export type PaymentMode = (typeof PaymentMode)[keyof typeof PaymentMode];
+
+export const ShopPaymentStatus = {
+  PAID: "PAID",
+  PENDING: "PENDING",
+} as const;
+export type ShopPaymentStatus = (typeof ShopPaymentStatus)[keyof typeof ShopPaymentStatus];
+
 /**
  * Core Domain Interfaces (Database & SaaS layer)
  */
@@ -62,6 +74,8 @@ export interface IMachine {
   pricePerPlay?: number | string | null;
   currentEstimatedStock?: number;
   keyNumber?: string | null;
+  attentionNeeded?: boolean;
+  attentionReason?: string | null;
   deletedAt?: Date | string | null;
   createdAt: Date | string;
   updatedAt?: Date | string;
@@ -103,6 +117,8 @@ export interface ICashLog {
   remarks?: string | null;
   stockCleared: boolean;
   isPartial: boolean;
+  shopPaymentStatus?: ShopPaymentStatus | null;
+  expectedPaymentDate?: Date | string | null;
   createdAt: Date | string;
 }
 
@@ -181,9 +197,16 @@ export interface CashCollectionPayload {
   machineId: string;
   collectedAmount: number;
   expectedAmount?: number;
-  remarks?: string;
+  remarks: string;
   stockCleared?: boolean;
   isPartial?: boolean;
+  attentionFlag?: boolean;
+  attentionReason?: string;
+}
+
+export interface CashLogPaymentUpdatePayload {
+  shopPaymentStatus: ShopPaymentStatus;
+  expectedPaymentDate?: string | null;
 }
 
 export interface MachineDeletePayload {

@@ -1,8 +1,8 @@
 import { FastifyReply, FastifyRequest } from "fastify";
-import { eq, and, or, desc, count, isNull } from "drizzle-orm";
+import { eq, and, or, desc, count, sum, isNull } from "drizzle-orm";
 import bcrypt from "bcryptjs";
 import { MachineCreateSchema, MachineDeleteSchema } from "@vending/validation";
-import { db, machines, users, tenants, adminAuditLogs } from "../../core/db";
+import { db, machines, users, tenants, adminAuditLogs, cashLogs } from "../../core/db";
 import { computeVirtualCashBalances, computeVirtualCashBalanceForMachine } from "./virtualCashBalance.service";
 import { isRootSuperAdminEmail } from "../../core/rootAdmin";
 
@@ -54,6 +54,8 @@ export async function getMachinesHandler(
         keyNumber: m.keyNumber || "",
         virtualCashBalance: balances.get(m.id)?.virtualCashBalance ?? 0,
         itemsRemaining: Math.floor(Math.random() * 40) + 60,
+        attentionNeeded: m.attentionNeeded,
+        attentionReason: m.attentionReason,
         createdAt: m.createdAt,
       })),
     });
@@ -129,6 +131,8 @@ export async function getMachineByIdHandler(
           storeId: machine.storeId,
           storeName: machine.store?.name || machine.location,
           locationName: machine.store?.location?.name || "Venue",
+          storePaymentMode: machine.store?.paymentMode || null,
+          storeShopCutPercent: machine.store?.shopCutPercent ?? null,
           category: machine.category || "Standard Confectionery",
           type: machine.type || "Spiral Chute",
           capacity: machine.capacity || 100,
@@ -141,6 +145,8 @@ export async function getMachineByIdHandler(
           keyNumber: machine.keyNumber || "",
           virtualCashBalance,
           qrCode: machine.qrCode,
+          attentionNeeded: machine.attentionNeeded,
+          attentionReason: machine.attentionReason,
           inventoryLogs: machine.inventoryLogs,
           createdAt: machine.createdAt,
         },
@@ -261,7 +267,7 @@ export async function getDashboardMetricsHandler(
   const tenantId = request.tenantId;
 
   try {
-    const [machinesCountResult, machinesList, tenant] = await Promise.all([
+    const [machinesCountResult, machinesList, tenant, collectionSumResult] = await Promise.all([
       db
         .select({ value: count() })
         .from(machines)
@@ -273,10 +279,15 @@ export async function getDashboardMetricsHandler(
           location: machines.location,
           status: machines.status,
           pricePerPlay: machines.pricePerPlay,
+          attentionNeeded: machines.attentionNeeded,
         })
         .from(machines)
         .where(and(eq(machines.tenantId, tenantId), isNull(machines.deletedAt))),
       db.query.tenants.findFirst({ where: eq(tenants.id, tenantId) }),
+      db
+        .select({ value: sum(cashLogs.collectedAmount) })
+        .from(cashLogs)
+        .where(eq(cashLogs.tenantId, tenantId)),
     ]);
 
     const totalMachines = machinesCountResult[0]?.value ?? 0;
@@ -313,6 +324,15 @@ export async function getDashboardMetricsHandler(
         selected: false,
       }));
 
+    // The 3 real dashboard metrics for the streamlined UI: total cash ever
+    // collected, machines working normally (online and not flagged), and
+    // machines flagged via the cash-collection quick-action presets.
+    const totalCollection = Number(collectionSumResult[0]?.value ?? 0);
+    const activeMachinesCount = machinesList.filter(
+      (m) => m.status === "ONLINE" && !m.attentionNeeded
+    ).length;
+    const attentionNeededCount = machinesList.filter((m) => m.attentionNeeded).length;
+
     return reply.send({
       statusCode: 200,
       data: {
@@ -323,6 +343,9 @@ export async function getDashboardMetricsHandler(
         businessCutPercent,
         missedVisitsCount: offlineCount,
         attentionMachines,
+        totalCollection,
+        activeMachinesCount,
+        attentionNeededCount,
       },
     });
   } catch (err) {
@@ -341,6 +364,9 @@ export async function getDashboardMetricsHandler(
         businessCutPercent: 70,
         missedVisitsCount: 0,
         attentionMachines: [],
+        totalCollection: 0,
+        activeMachinesCount: 0,
+        attentionNeededCount: 0,
       },
     });
   }

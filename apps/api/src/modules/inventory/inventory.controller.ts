@@ -5,8 +5,9 @@ import {
   ManualEntrySchema,
   CashCollectionSchema,
   ReverseEntrySchema,
+  CashLogPaymentUpdateSchema,
 } from "@vending/validation";
-import { db, machines, packetConfigs, inventoryLogs, cashLogs } from "../../core/db";
+import { db, machines, packetConfigs, inventoryLogs, cashLogs, stores } from "../../core/db";
 import { computeVirtualCashBalanceForMachine } from "../machines/virtualCashBalance.service";
 
 /**
@@ -239,7 +240,8 @@ export async function cashCollectionHandler(
     });
   }
 
-  const { machineId, collectedAmount, remarks, stockCleared, isPartial } = parseResult.data;
+  const { machineId, collectedAmount, remarks, stockCleared, isPartial, attentionFlag, attentionReason } =
+    parseResult.data;
 
   // Resolve the fuzzy identifier (id, serial, or QR) to a machine row. Read-only,
   // not part of the race, so no lock needed yet.
@@ -315,6 +317,21 @@ export async function cashCollectionHandler(
 
       const discrepancy = expectedAmount - collectedAmount;
 
+      // The shopkeeper's cut is settled on the spot for a CASH store (paid out
+      // during the same visit), so the log is marked PAID immediately. A BANK
+      // store starts PENDING until the agent confirms payment via the
+      // cash-logs/:id/payment endpoint. A machine with no store attached has
+      // no payment arrangement to track.
+      let shopPaymentStatus: "PAID" | "PENDING" | null = null;
+      if (lockedMachine.storeId) {
+        const store = await tx.query.stores.findFirst({
+          where: and(eq(stores.id, lockedMachine.storeId), eq(stores.tenantId, tenantId)),
+        });
+        if (store) {
+          shopPaymentStatus = store.paymentMode === "CASH" ? "PAID" : "PENDING";
+        }
+      }
+
       const [insertedCashLog] = await tx
         .insert(cashLogs)
         .values({
@@ -327,6 +344,7 @@ export async function cashCollectionHandler(
           remarks: remarks || null,
           stockCleared: hasMismatch && !isTruePartial ? Boolean(stockCleared) : false,
           isPartial: isTruePartial,
+          shopPaymentStatus,
         })
         .returning();
 
@@ -363,9 +381,17 @@ export async function cashCollectionHandler(
         }
       }
 
+      // A preset button (Malfunction / Key Lost / Locker Broken) flags the
+      // machine in the same request as the collection — never clears the flag
+      // here; that only happens when an admin explicitly resolves it.
       const [updatedMachine] = await tx
         .update(machines)
-        .set({ updatedAt: new Date() })
+        .set({
+          updatedAt: new Date(),
+          ...(attentionFlag
+            ? { attentionNeeded: true, attentionReason: attentionReason || remarks }
+            : {}),
+        })
         .where(and(eq(machines.id, lockedMachine.id), eq(machines.tenantId, tenantId)))
         .returning();
 
@@ -393,6 +419,8 @@ export async function cashCollectionHandler(
         stockCleared: result.cashLog.stockCleared,
         isPartial: result.cashLog.isPartial,
         remarks: result.cashLog.remarks,
+        shopPaymentStatus: result.cashLog.shopPaymentStatus,
+        attentionNeeded: result.updatedMachine.attentionNeeded,
         newVirtualCashBalance: result.newVirtualCashBalance,
         createdAt: result.cashLog.createdAt,
       },
@@ -411,6 +439,66 @@ export async function cashCollectionHandler(
       statusCode: 500,
       error: "Internal Server Error",
       message: "Failed to process cash collection",
+    });
+  }
+}
+
+/**
+ * Records the shopkeeper-payment follow-up for a BANK-mode store: either mark
+ * the shop's cut as paid, or set the date it's expected to be paid.
+ */
+export async function updateCashLogPaymentHandler(
+  request: FastifyRequest<{ Params: { id: string } }>,
+  reply: FastifyReply
+): Promise<void> {
+  const tenantId = request.tenantId;
+  const { id } = request.params;
+
+  const parseResult = CashLogPaymentUpdateSchema.safeParse(request.body);
+  if (!parseResult.success) {
+    return reply.status(400).send({
+      statusCode: 400,
+      error: "Bad Request",
+      message: "Validation failed",
+      issues: parseResult.error.issues,
+    });
+  }
+
+  const { shopPaymentStatus, expectedPaymentDate } = parseResult.data;
+
+  try {
+    const [updated] = await db
+      .update(cashLogs)
+      .set({
+        shopPaymentStatus,
+        expectedPaymentDate: expectedPaymentDate ? new Date(expectedPaymentDate) : null,
+      })
+      .where(and(eq(cashLogs.id, id), eq(cashLogs.tenantId, tenantId)))
+      .returning();
+
+    if (!updated) {
+      return reply.status(404).send({
+        statusCode: 404,
+        error: "Not Found",
+        message: "Cash log not found in your organization",
+      });
+    }
+
+    return reply.send({
+      statusCode: 200,
+      message: "Payment status updated",
+      data: {
+        cashLogId: updated.id,
+        shopPaymentStatus: updated.shopPaymentStatus,
+        expectedPaymentDate: updated.expectedPaymentDate,
+      },
+    });
+  } catch (error: any) {
+    request.log.error(error);
+    return reply.status(500).send({
+      statusCode: 500,
+      error: "Internal Server Error",
+      message: error.message || "Failed to update payment status",
     });
   }
 }

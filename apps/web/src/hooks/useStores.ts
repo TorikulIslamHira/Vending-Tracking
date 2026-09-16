@@ -25,6 +25,9 @@ export interface StoreItem {
   locationName?: string;
   shopCutPercent: number;
   businessCutPercent: number;
+  eircode?: string | null;
+  paymentMode?: "CASH" | "BANK";
+  qrCode?: string | null;
   machineCount: number;
   machines?: StoreMachineItem[];
   createdAt?: string;
@@ -134,6 +137,9 @@ export function useAllStores() {
             locationName: st.locationName || "Assigned Location",
             shopCutPercent: Number(st.shopCutPercent ?? 30),
             businessCutPercent: Number(st.businessCutPercent ?? 70),
+            eircode: st.eircode ?? null,
+            paymentMode: st.paymentMode || "CASH",
+            qrCode: st.qrCode ?? null,
             machineCount: Number(st.machineCount ?? 0),
             machines: Array.isArray(st.machines)
               ? st.machines.map((m: any) => ({
@@ -167,11 +173,15 @@ export function useCreateStore(locationId: string) {
       name: string;
       category?: string;
       shopCutPercent: number;
+      eircode?: string;
+      paymentMode?: "CASH" | "BANK";
     }) => {
       const response = await api.post(`/locations/${locationId}/stores`, {
         name: newStore.name,
         category: newStore.category || "Novelty Vending",
         shopCutPercent: newStore.shopCutPercent,
+        eircode: newStore.eircode,
+        paymentMode: newStore.paymentMode,
       });
       return response.data?.data;
     },
@@ -202,11 +212,15 @@ export function useUpdateStore(locationId: string) {
       name: string;
       category?: string;
       shopCutPercent: number;
+      eircode?: string;
+      paymentMode?: "CASH" | "BANK";
     }) => {
       const response = await api.put(`/stores/${storeData.id}`, {
         name: storeData.name,
         category: storeData.category,
         shopCutPercent: storeData.shopCutPercent,
+        eircode: storeData.eircode,
+        paymentMode: storeData.paymentMode,
       });
       return response.data?.data;
     },

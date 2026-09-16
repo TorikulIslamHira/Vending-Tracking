@@ -277,36 +277,6 @@ function RegisterMachineForm() {
           />
         </div>
 
-        {/* Dispenser Type & Capacity Grid */}
-        <div className="grid grid-cols-2 gap-3">
-          <div className="space-y-1.5">
-            <label className="text-xs font-semibold text-foreground">
-              Dispenser Type
-            </label>
-            <select
-              {...register("dispenserType")}
-              className="w-full h-12 rounded-2xl bg-slate-100 dark:bg-zinc-800/80 border-transparent text-base md:text-xs font-medium px-3 text-foreground focus:outline-hidden focus:ring-2 focus:ring-primary shadow-xs"
-            >
-              <option value="Spiral Chute">Spiral Chute</option>
-              <option value="Rotary Wheel">Rotary Wheel</option>
-              <option value="Dual Globe">Dual Globe</option>
-              <option value="Tower Capsule">Tower Capsule</option>
-            </select>
-          </div>
-
-          <div className="space-y-1.5">
-            <label className="text-xs font-semibold text-foreground">
-              Max Capacity (pcs)
-            </label>
-            <Input
-              type="number"
-              {...register("capacity", { valueAsNumber: true })}
-              className="h-12 rounded-2xl bg-slate-100 dark:bg-zinc-800/80 border-transparent text-xs font-mono font-bold px-3 focus-visible:ring-primary shadow-xs"
-              required
-            />
-          </div>
-        </div>
-
         {/* Full-width Solid Dark Action Button */}
         <Button
           type="submit"

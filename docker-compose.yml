@@ -45,6 +45,11 @@ services:
       PORT: 3001
       HOST: 0.0.0.0
       NODE_ENV: production
+      # Optional automated Google Drive backups (core/backup/scheduler.ts) —
+      # left unset, both scheduled jobs just no-op at startup.
+      GOOGLE_SERVICE_ACCOUNT_JSON: ${GOOGLE_SERVICE_ACCOUNT_JSON:-}
+      GDRIVE_BACKUP_FOLDER_ID: ${GDRIVE_BACKUP_FOLDER_ID:-}
+      GDRIVE_BACKUP_FOLDER_ID_CSV: ${GDRIVE_BACKUP_FOLDER_ID_CSV:-}
     ports:
       - "3001:3001"
     depends_on:
@@ -59,6 +64,11 @@ services:
     build:
       context: .
       dockerfile: apps/web/Dockerfile
+      args:
+        # NEXT_PUBLIC_* vars are baked in at build time — see the Dockerfile
+        # comment. Optional: leaving this unset just disables the address
+        # autocomplete on the store registration form.
+        NEXT_PUBLIC_GOOGLE_MAPS_API_KEY: ${NEXT_PUBLIC_GOOGLE_MAPS_API_KEY:-}
     container_name: vending-web
     environment:
       NEXT_PUBLIC_API_URL: /api/v1

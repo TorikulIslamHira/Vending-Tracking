@@ -1,5 +1,5 @@
 import { z } from "zod";
-import { UserRole, MachineStatus, EntryType } from "@vending/shared-types";
+import { UserRole, MachineStatus, EntryType, PaymentMode, ShopPaymentStatus } from "@vending/shared-types";
 
 /**
  * Enums Mapped to Prisma Schemas
@@ -7,6 +7,8 @@ import { UserRole, MachineStatus, EntryType } from "@vending/shared-types";
 export const UserRoleSchema = z.nativeEnum(UserRole);
 export const MachineStatusSchema = z.nativeEnum(MachineStatus);
 export const EntryTypeSchema = z.nativeEnum(EntryType);
+export const PaymentModeSchema = z.nativeEnum(PaymentMode);
+export const ShopPaymentStatusSchema = z.nativeEnum(ShopPaymentStatus);
 
 /**
  * 📦 API Payload Validation Schemas (Inventory & Cash workflows)
@@ -65,17 +67,35 @@ export const CashCollectionSchema = z.object({
     .number()
     .min(0, "Expected amount cannot be negative")
     .optional(),
-  remarks: z.string().optional(),
+  // A note is now always mandatory (previously only required on a mismatch).
+  remarks: z.string().min(1, "A note is required"),
   // Agent's explicit "Force Reconcile" acknowledgement, required by the API
   // whenever collectedAmount !== expectedAmount and the collection isn't partial.
   stockCleared: z.boolean().optional(),
   // Agent intentionally left cash behind — not a discrepancy, bypasses the
   // mismatch guardrail. Only honored when collectedAmount < expectedAmount.
   isPartial: z.boolean().optional(),
+  // Set together by the quick-action preset buttons (Malfunction / Key Lost /
+  // Locker Broken) to flag the machine for follow-up in the same request.
+  attentionFlag: z.boolean().optional(),
+  attentionReason: z.string().optional(),
 });
 
 export type CashCollectionInput = z.infer<typeof CashCollectionSchema>;
 export type CashCollectionDto = CashCollectionInput;
+
+/**
+ * CashLogPaymentUpdateSchema: Validates the shopkeeper-payment follow-up for
+ * a BANK-mode store — either mark the shop's cut as paid, or record when it's
+ * expected to be paid.
+ */
+export const CashLogPaymentUpdateSchema = z.object({
+  shopPaymentStatus: ShopPaymentStatusSchema,
+  expectedPaymentDate: z.string().datetime().optional().nullable(),
+});
+
+export type CashLogPaymentUpdateInput = z.infer<typeof CashLogPaymentUpdateSchema>;
+export type CashLogPaymentUpdateDto = CashLogPaymentUpdateInput;
 
 /**
  * ReverseEntrySchema: Validates inventory reversal requests.
@@ -151,6 +171,31 @@ export const UserLoginSchema = z.object({
 
 export type UserLoginInput = z.infer<typeof UserLoginSchema>;
 export type UserLoginDto = UserLoginInput;
+
+export const StoreCreateSchema = z.object({
+  name: z.string().min(1, "Store name is required"),
+  locationId: z.string().min(1, "Location ID is required").optional(),
+  category: z.string().optional().nullable(),
+  shopCutPercent: z.number().min(0).max(100).optional(),
+  eircode: z.string().optional().nullable(),
+  paymentMode: PaymentModeSchema.default(PaymentMode.CASH).optional(),
+  qrCode: z.string().optional().nullable(),
+});
+
+export type StoreCreateInput = z.infer<typeof StoreCreateSchema>;
+export type StoreCreateDto = StoreCreateInput;
+
+export const StoreUpdateSchema = z.object({
+  name: z.string().min(1, "Store name is required").optional(),
+  category: z.string().optional().nullable(),
+  shopCutPercent: z.number().min(0).max(100).optional(),
+  eircode: z.string().optional().nullable(),
+  paymentMode: PaymentModeSchema.optional(),
+  qrCode: z.string().optional().nullable(),
+});
+
+export type StoreUpdateInput = z.infer<typeof StoreUpdateSchema>;
+export type StoreUpdateDto = StoreUpdateInput;
 
 export const MachineCreateSchema = z.object({
   serialNumber: z.string().min(1, "Serial number is required"),

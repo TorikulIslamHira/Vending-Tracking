@@ -34,25 +34,33 @@ function isIOS(): boolean {
   );
 }
 
+type ScanTarget = { type: "store" | "machine"; id: string };
+
 /**
- * Machine QR codes encode a full destination URL (e.g.
- * "https://app.example.com/machine/VM-NY-010"), not a bare ID — a phone's
- * native camera app resolves that URL itself and lets Next.js routing pull
- * the ID out of the path via useParams(). The in-app scanner instead hands
- * us that raw decoded string directly, so it must do the same extraction
- * itself: detect a URL, take the last pathname segment as the ID, and fall
- * back to using the scanned text as-is if it isn't a URL at all (e.g. a
- * plain serial number printed on an older label).
+ * QR codes encode a full destination URL (e.g.
+ * "https://app.example.com/machine/VM-NY-010" or ".../store/abc123"), not a
+ * bare ID — a phone's native camera app resolves that URL itself and lets
+ * Next.js routing pull the ID out of the path via useParams(). The in-app
+ * scanner instead hands us that raw decoded string directly, so it must do
+ * the same extraction itself: detect a URL, take the last pathname segment
+ * as the ID, and check the segment before it ("store" vs "machine") to know
+ * which picker to route to. Falls back to treating the scanned text as a
+ * machine identifier if it isn't a URL at all (e.g. a plain serial number
+ * printed on an older label).
  */
-function extractMachineIdFromScan(scannedText: string): string {
+function resolveScanTarget(scannedText: string): ScanTarget {
   const trimmed = scannedText.trim();
   let rawId = trimmed;
+  let type: ScanTarget["type"] = "machine";
 
   if (/^https?:\/\//i.test(trimmed)) {
     try {
       const url = new URL(trimmed);
       const segments = url.pathname.split("/").filter(Boolean);
       rawId = segments.pop() || trimmed;
+      if (segments[segments.length - 1] === "store") {
+        type = "store";
+      }
     } catch {
       // Looked like a URL but failed to parse — fall back to the raw scan.
       rawId = trimmed;
@@ -60,10 +68,10 @@ function extractMachineIdFromScan(scannedText: string): string {
   }
 
   try {
-    return decodeURIComponent(rawId);
+    return { type, id: decodeURIComponent(rawId) };
   } catch {
     // Not a valid percent-encoded sequence — use it verbatim.
-    return rawId;
+    return { type, id: rawId };
   }
 }
 
@@ -111,11 +119,15 @@ export default function QRScannerPage() {
         { facingMode: "environment" },
         { fps: 10, qrbox: { width: 250, height: 250 } },
         (decodedText) => {
-          const machineId = extractMachineIdFromScan(decodedText);
-          toast.success(`QR Code Detected: ${machineId}`);
+          const { type, id } = resolveScanTarget(decodedText);
+          toast.success(`QR Code Detected: ${id}`);
           stopScanner();
           setStatus("idle");
-          router.push(`/machine/${encodeURIComponent(machineId)}`);
+          router.push(
+            type === "store"
+              ? `/store/${encodeURIComponent(id)}`
+              : `/machine/${encodeURIComponent(id)}`
+          );
         },
         () => {
           // Ignored per-frame scan miss — expected while the camera hunts for a code.

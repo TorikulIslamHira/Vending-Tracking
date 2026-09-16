@@ -14,6 +14,7 @@ import { locationsRoutes } from "./modules/locations";
 import { storesRoutes, locationStoresRoutes } from "./modules/stores";
 import { settingsRoutes } from "./modules/settings";
 import { auditRoutes } from "./modules/audit";
+import { registerBackupSchedules } from "./core/backup/scheduler";
 
 export function buildServer(): FastifyInstance {
   // Fail fast: a missing JWT_SECRET must never silently fall back to a
@@ -97,6 +98,11 @@ export async function start(): Promise<void> {
   try {
     const address = await app.listen({ port, host });
     app.log.info(`🚀 Vending Machine SaaS API running at ${address}`);
+    // Only in production: a dev/test machine shouldn't be silently spinning
+    // up cron jobs that dump the database and hit the Google Drive API.
+    if (process.env.NODE_ENV === "production") {
+      registerBackupSchedules();
+    }
   } catch (err) {
     app.log.error(err);
     process.exit(1);

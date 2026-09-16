@@ -1,5 +1,6 @@
 import type { Metadata, Viewport } from "next";
 import "./globals.css";
+import { ThemeProvider } from "next-themes";
 import { Toaster } from "@/components/ui/toast";
 import { QueryProvider } from "@/components/providers/QueryProvider";
 import { KeyboardAvoidingProvider } from "@/components/providers/KeyboardAvoidingProvider";
@@ -60,14 +61,20 @@ export default function RootLayout({
         />
       </head>
       <body className="antialiased font-sans">
-        <QueryProvider>
-          <NativeSplashScreenProvider>
-            <KeyboardAvoidingProvider>
-              {children}
-              <Toaster position="top-right" richColors />
-            </KeyboardAvoidingProvider>
-          </NativeSplashScreenProvider>
-        </QueryProvider>
+        {/* attribute="class" toggles the .dark class that globals.css's CSS
+            variable tokens already key off of; defaultTheme="system" +
+            enableSystem means it purely follows the OS preference — no
+            manual toggle UI, per spec. */}
+        <ThemeProvider attribute="class" defaultTheme="system" enableSystem>
+          <QueryProvider>
+            <NativeSplashScreenProvider>
+              <KeyboardAvoidingProvider>
+                {children}
+                <Toaster position="top-right" richColors />
+              </KeyboardAvoidingProvider>
+            </NativeSplashScreenProvider>
+          </QueryProvider>
+        </ThemeProvider>
       </body>
     </html>
   );

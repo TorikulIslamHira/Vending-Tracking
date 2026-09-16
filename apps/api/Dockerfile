@@ -51,6 +51,11 @@ ENV NODE_ENV=production
 ENV PORT=3001
 ENV HOST=0.0.0.0
 
+# postgresql-client provides pg_dump, used by the weekly automated backup
+# job (core/backup/weeklyRawBackup.ts) — not installed in the base Node
+# image by default.
+RUN apk add --no-cache postgresql-client
+
 # Copy the pruned install + built code, owned by the non-root `node` user
 # that ships in the base image (uid/gid 1000), and run as that user.
 COPY --from=builder --chown=node:node /app /app

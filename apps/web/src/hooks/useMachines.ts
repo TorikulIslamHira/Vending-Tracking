@@ -19,6 +19,8 @@ export interface MachineItem {
   status: "ONLINE" | "LOW_STOCK" | "OFFLINE";
   virtualCashBalance?: number;
   qrCode?: string;
+  attentionNeeded?: boolean;
+  attentionReason?: string | null;
 }
 
 export function useMachines(storeId?: string) {
@@ -48,6 +50,8 @@ export function useMachines(storeId?: string) {
             status: m.status || "ONLINE",
             virtualCashBalance: Number(m.virtualCashBalance || 0),
             qrCode: m.qrCode || m.serialNumber,
+            attentionNeeded: Boolean(m.attentionNeeded),
+            attentionReason: m.attentionReason ?? null,
           }));
         }
         return [];

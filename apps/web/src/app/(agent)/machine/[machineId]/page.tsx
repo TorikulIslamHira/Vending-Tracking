@@ -53,7 +53,9 @@ import {
   ShieldCheck,
   Lock,
   Boxes,
-  TrendingDown,
+  KeyRound,
+  Banknote,
+  Landmark,
 } from "lucide-react";
 
 // Common real-world reasons for a cash mismatch — tapping one sets the mandatory
@@ -67,6 +69,11 @@ const QUICK_REMARK_OPTIONS = [
   "Mechanical Fault",
   "Other",
 ] as const;
+
+// Quick-action presets for flagging a machine condition issue while collecting
+// cash — tapping one fills the mandatory note and flags the machine for
+// admin follow-up in the same submission (no separate trip needed).
+const ATTENTION_PRESETS = ["Malfunction", "Key Lost", "Locker Broken"] as const;
 
 export default function MachineOperationPage() {
   const params = useParams();
@@ -90,6 +97,14 @@ export default function MachineOperationPage() {
   const [stockCleared, setStockCleared] = useState(false);
   const [collectionType, setCollectionType] = useState<"EMPTY" | "PARTIAL">("EMPTY");
   const [selectedRemarkChip, setSelectedRemarkChip] = useState<string | null>(null);
+  const [selectedAttentionPreset, setSelectedAttentionPreset] = useState<string | null>(null);
+  const [paymentFollowUp, setPaymentFollowUp] = useState<{
+    cashLogId: string;
+    collectedAmount: number;
+    paymentMode: "CASH" | "BANK";
+    shopCutPercent: number;
+  } | null>(null);
+  const [expectedPaymentDate, setExpectedPaymentDate] = useState("");
   const { format: formatMoney, symbol } = useCurrency();
 
   // 1. Query Machine Data
@@ -219,7 +234,6 @@ export default function MachineOperationPage() {
     isEmptyCollection && enteredCashAmount > 0 && enteredCashAmount !== virtualCashBalance;
   const cashMismatchAmount = Math.abs(virtualCashBalance - enteredCashAmount);
   const partialRemainingBalance = Math.max(0, virtualCashBalance - enteredCashAmount);
-  const approxUnitsSold = Math.floor(enteredCashAmount / machinePricePerPlay);
 
   // Selected Packet for piece calculation
   const selectedPacketId = standardForm.watch("packetId") || packets[0]?.id;
@@ -315,12 +329,51 @@ export default function MachineOperationPage() {
       cashForm.reset();
       setStockCleared(false);
       setSelectedRemarkChip(null);
+      setSelectedAttentionPreset(null);
       setCollectionType("EMPTY");
       setCashDropConfirmOpen(false);
+
+      // Hand off to the shopkeeper-payment follow-up: a CASH store already
+      // got marked PAID by the backend (paid out on the spot), so this popup
+      // is just a prompt to actually do that; a BANK store needs the agent to
+      // explicitly confirm or defer it.
+      const storePaymentMode = (machine as any)?.storePaymentMode as "CASH" | "BANK" | undefined;
+      if (storePaymentMode && data?.data?.cashLogId) {
+        setPaymentFollowUp({
+          cashLogId: data.data.cashLogId,
+          collectedAmount: Number(data.data.collectedAmount || 0),
+          paymentMode: storePaymentMode,
+          shopCutPercent: Number((machine as any)?.storeShopCutPercent ?? 0),
+        });
+      }
+
       invalidateAndRefetchAll();
     },
     onError: (err: any) => {
       toast.error(err.response?.data?.message || "Cash collect failed");
+    },
+  });
+
+  const paymentUpdateMutation = useMutation({
+    mutationFn: async (payload: {
+      cashLogId: string;
+      shopPaymentStatus: "PAID" | "PENDING";
+      expectedPaymentDate?: string;
+    }) => {
+      const res = await apiClient.patch(`/inventory/cash-logs/${payload.cashLogId}/payment`, {
+        shopPaymentStatus: payload.shopPaymentStatus,
+        expectedPaymentDate: payload.expectedPaymentDate || null,
+      });
+      return res.data;
+    },
+    onSuccess: () => {
+      toast.success("Shopkeeper payment status updated");
+      setPaymentFollowUp(null);
+      setExpectedPaymentDate("");
+      queryClient.invalidateQueries({ queryKey: ["cash-logs"] });
+    },
+    onError: (err: any) => {
+      toast.error(err.response?.data?.message || "Failed to update payment status");
     },
   });
 
@@ -801,15 +854,34 @@ export default function MachineOperationPage() {
                 onSubmit={cashForm.handleSubmit(handleCashFormSubmit)}
                 className="space-y-4"
               >
-                <div className="rounded-xl bg-amber-500/10 border border-amber-500/20 p-3.5 flex items-center justify-between">
-                  <div className="flex flex-col">
-                    <span className="text-xs font-medium text-foreground">
-                      Expected System Balance:
+                {/* Store Location -> Machine Name, with Key Number prominently displayed */}
+                <div className="rounded-xl bg-muted/40 border border-border/50 p-3.5 space-y-2">
+                  <div className="flex items-center gap-1.5 text-xs font-semibold text-foreground truncate">
+                    <span className="text-muted-foreground truncate">
+                      {(machine as any)?.locationName || machine?.location || "Venue"}
                     </span>
-                    <span className="text-[11px] text-muted-foreground">
-                      {currentEstimatedStock} pcs @ {formatMoney(machinePricePerPlay)}/play
+                    <span className="text-muted-foreground">→</span>
+                    <span className="truncate">
+                      {(machine as any)?.storeName || machine?.serialNumber || machineId}
                     </span>
                   </div>
+                  {machine?.keyNumber && (
+                    <div className="flex items-center justify-between">
+                      <span className="text-[10px] font-bold uppercase tracking-wider text-amber-600 dark:text-amber-400 flex items-center gap-1">
+                        <KeyRound className="h-3 w-3" />
+                        <span>Key Number</span>
+                      </span>
+                      <span className="text-2xl font-black font-mono tracking-wide text-amber-600 dark:text-amber-400">
+                        {machine.keyNumber}
+                      </span>
+                    </div>
+                  )}
+                </div>
+
+                <div className="rounded-xl bg-amber-500/10 border border-amber-500/20 p-3.5 flex items-center justify-between">
+                  <span className="text-xs font-medium text-foreground">
+                    Expected Cash Amount:
+                  </span>
                   <span className="text-lg font-bold text-amber-600 dark:text-amber-400 font-mono">
                     {formatMoney(virtualCashBalance)}
                   </span>
@@ -873,22 +945,6 @@ export default function MachineOperationPage() {
                       {cashForm.formState.errors.collectedAmount.message}
                     </p>
                   )}
-                  {enteredCashAmount > 0 && (
-                    <div className="rounded-xl bg-muted/60 border border-border/50 p-2.5 flex items-center justify-between text-xs animate-in fade-in slide-in-from-top-1 duration-200">
-                      <span className="text-muted-foreground flex items-center gap-1.5 font-medium">
-                        <TrendingDown className="h-3.5 w-3.5 text-amber-500" />
-                        <span>Depletion Feedback:</span>
-                      </span>
-                      <span className="font-bold text-foreground">
-                        Equals approx.{" "}
-                        <span className="text-amber-600 dark:text-amber-400 font-mono font-black">
-                          {approxUnitsSold}
-                        </span>{" "}
-                        units sold
-                      </span>
-                    </div>
-                  )}
-
                   {isEmptyCollection ? (
                     /* Discrepancy / Mismatch Warning Box (shortage OR overage) */
                     hasCashMismatch && (
@@ -921,6 +977,43 @@ export default function MachineOperationPage() {
                   )}
                 </div>
 
+                {/* Quick-Action Presets — flags the machine for admin follow-up */}
+                <div className="space-y-1.5">
+                  <label className="text-xs font-semibold text-foreground">
+                    Report an Issue (optional)
+                  </label>
+                  <div className="flex flex-wrap gap-1.5">
+                    {ATTENTION_PRESETS.map((preset) => {
+                      const isSelected = selectedAttentionPreset === preset;
+                      return (
+                        <button
+                          key={preset}
+                          type="button"
+                          onClick={() => {
+                            const next = isSelected ? null : preset;
+                            setSelectedAttentionPreset(next);
+                            if (next) {
+                              cashForm.setValue("remarks", next, { shouldValidate: true });
+                            }
+                          }}
+                          className={`h-8 px-3 rounded-full text-[11px] font-semibold border transition-colors ${
+                            isSelected
+                              ? "bg-rose-500 text-white border-rose-500 shadow-xs"
+                              : "bg-card text-foreground border-border/60 hover:border-rose-500/50"
+                          }`}
+                        >
+                          {preset}
+                        </button>
+                      );
+                    })}
+                  </div>
+                  {selectedAttentionPreset && (
+                    <p className="text-[10px] text-rose-600 dark:text-rose-400 font-semibold">
+                      Machine will be flagged &quot;Attention Needed&quot; on submit.
+                    </p>
+                  )}
+                </div>
+
                 <div className="space-y-1.5">
                   <div className="flex items-center justify-between">
                     <label
@@ -936,7 +1029,7 @@ export default function MachineOperationPage() {
                           <span>Mandatory Reason for {isCashOverage ? "Overage" : "Shortage"} *</span>
                         </>
                       ) : (
-                        "Optional Collection Notes"
+                        "Note *"
                       )}
                     </label>
                     {hasCashMismatch && (
@@ -1037,7 +1130,7 @@ export default function MachineOperationPage() {
                   {cashMutation.isPending && (
                     <Loader2 className="mr-2 h-4 w-4 animate-spin" />
                   )}
-                  Submit Cash Collect
+                  Pay Now
                 </Button>
               </form>
             </CardContent>
@@ -1320,6 +1413,8 @@ export default function MachineOperationPage() {
                     remarks: cashForm.getValues("remarks"),
                     stockCleared,
                     isPartial: !isEmptyCollection,
+                    attentionFlag: Boolean(selectedAttentionPreset),
+                    attentionReason: selectedAttentionPreset || undefined,
                   });
                 }
               }}
@@ -1331,6 +1426,126 @@ export default function MachineOperationPage() {
               {isEmptyCollection ? "Confirm & Reset Ledger" : "Confirm Partial Collection"}
             </Button>
           </DialogFooter>
+        </DialogContent>
+      </Dialog>
+
+      {/* DIALOG: SHOPKEEPER PAYMENT FOLLOW-UP */}
+      <Dialog
+        open={!!paymentFollowUp}
+        onOpenChange={(open) => {
+          if (!open) {
+            setPaymentFollowUp(null);
+            setExpectedPaymentDate("");
+          }
+        }}
+      >
+        <DialogContent className="max-w-md w-[92vw] rounded-2xl p-6 bg-background border border-border/60 shadow-2xl z-50">
+          {paymentFollowUp?.paymentMode === "CASH" ? (
+            <>
+              <DialogHeader className="text-left pb-1 space-y-1">
+                <DialogTitle className="flex items-center gap-2 text-base font-bold">
+                  <Banknote className="h-5 w-5 text-emerald-600 dark:text-emerald-400" />
+                  <span>{formatMoney(paymentFollowUp.collectedAmount)} Collected</span>
+                </DialogTitle>
+                <DialogDescription className="text-xs text-muted-foreground">
+                  Pay the shopkeeper their cut now, in cash, before leaving.
+                </DialogDescription>
+              </DialogHeader>
+              <div className="py-3">
+                <div className="flex justify-between p-3 rounded-xl bg-emerald-500/10 border border-emerald-500/30">
+                  <span className="text-xs font-semibold text-emerald-700 dark:text-emerald-400">
+                    Pay Shopkeeper ({paymentFollowUp.shopCutPercent}%):
+                  </span>
+                  <span className="text-lg font-black font-mono text-emerald-700 dark:text-emerald-400">
+                    {formatMoney(
+                      (paymentFollowUp.collectedAmount * paymentFollowUp.shopCutPercent) / 100
+                    )}
+                  </span>
+                </div>
+              </div>
+              <DialogFooter>
+                <Button
+                  className="w-full h-11 text-xs font-bold rounded-xl"
+                  onClick={() => {
+                    setPaymentFollowUp(null);
+                  }}
+                >
+                  Done
+                </Button>
+              </DialogFooter>
+            </>
+          ) : (
+            <>
+              <DialogHeader className="text-left pb-1 space-y-1">
+                <DialogTitle className="flex items-center gap-2 text-base font-bold">
+                  <Landmark className="h-5 w-5 text-secondary" />
+                  <span>Shopkeeper Bank Payment</span>
+                </DialogTitle>
+                <DialogDescription className="text-xs text-muted-foreground">
+                  This store is paid by bank transfer — confirm it's already been sent, or set when
+                  it's expected.
+                </DialogDescription>
+              </DialogHeader>
+              <div className="py-3 space-y-3">
+                <div className="flex justify-between p-3 rounded-xl bg-muted/60 border border-border/40 text-xs">
+                  <span className="font-medium">Shopkeeper&apos;s Cut ({paymentFollowUp?.shopCutPercent ?? 0}%):</span>
+                  <span className="font-bold font-mono">
+                    {formatMoney(
+                      ((paymentFollowUp?.collectedAmount ?? 0) *
+                        (paymentFollowUp?.shopCutPercent ?? 0)) /
+                        100
+                    )}
+                  </span>
+                </div>
+                <div className="space-y-1.5">
+                  <label className="text-xs font-semibold text-foreground">
+                    Or set an Expected Payment Date
+                  </label>
+                  <Input
+                    type="date"
+                    value={expectedPaymentDate}
+                    onChange={(e) => setExpectedPaymentDate(e.target.value)}
+                    className="h-11 rounded-xl text-xs"
+                  />
+                </div>
+              </div>
+              <DialogFooter className="flex flex-col sm:flex-row gap-2">
+                <Button
+                  variant="outline"
+                  className="w-full sm:w-auto h-11 text-xs font-semibold rounded-xl"
+                  disabled={!expectedPaymentDate || paymentUpdateMutation.isPending}
+                  onClick={() => {
+                    if (paymentFollowUp) {
+                      paymentUpdateMutation.mutate({
+                        cashLogId: paymentFollowUp.cashLogId,
+                        shopPaymentStatus: "PENDING",
+                        expectedPaymentDate: new Date(expectedPaymentDate).toISOString(),
+                      });
+                    }
+                  }}
+                >
+                  Set Expected Date
+                </Button>
+                <Button
+                  className="w-full sm:w-auto h-11 text-xs font-bold rounded-xl"
+                  disabled={paymentUpdateMutation.isPending}
+                  onClick={() => {
+                    if (paymentFollowUp) {
+                      paymentUpdateMutation.mutate({
+                        cashLogId: paymentFollowUp.cashLogId,
+                        shopPaymentStatus: "PAID",
+                      });
+                    }
+                  }}
+                >
+                  {paymentUpdateMutation.isPending && (
+                    <Loader2 className="mr-2 h-4 w-4 animate-spin" />
+                  )}
+                  Mark Payment Done
+                </Button>
+              </DialogFooter>
+            </>
+          )}
         </DialogContent>
       </Dialog>
 

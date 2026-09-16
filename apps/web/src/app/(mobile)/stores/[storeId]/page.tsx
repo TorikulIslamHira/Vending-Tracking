@@ -77,13 +77,23 @@ export default function StoreMachinesPage() {
           <span>{storeData?.locationName || "Location"}</span>
         </button>
 
-        <Button
-          onClick={() => router.push(`/machines/register?storeId=${storeId}`)}
-          className="h-9 px-3 rounded-2xl font-bold gap-1 shadow-xs shadow-primary/30 active:scale-95"
-        >
-          <Plus className="h-3.5 w-3.5" />
-          <span>+ Add Machine</span>
-        </Button>
+        <div className="flex items-center gap-2">
+          <Button
+            variant="outline"
+            onClick={() => router.push(`/stores/${storeId}/qr`)}
+            className="h-9 px-3 rounded-2xl font-bold gap-1 border-border/80 active:scale-95"
+          >
+            <QrCode className="h-3.5 w-3.5" />
+            <span>Store QR</span>
+          </Button>
+          <Button
+            onClick={() => router.push(`/machines/register?storeId=${storeId}`)}
+            className="h-9 px-3 rounded-2xl font-bold gap-1 shadow-xs shadow-primary/30 active:scale-95"
+          >
+            <Plus className="h-3.5 w-3.5" />
+            <span>+ Add Machine</span>
+          </Button>
+        </div>
       </div>
 
       {/* Store Context Card */}

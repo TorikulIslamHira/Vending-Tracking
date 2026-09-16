@@ -21,6 +21,12 @@ export interface DashboardMetricsData {
   businessCutPercent: number;
   missedVisitsCount: number;
   attentionMachines: AttentionMachineItem[];
+  // The 3 streamlined dashboard metrics: total cash ever collected, machines
+  // working normally (online and not flagged), and machines flagged via the
+  // cash-collection quick-action presets.
+  totalCollection: number;
+  activeMachinesCount: number;
+  attentionNeededCount: number;
 }
 
 const emptyDashboardMetrics: DashboardMetricsData = {
@@ -31,6 +37,9 @@ const emptyDashboardMetrics: DashboardMetricsData = {
   businessCutPercent: 70,
   missedVisitsCount: 0,
   attentionMachines: [],
+  totalCollection: 0,
+  activeMachinesCount: 0,
+  attentionNeededCount: 0,
 };
 
 export function useDashboardMetrics() {

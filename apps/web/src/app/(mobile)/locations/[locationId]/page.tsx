@@ -1,9 +1,10 @@
 "use client";
 
-import React, { useState } from "react";
+import React, { useState, useRef, useEffect } from "react";
 import { useParams, useRouter } from "next/navigation";
 import { toast } from "sonner";
 import { useStores, useCreateStore, useUpdateStore, StoreItem } from "@/hooks/useStores";
+import { loadGooglePlacesScript, extractPostalCodeFromPlace } from "@/lib/googleMaps";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Card, CardContent } from "@/components/ui/card";
@@ -27,7 +28,11 @@ import {
   MapPin,
   ChevronRight,
   Boxes,
+  Banknote,
+  Landmark,
 } from "lucide-react";
+
+const GOOGLE_MAPS_API_KEY = process.env.NEXT_PUBLIC_GOOGLE_MAPS_API_KEY;
 
 export default function LocationStoresPage() {
   const router = useRouter();
@@ -45,14 +50,59 @@ export default function LocationStoresPage() {
   const [storeName, setStoreName] = useState("");
   const [storeCategory, setStoreCategory] = useState("");
   const [shopCut, setShopCut] = useState(30);
+  const [eircode, setEircode] = useState("");
+  const [paymentMode, setPaymentMode] = useState<"CASH" | "BANK">("CASH");
+  const [address, setAddress] = useState("");
+  const addressInputRef = useRef<HTMLInputElement>(null);
 
   const stores = locationData?.stores || [];
+
+  // Google Places Autocomplete on the (optional) address field — only wired
+  // up when a Maps API key is configured; the Eircode field itself always
+  // stays manually editable since Google's Eircode coverage isn't complete
+  // for every Irish address.
+  useEffect(() => {
+    if (!GOOGLE_MAPS_API_KEY || !isDrawerOpen || !addressInputRef.current) return;
+
+    let cancelled = false;
+    let autocomplete: any = null;
+    const inputEl = addressInputRef.current;
+
+    loadGooglePlacesScript(GOOGLE_MAPS_API_KEY)
+      .then(() => {
+        if (cancelled || !inputEl) return;
+        const google = (window as any).google;
+        autocomplete = new google.maps.places.Autocomplete(inputEl, {
+          fields: ["address_components", "formatted_address"],
+        });
+        autocomplete.addListener("place_changed", () => {
+          const place = autocomplete.getPlace();
+          const postalCode = extractPostalCodeFromPlace(place);
+          if (postalCode) {
+            setEircode(postalCode);
+          }
+          if (place?.formatted_address) {
+            setAddress(place.formatted_address);
+          }
+        });
+      })
+      .catch(() => {
+        // Silent — the address field just behaves like a plain text input.
+      });
+
+    return () => {
+      cancelled = true;
+    };
+  }, [isDrawerOpen]);
 
   const handleOpenAdd = () => {
     setEditingStoreId(null);
     setStoreName("");
     setStoreCategory("Confectionery & Toys");
     setShopCut(30);
+    setEircode("");
+    setPaymentMode("CASH");
+    setAddress("");
     setIsDrawerOpen(true);
   };
 
@@ -62,6 +112,9 @@ export default function LocationStoresPage() {
     setStoreName(st.name);
     setStoreCategory(st.category);
     setShopCut(st.shopCutPercent);
+    setEircode(st.eircode || "");
+    setPaymentMode(st.paymentMode || "CASH");
+    setAddress("");
     setIsDrawerOpen(true);
   };
 
@@ -79,6 +132,8 @@ export default function LocationStoresPage() {
           name: storeName.trim(),
           category: storeCategory.trim(),
           shopCutPercent: shopCut,
+          eircode: eircode.trim() || undefined,
+          paymentMode,
         },
         {
           onSuccess: () => {
@@ -92,6 +147,8 @@ export default function LocationStoresPage() {
           name: storeName.trim(),
           category: storeCategory.trim(),
           shopCutPercent: shopCut,
+          eircode: eircode.trim() || undefined,
+          paymentMode,
         },
         {
           onSuccess: () => {
@@ -273,6 +330,63 @@ export default function LocationStoresPage() {
                 <span>Store Cut: {shopCut}%</span>
                 <span>Business Cut: {100 - shopCut}%</span>
               </div>
+            </div>
+
+            {/* Payment Mode */}
+            <div className="space-y-1.5">
+              <label className="text-xs font-semibold text-foreground">Payment Mode</label>
+              <div className="grid grid-cols-2 gap-2">
+                <button
+                  type="button"
+                  onClick={() => setPaymentMode("CASH")}
+                  className={`h-11 rounded-xl border text-xs font-bold flex items-center justify-center gap-1.5 transition-colors ${
+                    paymentMode === "CASH"
+                      ? "bg-primary/15 border-primary text-primary"
+                      : "bg-muted/40 border-border/60 text-muted-foreground"
+                  }`}
+                >
+                  <Banknote className="h-3.5 w-3.5" />
+                  <span>Cash</span>
+                </button>
+                <button
+                  type="button"
+                  onClick={() => setPaymentMode("BANK")}
+                  className={`h-11 rounded-xl border text-xs font-bold flex items-center justify-center gap-1.5 transition-colors ${
+                    paymentMode === "BANK"
+                      ? "bg-primary/15 border-primary text-primary"
+                      : "bg-muted/40 border-border/60 text-muted-foreground"
+                  }`}
+                >
+                  <Landmark className="h-3.5 w-3.5" />
+                  <span>Bank</span>
+                </button>
+              </div>
+            </div>
+
+            {/* Address (optional, auto-fills Eircode when Google Maps is configured) */}
+            {GOOGLE_MAPS_API_KEY && (
+              <div className="space-y-1.5">
+                <label className="text-xs font-semibold text-foreground">
+                  Address <span className="text-muted-foreground font-normal">(for Eircode lookup)</span>
+                </label>
+                <Input
+                  ref={addressInputRef}
+                  placeholder="Start typing the shop's address..."
+                  value={address}
+                  onChange={(e) => setAddress(e.target.value)}
+                  className="h-11 rounded-xl bg-muted/40 border-border/60 text-xs focus-visible:ring-primary shadow-xs"
+                />
+              </div>
+            )}
+
+            <div className="space-y-1.5">
+              <label className="text-xs font-semibold text-foreground">Eircode</label>
+              <Input
+                placeholder="e.g. D02 AF30"
+                value={eircode}
+                onChange={(e) => setEircode(e.target.value.toUpperCase())}
+                className="h-11 rounded-xl bg-muted/40 border-border/60 text-xs font-mono focus-visible:ring-primary shadow-xs"
+              />
             </div>
 
             <DrawerFooter className="p-0 pt-3 gap-2">

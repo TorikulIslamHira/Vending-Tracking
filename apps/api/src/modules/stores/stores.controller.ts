@@ -1,5 +1,6 @@
 import { FastifyReply, FastifyRequest } from "fastify";
-import { eq, and, desc } from "drizzle-orm";
+import { eq, and, or, desc } from "drizzle-orm";
+import { StoreCreateSchema, StoreUpdateSchema } from "@vending/validation";
 import { db, stores, locations } from "../../core/db";
 
 export async function getStoresByLocationHandler(
@@ -45,6 +46,9 @@ export async function getStoresByLocationHandler(
       category: st.category || "Novelty Vending",
       shopCutPercent: st.shopCutPercent,
       businessCutPercent: st.businessCutPercent,
+      eircode: st.eircode,
+      paymentMode: st.paymentMode,
+      qrCode: st.qrCode,
       machineCount: st.machines?.length || 0,
       machines: (st.machines || []).map((m) => ({
         id: m.id,
@@ -110,6 +114,9 @@ export async function getAllStoresHandler(
       locationName: st.location?.name || "Assigned Location",
       shopCutPercent: st.shopCutPercent,
       businessCutPercent: st.businessCutPercent,
+      eircode: st.eircode,
+      paymentMode: st.paymentMode,
+      qrCode: st.qrCode,
       machineCount: st.machines?.length || 0,
       machines: (st.machines || []).map((m) => ({
         id: m.id,
@@ -156,7 +163,7 @@ export async function getStoreByIdHandler(
 
   try {
     const store = await db.query.stores.findFirst({
-      where: and(eq(stores.id, id), eq(stores.tenantId, tenantId)),
+      where: and(eq(stores.tenantId, tenantId), or(eq(stores.id, id), eq(stores.qrCode, id))),
       with: {
         location: true,
         machines: true,
@@ -182,6 +189,9 @@ export async function getStoreByIdHandler(
         locationAddress: store.location?.address || "Commercial Zone",
         shopCutPercent: store.shopCutPercent,
         businessCutPercent: store.businessCutPercent,
+        eircode: store.eircode,
+        paymentMode: store.paymentMode,
+        qrCode: store.qrCode,
         machineCount: store.machines?.length || 0,
         createdAt: store.createdAt,
       },
@@ -198,19 +208,11 @@ export async function getStoreByIdHandler(
 export async function createStoreHandler(
   request: FastifyRequest<{
     Params?: { locationId?: string };
-    Body: {
-      name: string;
-      locationId?: string;
-      category?: string;
-      shopCutPercent?: number;
-      businessCutPercent?: number;
-    };
+    Body: unknown;
   }>,
   reply: FastifyReply
 ): Promise<void> {
   const tenantId = request.tenantId;
-  const targetLocationId = request.params?.locationId || request.body?.locationId;
-  const { name, category, shopCutPercent } = request.body || {};
 
   if (!tenantId) {
     return reply.status(401).send({
@@ -220,13 +222,18 @@ export async function createStoreHandler(
     });
   }
 
-  if (!name || typeof name !== "string" || !name.trim()) {
+  const parseResult = StoreCreateSchema.safeParse(request.body);
+  if (!parseResult.success) {
     return reply.status(400).send({
       statusCode: 400,
       error: "Bad Request",
-      message: "Store name is required",
+      message: "Validation failed",
+      issues: parseResult.error.issues,
     });
   }
+
+  const { name, category, shopCutPercent, eircode, paymentMode, qrCode } = parseResult.data;
+  const targetLocationId = request.params?.locationId || parseResult.data.locationId;
 
   if (!targetLocationId) {
     return reply.status(400).send({
@@ -263,6 +270,9 @@ export async function createStoreHandler(
         category: category ? category.trim() : "Novelty Vending",
         shopCutPercent: shopCut,
         businessCutPercent: bizCut,
+        eircode: eircode?.trim() || null,
+        paymentMode,
+        qrCode: qrCode || null,
       })
       .returning();
 
@@ -276,6 +286,9 @@ export async function createStoreHandler(
         locationId: store.locationId,
         shopCutPercent: store.shopCutPercent,
         businessCutPercent: store.businessCutPercent,
+        eircode: store.eircode,
+        paymentMode: store.paymentMode,
+        qrCode: store.qrCode,
         machineCount: 0,
         createdAt: store.createdAt,
       },
@@ -292,17 +305,12 @@ export async function createStoreHandler(
 export async function updateStoreHandler(
   request: FastifyRequest<{
     Params: { id: string };
-    Body: {
-      name?: string;
-      category?: string;
-      shopCutPercent?: number;
-    };
+    Body: unknown;
   }>,
   reply: FastifyReply
 ): Promise<void> {
   const tenantId = request.tenantId;
   const { id } = request.params;
-  const { name, category, shopCutPercent } = request.body || {};
 
   if (!tenantId) {
     return reply.status(401).send({
@@ -311,6 +319,18 @@ export async function updateStoreHandler(
       message: "Missing tenant identification",
     });
   }
+
+  const parseResult = StoreUpdateSchema.safeParse(request.body);
+  if (!parseResult.success) {
+    return reply.status(400).send({
+      statusCode: 400,
+      error: "Bad Request",
+      message: "Validation failed",
+      issues: parseResult.error.issues,
+    });
+  }
+
+  const { name, category, shopCutPercent, eircode, paymentMode, qrCode } = parseResult.data;
 
   try {
     const existing = await db.query.stores.findFirst({
@@ -326,16 +346,25 @@ export async function updateStoreHandler(
     }
 
     const dataToUpdate: any = {};
-    if (name && typeof name === "string" && name.trim()) {
+    if (name && name.trim()) {
       dataToUpdate.name = name.trim();
     }
     if (category !== undefined) {
-      dataToUpdate.category = category.trim();
+      dataToUpdate.category = category?.trim() ?? null;
     }
     if (typeof shopCutPercent === "number") {
       const shopCut = Math.max(0, Math.min(100, shopCutPercent));
       dataToUpdate.shopCutPercent = shopCut;
       dataToUpdate.businessCutPercent = 100 - shopCut;
+    }
+    if (eircode !== undefined) {
+      dataToUpdate.eircode = eircode?.trim() || null;
+    }
+    if (paymentMode !== undefined) {
+      dataToUpdate.paymentMode = paymentMode;
+    }
+    if (qrCode !== undefined) {
+      dataToUpdate.qrCode = qrCode || null;
     }
 
     const [updated] = await db
@@ -353,6 +382,9 @@ export async function updateStoreHandler(
         category: updated.category,
         shopCutPercent: updated.shopCutPercent,
         businessCutPercent: updated.businessCutPercent,
+        eircode: updated.eircode,
+        paymentMode: updated.paymentMode,
+        qrCode: updated.qrCode,
       },
     });
   } catch (error: any) {
