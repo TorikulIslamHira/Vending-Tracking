@@ -2,6 +2,7 @@
 
 import React, { Suspense } from "react";
 import Link from "next/link";
+import Image from "next/image";
 import { useRouter, useSearchParams } from "next/navigation";
 import { useForm } from "react-hook-form";
 import { zodResolver } from "@hookform/resolvers/zod";
@@ -14,7 +15,6 @@ import { toast } from "sonner";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import {
-  Sparkles,
   Lock,
   Mail,
   ArrowRight,
@@ -74,8 +74,8 @@ function LoginForm() {
       {/* Top Header & Logo */}
       <div className="space-y-6 pt-8">
         <div className="flex items-center gap-3">
-          <div className="flex h-12 w-12 items-center justify-center rounded-2xl bg-primary text-primary-foreground shadow-md shadow-primary/30">
-            <Sparkles className="h-6 w-6 text-foreground" />
+          <div className="flex h-12 w-12 items-center justify-center rounded-2xl overflow-hidden shadow-md shadow-primary/30 shrink-0">
+            <Image src="/logo.png" alt="Bee Novelty Vending" width={48} height={48} className="h-full w-full object-cover" priority />
           </div>
           <div>
             <h1 className="text-xl font-black tracking-tight text-foreground">

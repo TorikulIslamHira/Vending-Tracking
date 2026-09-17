@@ -2,6 +2,7 @@
 
 import React from "react";
 import Link from "next/link";
+import Image from "next/image";
 import { useRouter } from "next/navigation";
 import { useAuthStore } from "@/store/useAuthStore";
 import { useDashboardMetrics } from "@/hooks/useDashboardMetrics";
@@ -11,7 +12,6 @@ import { toast } from "sonner";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent } from "@/components/ui/card";
 import {
-  Sparkles,
   Boxes,
   Coins,
   AlertTriangle,
@@ -43,8 +43,8 @@ export default function MobileDashboardPage() {
       {/* Top Bar Header — sticky against the scrollable <main>, not the page */}
       <div className="w-full flex items-center justify-between sticky top-0 z-20 -mx-4 px-4 pb-3 pt-[calc(0.75rem+env(safe-area-inset-top))] bg-card/95 backdrop-blur-md border-b border-border/40">
         <div className="flex items-center gap-2.5">
-          <div className="flex h-10 w-10 items-center justify-center rounded-2xl bg-primary text-primary-foreground shadow-sm shadow-primary/30">
-            <Sparkles className="h-5 w-5 text-foreground" />
+          <div className="flex h-10 w-10 items-center justify-center rounded-2xl overflow-hidden shadow-sm shadow-primary/30 shrink-0">
+            <Image src="/logo.png" alt="Bee Novelty Vending" width={40} height={40} className="h-full w-full object-cover" priority />
           </div>
           <div>
             <h1 className="text-sm font-black tracking-tight text-foreground">
