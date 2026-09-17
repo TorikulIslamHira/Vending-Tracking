@@ -1,5 +1,5 @@
 {
-  "id": "7a692a6c-ba38-4d36-848a-1cf965069f05",
+  "id": "bb82e9c3-f5c4-4904-ad71-887f32c23d76",
   "prevId": "7f6dccb7-eda5-4cdc-a730-25e41a6d18b9",
   "version": "7",
   "dialect": "postgresql",
@@ -1003,6 +1003,27 @@
           "concurrently": false,
           "method": "btree",
           "with": {}
+        },
+        "stores_tenantId_qrCode_idx": {
+          "name": "stores_tenantId_qrCode_idx",
+          "columns": [
+            {
+              "expression": "tenantId",
+              "isExpression": false,
+              "asc": true,
+              "nulls": "last"
+            },
+            {
+              "expression": "qrCode",
+              "isExpression": false,
+              "asc": true,
+              "nulls": "last"
+            }
+          ],
+          "isUnique": false,
+          "concurrently": false,
+          "method": "btree",
+          "with": {}
         }
       },
       "foreignKeys": {
@@ -1034,16 +1055,7 @@
         }
       },
       "compositePrimaryKeys": {},
-      "uniqueConstraints": {
-        "stores_tenantId_qrCode_key": {
-          "name": "stores_tenantId_qrCode_key",
-          "nullsNotDistinct": false,
-          "columns": [
-            "tenantId",
-            "qrCode"
-          ]
-        }
-      },
+      "uniqueConstraints": {},
       "policies": {},
       "checkConstraints": {},
       "isRLSEnabled": false

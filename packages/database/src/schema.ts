@@ -105,7 +105,13 @@ export const stores = pgTable(
   (table) => [
     index("stores_tenantId_idx").on(table.tenantId),
     index("stores_locationId_idx").on(table.locationId),
-    unique("stores_tenantId_qrCode_key").on(table.tenantId, table.qrCode),
+    // Deliberately a plain index, not a unique constraint: adding a UNIQUE
+    // constraint to an already-populated table makes `drizzle-kit push`
+    // stop for an interactive "truncate table?" confirmation, which hangs
+    // forever in the non-interactive CI/SSH deploy pipeline (no TTY to
+    // answer it). Uniqueness is enforced at the application layer instead
+    // (see stores.controller.ts).
+    index("stores_tenantId_qrCode_idx").on(table.tenantId, table.qrCode),
   ]
 );
 

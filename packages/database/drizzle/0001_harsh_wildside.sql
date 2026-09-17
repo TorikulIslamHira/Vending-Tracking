@@ -25,4 +25,4 @@ ALTER TABLE "admin_audit_logs" ADD CONSTRAINT "admin_audit_logs_tenantId_tenants
 ALTER TABLE "admin_audit_logs" ADD CONSTRAINT "admin_audit_logs_actorId_users_id_fk" FOREIGN KEY ("actorId") REFERENCES "public"."users"("id") ON DELETE restrict ON UPDATE no action;--> statement-breakpoint
 CREATE INDEX "admin_audit_logs_tenantId_idx" ON "admin_audit_logs" USING btree ("tenantId");--> statement-breakpoint
 CREATE INDEX "admin_audit_logs_actorId_idx" ON "admin_audit_logs" USING btree ("actorId");--> statement-breakpoint
-ALTER TABLE "stores" ADD CONSTRAINT "stores_tenantId_qrCode_key" UNIQUE("tenantId","qrCode");
+CREATE INDEX "stores_tenantId_qrCode_idx" ON "stores" USING btree ("tenantId","qrCode");

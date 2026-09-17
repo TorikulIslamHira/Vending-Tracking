@@ -1,5 +1,5 @@
 import { FastifyReply, FastifyRequest } from "fastify";
-import { eq, and, or, desc } from "drizzle-orm";
+import { eq, and, or, ne, desc } from "drizzle-orm";
 import { StoreCreateSchema, StoreUpdateSchema } from "@vending/validation";
 import { db, stores, locations } from "../../core/db";
 
@@ -257,6 +257,21 @@ export async function createStoreHandler(
       });
     }
 
+    // qrCode has no DB-level unique constraint (see schema.ts comment), so
+    // uniqueness is enforced here instead.
+    if (qrCode) {
+      const existingQr = await db.query.stores.findFirst({
+        where: and(eq(stores.tenantId, tenantId), eq(stores.qrCode, qrCode)),
+      });
+      if (existingQr) {
+        return reply.status(409).send({
+          statusCode: 409,
+          error: "Conflict",
+          message: "A store with this QR code already exists for your organization",
+        });
+      }
+    }
+
     const shopCut =
       typeof shopCutPercent === "number" ? Math.max(0, Math.min(100, shopCutPercent)) : 30;
     const bizCut = 100 - shopCut;
@@ -343,6 +358,19 @@ export async function updateStoreHandler(
         error: "Not Found",
         message: "Store not found or unauthorized",
       });
+    }
+
+    if (qrCode) {
+      const existingQr = await db.query.stores.findFirst({
+        where: and(eq(stores.tenantId, tenantId), eq(stores.qrCode, qrCode), ne(stores.id, id)),
+      });
+      if (existingQr) {
+        return reply.status(409).send({
+          statusCode: 409,
+          error: "Conflict",
+          message: "A store with this QR code already exists for your organization",
+        });
+      }
     }
 
     const dataToUpdate: any = {};
