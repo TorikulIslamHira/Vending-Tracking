@@ -4,17 +4,11 @@ import React from "react";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { useAuthStore } from "@/store/useAuthStore";
-import { useTenantSettings } from "@/hooks/useTenantSettings";
 import { useUsers } from "@/hooks/useUsers";
-import { CURRENCY_OPTIONS } from "@/lib/currency";
 import { toast } from "sonner";
 import { Button } from "@/components/ui/button";
-import { Card, CardContent } from "@/components/ui/card";
-import { Switch } from "@/components/ui/switch";
 import {
   Settings as SettingsIcon,
-  DollarSign,
-  Percent,
   Truck,
   Users,
   Coins,
@@ -26,7 +20,6 @@ import {
 export default function MobileSettingsPage() {
   const router = useRouter();
   const { user, logout } = useAuthStore();
-  const { settings, updateSettings } = useTenantSettings();
   const { data: appUsers = [] } = useUsers();
   const currentUserIsRoot =
     appUsers.find((u) => u.id === user?.id)?.isRootAdmin ?? false;
@@ -110,26 +103,6 @@ export default function MobileSettingsPage() {
           </Link>
 
           <Link
-            href="/inventory-logs"
-            className="flex items-center justify-between p-3.5 rounded-2xl bg-card border border-border/50 hover:bg-accent/40 active:scale-[0.98] transition-all shadow-xs"
-          >
-            <div className="flex items-center gap-3">
-              <div className="h-9 w-9 rounded-xl bg-blue-500/15 flex items-center justify-center text-blue-600 dark:text-blue-400">
-                <Coins className="h-4 w-4" />
-              </div>
-              <div>
-                <span className="font-bold text-xs text-foreground block">
-                  Inventory Restock Logs
-                </span>
-                <span className="text-[11px] text-muted-foreground">
-                  Audit trail of refills & error reversals
-                </span>
-              </div>
-            </div>
-            <ChevronRight className="h-4 w-4 text-muted-foreground" />
-          </Link>
-
-          <Link
             href="/cash"
             className="flex items-center justify-between p-3.5 rounded-2xl bg-card border border-border/50 hover:bg-accent/40 active:scale-[0.98] transition-all shadow-xs"
           >
@@ -143,26 +116,6 @@ export default function MobileSettingsPage() {
                 </span>
                 <span className="text-[11px] text-muted-foreground">
                   Audit physical cash collections & discrepancies
-                </span>
-              </div>
-            </div>
-            <ChevronRight className="h-4 w-4 text-muted-foreground" />
-          </Link>
-
-          <Link
-            href="/assignments"
-            className="flex items-center justify-between p-3.5 rounded-2xl bg-card border border-border/50 hover:bg-accent/40 active:scale-[0.98] transition-all shadow-xs"
-          >
-            <div className="flex items-center gap-3">
-              <div className="h-9 w-9 rounded-xl bg-primary/15 flex items-center justify-center text-primary">
-                <Truck className="h-4 w-4" />
-              </div>
-              <div>
-                <span className="font-bold text-xs text-foreground block">
-                  Restocker Assignments
-                </span>
-                <span className="text-[11px] text-muted-foreground">
-                  Allocate routes to field agents
                 </span>
               </div>
             </div>
@@ -213,136 +166,7 @@ export default function MobileSettingsPage() {
         </div>
       </div>
 
-      {/* 2. General Section (Screen 11) */}
-      <div className="space-y-1.5">
-        <h2 className="text-xs font-bold uppercase tracking-wider text-muted-foreground">
-          General Fleet Configuration
-        </h2>
-
-        <Card className="border-border/50 bg-card shadow-xs">
-          <CardContent className="p-4 space-y-3.5">
-            {/* Currency Dropdown */}
-            <div className="flex items-center justify-between gap-3">
-              <div className="flex items-center gap-2">
-                <DollarSign className="h-4 w-4 text-muted-foreground" />
-                <span className="text-xs font-semibold text-foreground">
-                  Operating Currency
-                </span>
-              </div>
-              <select
-                value={settings.currency || "USD"}
-                onChange={(e) => {
-                  updateSettings({ currency: e.target.value });
-                }}
-                className="h-9 rounded-xl bg-muted/50 border-border/60 text-base md:text-xs font-bold px-3 text-foreground focus:outline-hidden focus:ring-2 focus:ring-primary shadow-xs"
-              >
-                {CURRENCY_OPTIONS.map((opt) => (
-                  <option key={opt.code} value={opt.code}>
-                    {opt.label}
-                  </option>
-                ))}
-              </select>
-            </div>
-
-            {/* Default Split */}
-            <div className="space-y-1.5 pt-2 border-t border-border/40">
-              <div className="flex items-center justify-between text-xs">
-                <div className="flex items-center gap-2">
-                  <Percent className="h-4 w-4 text-muted-foreground" />
-                  <span className="font-semibold text-foreground">
-                    Default Commission Split
-                  </span>
-                </div>
-                <span className="font-bold font-mono text-primary text-xs">
-                  {settings.defaultShopCut}% Shop / {100 - settings.defaultShopCut}% Biz
-                </span>
-              </div>
-              <input
-                type="range"
-                min="0"
-                max="100"
-                step="5"
-                value={settings.defaultShopCut}
-                onChange={(e) => {
-                  const cut = Number(e.target.value);
-                  updateSettings({
-                    defaultShopCut: cut,
-                    defaultBizCut: 100 - cut,
-                  });
-                }}
-                className="w-full accent-primary cursor-pointer"
-              />
-            </div>
-          </CardContent>
-        </Card>
-      </div>
-
-      {/* 3. Notifications Section (Screen 11 with Toggle Switches) */}
-      <div className="space-y-1.5">
-        <h2 className="text-xs font-bold uppercase tracking-wider text-muted-foreground">
-          Notifications & Alerts
-        </h2>
-
-        <Card className="border-border/50 bg-card shadow-xs">
-          <CardContent className="p-4 space-y-3.5">
-            {/* Low stock alerts */}
-            <div className="flex items-center justify-between">
-              <div className="space-y-0.5">
-                <span className="text-xs font-semibold text-foreground block">
-                  Low Stock Alerts
-                </span>
-                <span className="text-[11px] text-muted-foreground">
-                  Notify when units drop below 20% capacity
-                </span>
-              </div>
-              <Switch
-                checked={settings.lowStockAlerts}
-                onCheckedChange={(val) => {
-                  updateSettings({ lowStockAlerts: val });
-                }}
-              />
-            </div>
-
-            {/* Cash drop alerts */}
-            <div className="flex items-center justify-between pt-2 border-t border-border/40">
-              <div className="space-y-0.5">
-                <span className="text-xs font-semibold text-foreground block">
-                  Cash Drop Collection Alerts
-                </span>
-                <span className="text-[11px] text-muted-foreground">
-                  Immediate alerts on cash discrepancies
-                </span>
-              </div>
-              <Switch
-                checked={settings.cashDropAlerts}
-                onCheckedChange={(val) => {
-                  updateSettings({ cashDropAlerts: val });
-                }}
-              />
-            </div>
-
-            {/* Daily summary */}
-            <div className="flex items-center justify-between pt-2 border-t border-border/40">
-              <div className="space-y-0.5">
-                <span className="text-xs font-semibold text-foreground block">
-                  Daily Summary Email
-                </span>
-                <span className="text-[11px] text-muted-foreground">
-                  End-of-day revenue and refill digest
-                </span>
-              </div>
-              <Switch
-                checked={settings.dailyReports}
-                onCheckedChange={(val) => {
-                  updateSettings({ dailyReports: val });
-                }}
-              />
-            </div>
-          </CardContent>
-        </Card>
-      </div>
-
-      {/* 4. Action: Log Out */}
+      {/* 2. Action: Log Out */}
       <div className="pt-2 pb-6">
         <Button
           type="button"

@@ -54,6 +54,30 @@ export function useCreateLocation() {
   });
 }
 
+export function useDeleteLocation() {
+  const queryClient = useQueryClient();
+
+  return useMutation({
+    mutationFn: async (id: string) => {
+      const res = await api.delete(`/locations/${id}`);
+      return res.data;
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ["locations"] });
+      queryClient.invalidateQueries({ queryKey: ["all-stores"] });
+      queryClient.invalidateQueries({ queryKey: ["dashboard-metrics"] });
+      toast.success("Location deleted successfully!");
+    },
+    onError: (err: any) => {
+      const errMsg =
+        err?.response?.data?.message ||
+        err?.message ||
+        "Failed to delete location";
+      toast.error(errMsg);
+    },
+  });
+}
+
 export function useUpdateLocation() {
   const queryClient = useQueryClient();
 

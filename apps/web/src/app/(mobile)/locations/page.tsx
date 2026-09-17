@@ -7,6 +7,7 @@ import {
   useLocations,
   useCreateLocation,
   useUpdateLocation,
+  useDeleteLocation,
   LocationItem,
 } from "@/hooks/useLocations";
 import { Button } from "@/components/ui/button";
@@ -22,15 +23,25 @@ import {
   DrawerClose,
 } from "@/components/ui/drawer";
 import {
+  Dialog,
+  DialogContent,
+  DialogHeader,
+  DialogTitle,
+  DialogDescription,
+  DialogFooter,
+} from "@/components/ui/dialog";
+import {
   Search,
   MapPin,
   Store,
   ChevronRight,
   Plus,
   Edit2,
+  Trash2,
   Sparkles,
   Loader2,
   Boxes,
+  AlertTriangle,
 } from "lucide-react";
 
 export default function LocationsPage() {
@@ -38,10 +49,12 @@ export default function LocationsPage() {
   const { data: locations = [], isLoading } = useLocations();
   const createLocationMutation = useCreateLocation();
   const updateLocationMutation = useUpdateLocation();
+  const deleteLocationMutation = useDeleteLocation();
 
   const [searchTerm, setSearchTerm] = useState("");
   const [isAddDrawerOpen, setIsAddDrawerOpen] = useState(false);
   const [isEditingId, setIsEditingId] = useState<string | null>(null);
+  const [deleteTarget, setDeleteTarget] = useState<LocationItem | null>(null);
 
   // Form State
   const [newLocationName, setNewLocationName] = useState("");
@@ -66,6 +79,18 @@ export default function LocationsPage() {
     setNewLocationName(loc.name);
     setNewLocationAddress(loc.address);
     setIsAddDrawerOpen(true);
+  };
+
+  const handleOpenDelete = (loc: LocationItem, e: React.MouseEvent) => {
+    e.stopPropagation();
+    setDeleteTarget(loc);
+  };
+
+  const handleConfirmDelete = () => {
+    if (!deleteTarget) return;
+    deleteLocationMutation.mutate(deleteTarget.id, {
+      onSuccess: () => setDeleteTarget(null),
+    });
   };
 
   const handleSaveLocation = async (e: React.FormEvent) => {
@@ -190,6 +215,14 @@ export default function LocationsPage() {
                   >
                     <Edit2 className="h-3.5 w-3.5" />
                   </button>
+                  <button
+                    type="button"
+                    onClick={(e) => handleOpenDelete(location, e)}
+                    className="h-8 w-8 rounded-xl bg-rose-500/10 hover:bg-rose-500/20 text-rose-600 dark:text-rose-400 flex items-center justify-center transition-colors"
+                    title="Delete Location"
+                  >
+                    <Trash2 className="h-3.5 w-3.5" />
+                  </button>
                   <div className="h-8 w-8 rounded-xl flex items-center justify-center text-muted-foreground">
                     <ChevronRight className="h-4 w-4" />
                   </div>
@@ -281,6 +314,57 @@ export default function LocationsPage() {
           </form>
         </DrawerContent>
       </Drawer>
+
+      {/* Delete Confirmation Dialog */}
+      <Dialog
+        open={!!deleteTarget}
+        onOpenChange={(open) => !open && setDeleteTarget(null)}
+      >
+        <DialogContent className="max-w-md w-[92vw] rounded-2xl p-6 bg-background border border-border/60 shadow-2xl z-50">
+          <DialogHeader className="text-left pb-1 space-y-1">
+            <DialogTitle className="flex items-center gap-2 text-base font-bold text-rose-600 dark:text-rose-400">
+              <AlertTriangle className="h-5 w-5 shrink-0" />
+              <span>Delete Location</span>
+            </DialogTitle>
+            <DialogDescription className="text-xs text-muted-foreground">
+              Are you sure you want to delete{" "}
+              <strong className="text-foreground">{deleteTarget?.name}</strong>? This cannot be
+              undone
+              {deleteTarget && deleteTarget.storeCount > 0 && (
+                <>
+                  {" "}
+                  — its {deleteTarget.storeCount}{" "}
+                  {deleteTarget.storeCount === 1 ? "store" : "stores"} will also be deleted.
+                  Machines assigned to {deleteTarget.storeCount === 1 ? "it" : "them"} will remain
+                  in your fleet but become unassigned.
+                </>
+              )}
+              .
+            </DialogDescription>
+          </DialogHeader>
+
+          <DialogFooter className="pt-2 flex flex-col sm:flex-row gap-2">
+            <Button
+              variant="outline"
+              onClick={() => setDeleteTarget(null)}
+              className="w-full sm:w-auto h-11 rounded-xl text-xs font-semibold"
+            >
+              Cancel
+            </Button>
+            <Button
+              variant="destructive"
+              className="w-full sm:w-auto h-11 text-xs font-bold shadow-md rounded-xl"
+              onClick={handleConfirmDelete}
+              disabled={deleteLocationMutation.isPending}
+            >
+              {deleteLocationMutation.isPending && (
+                <Loader2 className="mr-2 h-4 w-4 animate-spin" />
+              )}
+              Delete Location
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
     </div>
   );
 }

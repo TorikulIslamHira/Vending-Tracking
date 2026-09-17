@@ -222,3 +222,50 @@ export async function updateLocationHandler(
     });
   }
 }
+
+/**
+ * Deletes a location. Hard delete: `stores.locationId` has ON DELETE CASCADE,
+ * so any stores under this location are deleted along with it (their
+ * machines survive with storeId set to null via ON DELETE SET NULL).
+ */
+export async function deleteLocationHandler(
+  request: FastifyRequest<{ Params: { id: string } }>,
+  reply: FastifyReply
+): Promise<void> {
+  const tenantId = request.tenantId;
+  const { id } = request.params;
+
+  if (!tenantId) {
+    return reply.status(401).send({
+      statusCode: 401,
+      error: "Unauthorized",
+      message: "Missing tenant identification",
+    });
+  }
+
+  try {
+    const deleted = await db
+      .delete(locations)
+      .where(and(eq(locations.id, id), eq(locations.tenantId, tenantId)))
+      .returning();
+
+    if (deleted.length === 0) {
+      return reply.status(404).send({
+        statusCode: 404,
+        error: "Not Found",
+        message: "Location not found or unauthorized",
+      });
+    }
+
+    return reply.send({
+      statusCode: 200,
+      message: "Location deleted successfully",
+    });
+  } catch (error: any) {
+    return reply.status(500).send({
+      statusCode: 500,
+      error: "Internal Server Error",
+      message: error.message || "Failed to delete location",
+    });
+  }
+}
