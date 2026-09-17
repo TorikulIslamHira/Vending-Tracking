@@ -10,8 +10,6 @@ import {
   useDeleteStore,
   StoreItem,
 } from "@/hooks/useStores";
-import { useLocations } from "@/hooks/useLocations";
-import { LocationCombobox, LocationComboboxValue } from "@/components/LocationCombobox";
 import { loadGooglePlacesScript, extractPostalCodeFromPlace } from "@/lib/googleMaps";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -42,7 +40,6 @@ import {
   Trash2,
   Sparkles,
   Loader2,
-  MapPin,
   ChevronRight,
   Boxes,
   Banknote,
@@ -55,7 +52,6 @@ const GOOGLE_MAPS_API_KEY = process.env.NEXT_PUBLIC_GOOGLE_MAPS_API_KEY;
 export default function StoresPage() {
   const router = useRouter();
   const { data: stores = [], isLoading } = useAllStores();
-  const { data: locations = [] } = useLocations();
   const createStoreMutation = useCreateStore();
   const updateStoreMutation = useUpdateStore();
   const deleteStoreMutation = useDeleteStore();
@@ -72,10 +68,6 @@ export default function StoresPage() {
   const [eircode, setEircode] = useState("");
   const [paymentMode, setPaymentMode] = useState<"CASH" | "BANK">("CASH");
   const [address, setAddress] = useState("");
-  const [locationValue, setLocationValue] = useState<LocationComboboxValue>({
-    locationId: null,
-    newLocationName: null,
-  });
   const addressInputRef = useRef<HTMLInputElement>(null);
 
   const filteredStores = stores.filter((st) => {
@@ -83,7 +75,6 @@ export default function StoresPage() {
     return (
       st.name.toLowerCase().includes(q) ||
       (st.category || "").toLowerCase().includes(q) ||
-      (st.locationName || "").toLowerCase().includes(q) ||
       (st.eircode || "").toLowerCase().includes(q)
     );
   });
@@ -134,7 +125,6 @@ export default function StoresPage() {
     setEircode("");
     setPaymentMode("CASH");
     setAddress("");
-    setLocationValue({ locationId: null, newLocationName: null });
     setIsDrawerOpen(true);
   };
 
@@ -147,7 +137,6 @@ export default function StoresPage() {
     setEircode(st.eircode || "");
     setPaymentMode(st.paymentMode || "CASH");
     setAddress("");
-    setLocationValue({ locationId: st.locationId || null, newLocationName: null });
     setIsDrawerOpen(true);
   };
 
@@ -175,10 +164,6 @@ export default function StoresPage() {
         {
           id: editingStoreId,
           name: storeName.trim(),
-          // null explicitly unassigns (or clears a to-be-created location);
-          // undefined would mean "leave the current location unchanged".
-          locationId: locationValue.locationId,
-          newLocationName: locationValue.newLocationName || undefined,
           category: storeCategory.trim(),
           shopCutPercent: shopCut,
           eircode: eircode.trim() || undefined,
@@ -192,8 +177,6 @@ export default function StoresPage() {
       createStoreMutation.mutate(
         {
           name: storeName.trim(),
-          locationId: locationValue.locationId || undefined,
-          newLocationName: locationValue.newLocationName || undefined,
           category: storeCategory.trim(),
           shopCutPercent: shopCut,
           eircode: eircode.trim() || undefined,
@@ -212,17 +195,7 @@ export default function StoresPage() {
       <div className="flex items-center justify-between sticky top-0 z-20 -mx-4 px-4 pb-3 pt-[calc(0.75rem+env(safe-area-inset-top))] bg-card/95 backdrop-blur-md border-b border-border/40">
         <div className="space-y-0.5">
           <h1 className="text-xl font-black tracking-tight text-foreground">Stores</h1>
-          <div className="flex items-center gap-1.5 text-xs text-muted-foreground">
-            <span>{stores.length} Stores Configured</span>
-            <span>•</span>
-            <button
-              type="button"
-              onClick={() => router.push("/locations")}
-              className="font-semibold text-primary hover:underline"
-            >
-              Manage Locations
-            </button>
-          </div>
+          <p className="text-xs text-muted-foreground">{stores.length} Stores Configured</p>
         </div>
 
         <Button
@@ -239,7 +212,7 @@ export default function StoresPage() {
         <Search className="absolute left-3.5 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground pointer-events-none" />
         <Input
           type="text"
-          placeholder="Search stores, category, location, or eircode..."
+          placeholder="Search stores, category, or eircode..."
           value={searchTerm}
           onChange={(e) => setSearchTerm(e.target.value)}
           className="h-11 w-full rounded-2xl bg-muted/40 border-border/50 pl-10 pr-4 text-xs focus-visible:ring-primary shadow-xs"
@@ -271,10 +244,7 @@ export default function StoresPage() {
                   </div>
                   <div className="min-w-0 space-y-0.5">
                     <h3 className="font-bold text-sm text-foreground truncate">{store.name}</h3>
-                    <div className="flex items-center gap-1 text-[11px] text-muted-foreground truncate">
-                      <MapPin className="h-3 w-3 shrink-0" />
-                      <span className="truncate">{store.locationName || "Unassigned"}</span>
-                    </div>
+                    <p className="text-[11px] text-muted-foreground truncate">{store.category}</p>
                     <div className="flex flex-wrap items-center gap-1.5 pt-1">
                       <span className="inline-flex items-center gap-1 text-[11px] font-bold text-foreground bg-accent/60 px-2 py-0.5 rounded-md">
                         <Boxes className="h-3 w-3 text-primary" />
@@ -340,7 +310,7 @@ export default function StoresPage() {
               </DrawerTitle>
             </div>
             <DrawerDescription className="text-xs text-muted-foreground">
-              Define the store contract and revenue split. Location is optional.
+              Define the store contract and revenue split.
             </DrawerDescription>
           </DrawerHeader>
 
@@ -353,17 +323,6 @@ export default function StoresPage() {
                 onChange={(e) => setStoreName(e.target.value)}
                 className="h-11 rounded-xl bg-muted/40 border-border/60 text-xs focus-visible:ring-primary shadow-xs"
                 required
-              />
-            </div>
-
-            <div className="space-y-1.5">
-              <label className="text-xs font-semibold text-foreground">
-                Location <span className="text-muted-foreground font-normal">(optional)</span>
-              </label>
-              <LocationCombobox
-                locations={locations}
-                value={locationValue}
-                onChange={setLocationValue}
               />
             </div>
 

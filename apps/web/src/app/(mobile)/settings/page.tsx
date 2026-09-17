@@ -10,7 +10,6 @@ import { Button } from "@/components/ui/button";
 import {
   Settings as SettingsIcon,
   Truck,
-  MapPin,
   Users,
   Coins,
   LogOut,
@@ -97,26 +96,6 @@ export default function MobileSettingsPage() {
                 </span>
                 <span className="text-[11px] text-muted-foreground">
                   View all hardware, status & balances
-                </span>
-              </div>
-            </div>
-            <ChevronRight className="h-4 w-4 text-muted-foreground" />
-          </Link>
-
-          <Link
-            href="/locations"
-            className="flex items-center justify-between p-3.5 rounded-2xl bg-card border border-border/50 hover:bg-accent/40 active:scale-[0.98] transition-all shadow-xs"
-          >
-            <div className="flex items-center gap-3">
-              <div className="h-9 w-9 rounded-xl bg-indigo-500/15 flex items-center justify-center text-indigo-600 dark:text-indigo-400">
-                <MapPin className="h-4 w-4" />
-              </div>
-              <div>
-                <span className="font-bold text-xs text-foreground block">
-                  Manage Locations
-                </span>
-                <span className="text-[11px] text-muted-foreground">
-                  Optional venue groupings for your stores
                 </span>
               </div>
             </div>

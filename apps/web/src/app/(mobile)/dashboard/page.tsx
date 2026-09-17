@@ -99,8 +99,7 @@ export default function MobileDashboardPage() {
               No Stores Configured Yet
             </h2>
             <p className="text-xs text-muted-foreground max-w-xs mx-auto">
-              Get started by adding your first store and linking vending units. A location is
-              optional — you can add one later if you want to group stores by venue.
+              Get started by adding your first store and linking vending units.
             </p>
           </div>
           <Button

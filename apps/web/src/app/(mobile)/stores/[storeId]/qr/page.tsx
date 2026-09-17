@@ -93,11 +93,7 @@ export default function StoreQrDisplayPage() {
 
   const handleDone = () => {
     toast.success("Store QR ready for field operations!");
-    if (storeData?.locationId) {
-      router.push(`/locations/${storeData.locationId}`);
-    } else {
-      router.push("/dashboard");
-    }
+    router.push("/stores");
   };
 
   return (
@@ -150,12 +146,14 @@ export default function StoreQrDisplayPage() {
                 <h2 className="font-black text-base text-foreground">
                   {storeData?.name || "Store"}
                 </h2>
-                <div className="flex items-center justify-center gap-3 text-xs text-muted-foreground">
-                  <span className="flex items-center gap-1">
-                    <MapPin className="h-3.5 w-3.5 text-primary" />
-                    <span>{storeData?.locationName || "Unassigned"}</span>
-                  </span>
-                </div>
+                {storeData?.eircode && (
+                  <div className="flex items-center justify-center gap-3 text-xs text-muted-foreground">
+                    <span className="flex items-center gap-1">
+                      <MapPin className="h-3.5 w-3.5 text-primary" />
+                      <span>{storeData.eircode}</span>
+                    </span>
+                  </div>
+                )}
               </div>
             </CardContent>
           </Card>

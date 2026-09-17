@@ -26,7 +26,6 @@ const PUBLIC_FILE_EXTENSIONS = [
 // is bounced to /scan before the page ever renders.
 const ADMIN_ONLY_PREFIXES = [
   "/dashboard",
-  "/locations",
   "/reports",
   "/settings",
   "/machines",

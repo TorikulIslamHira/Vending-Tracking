@@ -47,7 +47,6 @@ export default function BrowseMachinesDirectoryPage() {
       const storeMatches =
         !searchLower ||
         store.name.toLowerCase().includes(searchLower) ||
-        (store.locationName && store.locationName.toLowerCase().includes(searchLower)) ||
         (store.category && store.category.toLowerCase().includes(searchLower)) ||
         (store.eircode && store.eircode.toLowerCase().includes(searchLower));
 
@@ -166,7 +165,7 @@ export default function BrowseMachinesDirectoryPage() {
                       </h3>
                       <div className="flex items-center gap-1 text-[10px] text-muted-foreground truncate">
                         <MapPin className="h-3 w-3 shrink-0 text-primary" />
-                        <span className="truncate">{store.locationName || "Venue Hub"}</span>
+                        <span className="truncate">{store.eircode || store.category}</span>
                       </div>
                     </div>
                   </div>

@@ -321,7 +321,7 @@ export default function MachineOperationPage() {
         <div className="flex-1 min-w-0 flex items-center gap-1.5 text-xs font-semibold text-foreground truncate">
           <span className="flex h-2 w-2 rounded-full bg-emerald-500 shrink-0 ring-4 ring-emerald-500/20" />
           <span className="text-muted-foreground truncate">
-            {(machine as any)?.locationName || machine?.location || "Venue"}
+            {machine?.location || "Venue"}
           </span>
           <span className="text-muted-foreground">→</span>
           <span className="truncate">

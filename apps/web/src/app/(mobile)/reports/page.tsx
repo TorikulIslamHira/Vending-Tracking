@@ -83,7 +83,6 @@ export default function ReportsPage() {
     if (!q) return true;
     return (
       st.name.toLowerCase().includes(q) ||
-      (st.locationName && st.locationName.toLowerCase().includes(q)) ||
       (st.category && st.category.toLowerCase().includes(q))
     );
   });
@@ -215,7 +214,7 @@ export default function ReportsPage() {
                   <div className="min-w-0 truncate">
                     <span className="font-bold text-foreground">{selectedStore.name}</span>
                     <span className="text-muted-foreground text-[11px] ml-1.5 font-normal">
-                      ({selectedStore.locationName || "Venue"})
+                      ({selectedStore.category})
                     </span>
                   </div>
                 ) : (
@@ -312,9 +311,7 @@ export default function ReportsPage() {
                           <div className="min-w-0 pr-2">
                             <p className="font-bold truncate">{st.name}</p>
                             <div className="flex items-center gap-1.5 text-[10px] text-muted-foreground font-normal mt-0.5">
-                              <span className="truncate">
-                                {st.locationName || "Assigned Venue"}
-                              </span>
+                              <span className="truncate">{st.category}</span>
                               <span>•</span>
                               <span className="font-medium text-foreground">
                                 {st.machineCount} {st.machineCount === 1 ? "machine" : "machines"}

@@ -50,10 +50,12 @@ export default function AgentStoreMachinePickerPage() {
               {storeData?.name || "Store"}
             </h1>
           </div>
-          <div className="flex items-center gap-1 text-xs text-muted-foreground truncate">
-            <MapPin className="h-3 w-3 shrink-0 text-primary" />
-            <span className="truncate">{storeData?.locationName || "Unassigned"}</span>
-          </div>
+          {storeData?.eircode && (
+            <div className="flex items-center gap-1 text-xs text-muted-foreground truncate">
+              <MapPin className="h-3 w-3 shrink-0 text-primary" />
+              <span className="truncate">{storeData.eircode}</span>
+            </div>
+          )}
         </div>
       </div>
 

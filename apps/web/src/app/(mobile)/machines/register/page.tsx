@@ -125,9 +125,7 @@ function RegisterMachineForm() {
     }
 
     const assignedStore = storesList.find((s) => s.id === data.storeId);
-    const storeLabel = assignedStore
-      ? `${assignedStore.name} (${assignedStore.locationName})`
-      : data.storeId || "Main Concourse";
+    const storeLabel = assignedStore ? assignedStore.name : data.storeId || "Main Concourse";
 
     createMachineMutation.mutate(
       {
@@ -206,7 +204,7 @@ function RegisterMachineForm() {
             {storesList.length > 0 ? (
               storesList.map((st) => (
                 <option key={st.id} value={st.id}>
-                  {st.name} — {st.locationName}
+                  {st.name}
                 </option>
               ))
             ) : (

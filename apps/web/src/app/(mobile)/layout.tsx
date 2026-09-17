@@ -81,7 +81,6 @@ export default function MobileLayout({
   const bottomNavRoutes = [
     "/dashboard",
     "/stores",
-    "/locations",
     "/reports",
     "/settings",
     "/assignments",
@@ -103,8 +102,7 @@ export default function MobileLayout({
       return (
         pathname === "/stores" ||
         pathname === "/machines" ||
-        pathname.startsWith("/stores") ||
-        pathname.startsWith("/locations")
+        pathname.startsWith("/stores")
       );
     }
     if (tabHref === "/reports") {

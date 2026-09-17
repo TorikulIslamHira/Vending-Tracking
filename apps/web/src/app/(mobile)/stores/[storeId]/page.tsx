@@ -64,17 +64,11 @@ export default function StoreMachinesPage() {
       {/* Top Bar with Back Button — sticky against the scrollable <main> */}
       <div className="flex items-center justify-between sticky top-0 z-20 -mx-4 px-4 pb-3 pt-[calc(0.75rem+env(safe-area-inset-top))] bg-card/95 backdrop-blur-md border-b border-border/40">
         <button
-          onClick={() => {
-            if (storeData?.locationId) {
-              router.push(`/locations/${storeData.locationId}`);
-            } else {
-              router.push("/stores");
-            }
-          }}
+          onClick={() => router.push("/stores")}
           className="flex items-center gap-1.5 text-xs font-bold text-muted-foreground hover:text-foreground active:scale-95 transition-transform"
         >
           <ArrowLeft className="h-4 w-4" />
-          <span>{storeData?.locationName || "Unassigned"}</span>
+          <span>Stores</span>
         </button>
 
         <div className="flex items-center gap-2">
@@ -101,7 +95,7 @@ export default function StoreMachinesPage() {
         <div className="flex items-center justify-between">
           <span className="text-[10px] font-bold uppercase tracking-wider text-primary flex items-center gap-1">
             <StoreIcon className="h-3 w-3" />
-            <span>{storeData?.locationName || "Unassigned"}</span>
+            <span>{storeData?.category || "Store"}</span>
           </span>
           {storeData && (
             <span className="text-[10px] font-bold text-muted-foreground bg-card border border-border/60 px-2 py-0.5 rounded-full flex items-center gap-1">
