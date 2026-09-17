@@ -165,9 +165,12 @@ function LoginForm() {
       </div>
 
       {/* Production Footer */}
-      <div className="pt-8 pb-4 text-center">
+      <div className="pt-8 pb-4 text-center space-y-1">
         <p className="text-[11px] text-muted-foreground">
           Protected Enterprise System • Bee Novelty Vending
+        </p>
+        <p className="text-[10px] text-muted-foreground/70">
+          Made by ADLYCO
         </p>
       </div>
     </div>
