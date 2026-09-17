@@ -1,6 +1,6 @@
 import { FastifyReply, FastifyRequest } from "fastify";
-import { eq, and, desc } from "drizzle-orm";
-import { db, locations } from "../../core/db";
+import { eq, and, desc, isNull } from "drizzle-orm";
+import { db, locations, machines } from "../../core/db";
 
 export async function getLocationsHandler(
   request: FastifyRequest,
@@ -22,7 +22,12 @@ export async function getLocationsHandler(
       with: {
         stores: {
           with: {
-            machines: true,
+            // Soft-deleted machines (deletedAt set) must never count toward
+            // a store's machine count — matches the same filter every
+            // "active fleet" query in machines.controller.ts already applies.
+            machines: {
+              where: isNull(machines.deletedAt),
+            },
           },
         },
       },

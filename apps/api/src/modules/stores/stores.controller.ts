@@ -1,7 +1,7 @@
 import { FastifyReply, FastifyRequest } from "fastify";
-import { eq, and, or, ne, desc } from "drizzle-orm";
+import { eq, and, or, ne, desc, isNull } from "drizzle-orm";
 import { StoreCreateSchema, StoreUpdateSchema } from "@vending/validation";
-import { db, stores, locations } from "../../core/db";
+import { db, stores, locations, machines } from "../../core/db";
 
 export async function getStoresByLocationHandler(
   request: FastifyRequest<{ Params: { locationId: string } }>,
@@ -26,7 +26,10 @@ export async function getStoresByLocationHandler(
       db.query.stores.findMany({
         where: and(eq(stores.locationId, locationId), eq(stores.tenantId, tenantId)),
         with: {
-          machines: true,
+          // Soft-deleted machines must never count toward machineCount.
+          machines: {
+            where: isNull(machines.deletedAt),
+          },
         },
         orderBy: [desc(stores.createdAt)],
       }),
@@ -101,7 +104,9 @@ export async function getAllStoresHandler(
       where: eq(stores.tenantId, tenantId),
       with: {
         location: true,
-        machines: true,
+        machines: {
+          where: isNull(machines.deletedAt),
+        },
       },
       orderBy: [desc(stores.createdAt)],
     });
@@ -166,7 +171,9 @@ export async function getStoreByIdHandler(
       where: and(eq(stores.tenantId, tenantId), or(eq(stores.id, id), eq(stores.qrCode, id))),
       with: {
         location: true,
-        machines: true,
+        machines: {
+          where: isNull(machines.deletedAt),
+        },
       },
     });
 
