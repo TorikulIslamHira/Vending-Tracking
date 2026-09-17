@@ -40,7 +40,7 @@ export function useMachines(storeId?: string) {
             serialNumber: m.serialNumber,
             storeId: m.storeId,
             storeName: m.storeName || m.location,
-            locationName: m.locationName || "Venue",
+            locationName: m.locationName || "Unassigned",
             location: m.location,
             category: m.category || "Standard Confectionery",
             type: m.type || "Spiral Chute",

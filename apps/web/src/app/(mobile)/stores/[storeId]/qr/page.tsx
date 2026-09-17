@@ -153,7 +153,7 @@ export default function StoreQrDisplayPage() {
                 <div className="flex items-center justify-center gap-3 text-xs text-muted-foreground">
                   <span className="flex items-center gap-1">
                     <MapPin className="h-3.5 w-3.5 text-primary" />
-                    <span>{storeData?.locationName || "Venue Location"}</span>
+                    <span>{storeData?.locationName || "Unassigned"}</span>
                   </span>
                 </div>
               </div>

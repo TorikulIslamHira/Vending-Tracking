@@ -116,7 +116,7 @@ export async function getAllStoresHandler(
       name: st.name,
       category: st.category || "Novelty Vending",
       locationId: st.locationId,
-      locationName: st.location?.name || "Assigned Location",
+      locationName: st.location?.name || null,
       shopCutPercent: st.shopCutPercent,
       businessCutPercent: st.businessCutPercent,
       eircode: st.eircode,
@@ -192,8 +192,8 @@ export async function getStoreByIdHandler(
         name: store.name,
         category: store.category || "Novelty Vending",
         locationId: store.locationId,
-        locationName: store.location?.name || "Assigned Location",
-        locationAddress: store.location?.address || "Commercial Zone",
+        locationName: store.location?.name || null,
+        locationAddress: store.location?.address || null,
         shopCutPercent: store.shopCutPercent,
         businessCutPercent: store.businessCutPercent,
         eircode: store.eircode,
@@ -240,28 +240,25 @@ export async function createStoreHandler(
   }
 
   const { name, category, shopCutPercent, eircode, paymentMode, qrCode } = parseResult.data;
-  const targetLocationId = request.params?.locationId || parseResult.data.locationId;
-
-  if (!targetLocationId) {
-    return reply.status(400).send({
-      statusCode: 400,
-      error: "Bad Request",
-      message: "Location ID is required",
-    });
-  }
+  // A store no longer requires a location — this is only ever populated when
+  // one was actually supplied (via the nested route param or the body).
+  const targetLocationId = request.params?.locationId || parseResult.data.locationId || null;
 
   try {
-    // Verify location belongs to tenant
-    const location = await db.query.locations.findFirst({
-      where: and(eq(locations.id, targetLocationId), eq(locations.tenantId, tenantId)),
-    });
-
-    if (!location) {
-      return reply.status(404).send({
-        statusCode: 404,
-        error: "Not Found",
-        message: "Location not found or unauthorized",
+    // Verify the location belongs to this tenant, but only when one was
+    // actually provided — a store can be created with no location at all.
+    if (targetLocationId) {
+      const location = await db.query.locations.findFirst({
+        where: and(eq(locations.id, targetLocationId), eq(locations.tenantId, tenantId)),
       });
+
+      if (!location) {
+        return reply.status(404).send({
+          statusCode: 404,
+          error: "Not Found",
+          message: "Location not found or unauthorized",
+        });
+      }
     }
 
     // qrCode has no DB-level unique constraint (see schema.ts comment), so
@@ -352,7 +349,8 @@ export async function updateStoreHandler(
     });
   }
 
-  const { name, category, shopCutPercent, eircode, paymentMode, qrCode } = parseResult.data;
+  const { name, category, shopCutPercent, eircode, paymentMode, qrCode, locationId } =
+    parseResult.data;
 
   try {
     const existing = await db.query.stores.findFirst({
@@ -365,6 +363,21 @@ export async function updateStoreHandler(
         error: "Not Found",
         message: "Store not found or unauthorized",
       });
+    }
+
+    // Reassigning (not unassigning) must still point at a real location
+    // owned by this tenant.
+    if (locationId) {
+      const location = await db.query.locations.findFirst({
+        where: and(eq(locations.id, locationId), eq(locations.tenantId, tenantId)),
+      });
+      if (!location) {
+        return reply.status(404).send({
+          statusCode: 404,
+          error: "Not Found",
+          message: "Location not found or unauthorized",
+        });
+      }
     }
 
     if (qrCode) {
@@ -395,6 +408,10 @@ export async function updateStoreHandler(
     if (eircode !== undefined) {
       dataToUpdate.eircode = eircode?.trim() || null;
     }
+    if (locationId !== undefined) {
+      // null explicitly unassigns; a string reassigns (already validated above).
+      dataToUpdate.locationId = locationId;
+    }
     if (paymentMode !== undefined) {
       dataToUpdate.paymentMode = paymentMode;
     }
@@ -414,6 +431,7 @@ export async function updateStoreHandler(
       data: {
         id: updated.id,
         name: updated.name,
+        locationId: updated.locationId,
         category: updated.category,
         shopCutPercent: updated.shopCutPercent,
         businessCutPercent: updated.businessCutPercent,

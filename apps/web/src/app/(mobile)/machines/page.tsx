@@ -188,11 +188,11 @@ export default function MobileMachinesPage() {
       {/* 1. Top Navigation Bar with Back Button — sticky against <main> */}
       <div className="flex items-center justify-between sticky top-0 z-20 -mx-4 px-4 pb-3 pt-[calc(0.75rem+env(safe-area-inset-top))] bg-card/95 backdrop-blur-md border-b border-border/40">
         <button
-          onClick={() => router.push("/locations")}
+          onClick={() => router.push("/stores")}
           className="flex items-center gap-1.5 text-xs font-bold text-muted-foreground hover:text-foreground active:scale-95 transition-transform"
         >
           <ArrowLeft className="h-4 w-4" />
-          <span>Locations & Stores</span>
+          <span>Stores</span>
         </button>
 
         <div className="flex items-center gap-1 text-[11px] font-bold text-emerald-600 dark:text-emerald-400 bg-emerald-500/10 px-2.5 py-1 rounded-full">

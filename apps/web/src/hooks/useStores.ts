@@ -134,7 +134,7 @@ export function useAllStores() {
             name: st.name,
             category: st.category || "Novelty Vending",
             locationId: st.locationId,
-            locationName: st.locationName || "Assigned Location",
+            locationName: st.locationName || "Unassigned",
             shopCutPercent: Number(st.shopCutPercent ?? 30),
             businessCutPercent: Number(st.businessCutPercent ?? 70),
             eircode: st.eircode ?? null,
@@ -165,19 +165,29 @@ export function useAllStores() {
   });
 }
 
-export function useCreateStore(locationId: string) {
+/**
+ * Creates a store. Location is entirely optional — a store is now the
+ * primary entity, not something that must be nested under a venue. When
+ * `boundLocationId` is passed (the per-location "Add Store" drawer), it's
+ * used as the route; otherwise this posts straight to /stores and takes
+ * whatever locationId (if any) is in the payload itself.
+ */
+export function useCreateStore(boundLocationId?: string) {
   const queryClient = useQueryClient();
 
   return useMutation({
     mutationFn: async (newStore: {
       name: string;
+      locationId?: string | null;
       category?: string;
       shopCutPercent: number;
       eircode?: string;
       paymentMode?: "CASH" | "BANK";
     }) => {
-      const response = await api.post(`/locations/${locationId}/stores`, {
+      const url = boundLocationId ? `/locations/${boundLocationId}/stores` : "/stores";
+      const response = await api.post(url, {
         name: newStore.name,
+        locationId: boundLocationId || newStore.locationId || undefined,
         category: newStore.category || "Novelty Vending",
         shopCutPercent: newStore.shopCutPercent,
         eircode: newStore.eircode,
@@ -186,7 +196,7 @@ export function useCreateStore(locationId: string) {
       return response.data?.data;
     },
     onSuccess: (created) => {
-      queryClient.invalidateQueries({ queryKey: ["stores", locationId] });
+      queryClient.invalidateQueries({ queryKey: ["stores"] });
       queryClient.invalidateQueries({ queryKey: ["locations"] });
       queryClient.invalidateQueries({ queryKey: ["all-stores"] });
       const storeName = created?.name || "Store";
@@ -203,13 +213,15 @@ export function useCreateStore(locationId: string) {
   });
 }
 
-export function useUpdateStore(locationId: string) {
+export function useUpdateStore(boundLocationId?: string) {
   const queryClient = useQueryClient();
 
   return useMutation({
     mutationFn: async (storeData: {
       id: string;
       name: string;
+      // undefined = leave unchanged; null = unassign; string = reassign
+      locationId?: string | null;
       category?: string;
       shopCutPercent: number;
       eircode?: string;
@@ -217,6 +229,7 @@ export function useUpdateStore(locationId: string) {
     }) => {
       const response = await api.put(`/stores/${storeData.id}`, {
         name: storeData.name,
+        locationId: storeData.locationId,
         category: storeData.category,
         shopCutPercent: storeData.shopCutPercent,
         eircode: storeData.eircode,
@@ -225,7 +238,7 @@ export function useUpdateStore(locationId: string) {
       return response.data?.data;
     },
     onSuccess: (updated) => {
-      queryClient.invalidateQueries({ queryKey: ["stores", locationId] });
+      queryClient.invalidateQueries({ queryKey: ["stores"] });
       queryClient.invalidateQueries({ queryKey: ["locations"] });
       queryClient.invalidateQueries({ queryKey: ["all-stores"] });
       const storeName = updated?.name || "Store";
@@ -236,6 +249,30 @@ export function useUpdateStore(locationId: string) {
         err?.response?.data?.message ||
         err?.message ||
         "Failed to update store";
+      toast.error(errMsg);
+    },
+  });
+}
+
+export function useDeleteStore() {
+  const queryClient = useQueryClient();
+
+  return useMutation({
+    mutationFn: async (id: string) => {
+      const res = await api.delete(`/stores/${id}`);
+      return res.data;
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ["stores"] });
+      queryClient.invalidateQueries({ queryKey: ["locations"] });
+      queryClient.invalidateQueries({ queryKey: ["all-stores"] });
+      toast.success("Store deleted successfully!");
+    },
+    onError: (err: any) => {
+      const errMsg =
+        err?.response?.data?.message ||
+        err?.message ||
+        "Failed to delete store";
       toast.error(errMsg);
     },
   });

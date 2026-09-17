@@ -7,7 +7,7 @@ import { useAuthStore } from "@/store/useAuthStore";
 import { cn } from "@/lib/utils";
 import {
   LayoutDashboard,
-  MapPin,
+  Store,
   BarChart3,
   MoreHorizontal,
 } from "lucide-react";
@@ -25,9 +25,9 @@ const tabs: TabItem[] = [
     icon: LayoutDashboard,
   },
   {
-    label: "Locations",
-    href: "/locations",
-    icon: MapPin,
+    label: "Stores",
+    href: "/stores",
+    icon: Store,
   },
   {
     label: "Reports",
@@ -80,6 +80,7 @@ export default function MobileLayout({
   // Bottom Navigation Bar is displayed on primary and secondary operational list views (never on auth pages)
   const bottomNavRoutes = [
     "/dashboard",
+    "/stores",
     "/locations",
     "/reports",
     "/settings",
@@ -98,9 +99,9 @@ export default function MobileLayout({
     if (tabHref === "/dashboard") {
       return pathname === "/dashboard" || pathname === "/";
     }
-    if (tabHref === "/locations") {
+    if (tabHref === "/stores") {
       return (
-        pathname === "/locations" ||
+        pathname === "/stores" ||
         pathname === "/machines" ||
         pathname.startsWith("/stores") ||
         pathname.startsWith("/locations")

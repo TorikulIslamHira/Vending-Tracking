@@ -89,9 +89,11 @@ export const stores = pgTable(
     tenantId: text("tenantId")
       .notNull()
       .references(() => tenants.id, { onDelete: "cascade" }),
-    locationId: text("locationId")
-      .notNull()
-      .references(() => locations.id, { onDelete: "cascade" }),
+    // Optional: a store no longer has to belong to a physical "venue"
+    // grouping. ON DELETE SET NULL — deleting a location just unassigns its
+    // stores rather than destroying them (stores are the primary entity now,
+    // not owned children of a location).
+    locationId: text("locationId").references(() => locations.id, { onDelete: "set null" }),
     name: text("name").notNull(),
     category: text("category").default("Confectionery & Toys"),
     shopCutPercent: integer("shopCutPercent").default(30).notNull(),

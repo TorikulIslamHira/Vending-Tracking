@@ -96,18 +96,19 @@ export default function MobileDashboardPage() {
           </div>
           <div className="space-y-1">
             <h2 className="text-base font-bold text-foreground">
-              No Locations Configured Yet
+              No Stores Configured Yet
             </h2>
             <p className="text-xs text-muted-foreground max-w-xs mx-auto">
-              Get started by adding your first physical venue location and linking vending units.
+              Get started by adding your first store and linking vending units. A location is
+              optional — you can add one later if you want to group stores by venue.
             </p>
           </div>
           <Button
-            onClick={() => router.push("/locations")}
+            onClick={() => router.push("/stores")}
             className="h-12 px-6 rounded-2xl font-bold shadow-md shadow-primary/20 gap-2 active:scale-[0.97]"
           >
             <Plus className="h-4 w-4" />
-            <span>+ Add Your First Location</span>
+            <span>+ Add Your First Store</span>
           </Button>
         </div>
       ) : (

@@ -187,6 +187,9 @@ export type StoreCreateDto = StoreCreateInput;
 
 export const StoreUpdateSchema = z.object({
   name: z.string().min(1, "Store name is required").optional(),
+  // Nullable (not just optional): null explicitly unassigns the store from
+  // its location, distinct from omitting the field entirely (no change).
+  locationId: z.string().min(1).optional().nullable(),
   category: z.string().optional().nullable(),
   shopCutPercent: z.number().min(0).max(100).optional(),
   eircode: z.string().optional().nullable(),
