@@ -179,6 +179,9 @@ export function useCreateStore(boundLocationId?: string) {
     mutationFn: async (newStore: {
       name: string;
       locationId?: string | null;
+      // Set by the creatable location combobox when the typed name doesn't
+      // match an existing location — the server creates/reuses it.
+      newLocationName?: string;
       category?: string;
       shopCutPercent: number;
       eircode?: string;
@@ -188,6 +191,7 @@ export function useCreateStore(boundLocationId?: string) {
       const response = await api.post(url, {
         name: newStore.name,
         locationId: boundLocationId || newStore.locationId || undefined,
+        newLocationName: boundLocationId ? undefined : newStore.newLocationName,
         category: newStore.category || "Novelty Vending",
         shopCutPercent: newStore.shopCutPercent,
         eircode: newStore.eircode,
@@ -222,6 +226,10 @@ export function useUpdateStore(boundLocationId?: string) {
       name: string;
       // undefined = leave unchanged; null = unassign; string = reassign
       locationId?: string | null;
+      // Set by the creatable location combobox when the typed name doesn't
+      // match an existing location. Ignored server-side if locationId is
+      // also present.
+      newLocationName?: string;
       category?: string;
       shopCutPercent: number;
       eircode?: string;
@@ -230,6 +238,7 @@ export function useUpdateStore(boundLocationId?: string) {
       const response = await api.put(`/stores/${storeData.id}`, {
         name: storeData.name,
         locationId: storeData.locationId,
+        newLocationName: storeData.newLocationName,
         category: storeData.category,
         shopCutPercent: storeData.shopCutPercent,
         eircode: storeData.eircode,

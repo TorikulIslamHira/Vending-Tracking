@@ -11,6 +11,7 @@ import {
   StoreItem,
 } from "@/hooks/useStores";
 import { useLocations } from "@/hooks/useLocations";
+import { LocationCombobox, LocationComboboxValue } from "@/components/LocationCombobox";
 import { loadGooglePlacesScript, extractPostalCodeFromPlace } from "@/lib/googleMaps";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -71,7 +72,10 @@ export default function StoresPage() {
   const [eircode, setEircode] = useState("");
   const [paymentMode, setPaymentMode] = useState<"CASH" | "BANK">("CASH");
   const [address, setAddress] = useState("");
-  const [selectedLocationId, setSelectedLocationId] = useState<string>("");
+  const [locationValue, setLocationValue] = useState<LocationComboboxValue>({
+    locationId: null,
+    newLocationName: null,
+  });
   const addressInputRef = useRef<HTMLInputElement>(null);
 
   const filteredStores = stores.filter((st) => {
@@ -130,7 +134,7 @@ export default function StoresPage() {
     setEircode("");
     setPaymentMode("CASH");
     setAddress("");
-    setSelectedLocationId("");
+    setLocationValue({ locationId: null, newLocationName: null });
     setIsDrawerOpen(true);
   };
 
@@ -143,7 +147,7 @@ export default function StoresPage() {
     setEircode(st.eircode || "");
     setPaymentMode(st.paymentMode || "CASH");
     setAddress("");
-    setSelectedLocationId(st.locationId || "");
+    setLocationValue({ locationId: st.locationId || null, newLocationName: null });
     setIsDrawerOpen(true);
   };
 
@@ -171,9 +175,10 @@ export default function StoresPage() {
         {
           id: editingStoreId,
           name: storeName.trim(),
-          // "" means "no location selected" in the <select> — send null to
-          // explicitly unassign, not undefined (which would mean "no change").
-          locationId: selectedLocationId || null,
+          // null explicitly unassigns (or clears a to-be-created location);
+          // undefined would mean "leave the current location unchanged".
+          locationId: locationValue.locationId,
+          newLocationName: locationValue.newLocationName || undefined,
           category: storeCategory.trim(),
           shopCutPercent: shopCut,
           eircode: eircode.trim() || undefined,
@@ -187,7 +192,8 @@ export default function StoresPage() {
       createStoreMutation.mutate(
         {
           name: storeName.trim(),
-          locationId: selectedLocationId || undefined,
+          locationId: locationValue.locationId || undefined,
+          newLocationName: locationValue.newLocationName || undefined,
           category: storeCategory.trim(),
           shopCutPercent: shopCut,
           eircode: eircode.trim() || undefined,
@@ -354,18 +360,11 @@ export default function StoresPage() {
               <label className="text-xs font-semibold text-foreground">
                 Location <span className="text-muted-foreground font-normal">(optional)</span>
               </label>
-              <select
-                value={selectedLocationId}
-                onChange={(e) => setSelectedLocationId(e.target.value)}
-                className="w-full h-11 rounded-xl bg-muted/40 border border-border/60 text-base md:text-xs font-medium px-3 text-foreground focus:outline-hidden focus:ring-2 focus:ring-primary shadow-xs"
-              >
-                <option value="">No Location</option>
-                {locations.map((loc) => (
-                  <option key={loc.id} value={loc.id}>
-                    {loc.name}
-                  </option>
-                ))}
-              </select>
+              <LocationCombobox
+                locations={locations}
+                value={locationValue}
+                onChange={setLocationValue}
+              />
             </div>
 
             <div className="space-y-1.5">

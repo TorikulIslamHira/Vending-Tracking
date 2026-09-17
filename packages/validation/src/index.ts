@@ -175,6 +175,11 @@ export type UserLoginDto = UserLoginInput;
 export const StoreCreateSchema = z.object({
   name: z.string().min(1, "Store name is required"),
   locationId: z.string().min(1, "Location ID is required").optional(),
+  // Set by the creatable location combobox when the typed name doesn't match
+  // an existing location — the server creates (or reuses, case-insensitively)
+  // a location with this name and links the store to it. Ignored if
+  // locationId is also provided.
+  newLocationName: z.string().min(1).optional(),
   category: z.string().optional().nullable(),
   shopCutPercent: z.number().min(0).max(100).optional(),
   eircode: z.string().optional().nullable(),
@@ -190,6 +195,8 @@ export const StoreUpdateSchema = z.object({
   // Nullable (not just optional): null explicitly unassigns the store from
   // its location, distinct from omitting the field entirely (no change).
   locationId: z.string().min(1).optional().nullable(),
+  // See StoreCreateSchema — same on-the-fly create/reuse behavior for edits.
+  newLocationName: z.string().min(1).optional(),
   category: z.string().optional().nullable(),
   shopCutPercent: z.number().min(0).max(100).optional(),
   eircode: z.string().optional().nullable(),

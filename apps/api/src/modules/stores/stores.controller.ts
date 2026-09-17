@@ -1,7 +1,34 @@
 import { FastifyReply, FastifyRequest } from "fastify";
-import { eq, and, or, ne, desc, isNull } from "drizzle-orm";
+import { eq, and, or, ne, ilike, desc, isNull } from "drizzle-orm";
 import { StoreCreateSchema, StoreUpdateSchema } from "@vending/validation";
 import { db, stores, locations, machines } from "../../core/db";
+
+/**
+ * Resolves the creatable location combobox's typed name to a location id —
+ * reusing an existing location case-insensitively rather than creating a
+ * near-duplicate (e.g. typing "Main Street" when "main street" already
+ * exists reuses it instead of adding a second one). Takes `any` for the
+ * transaction handle — Drizzle's full transaction type with the relational
+ * query builder attached isn't easily nameable outside the callback that
+ * creates it (see machines/virtualCashBalance.service.ts's own QueryExecutor
+ * alias for the same tradeoff with a plain PgDatabase, which drops
+ * `.query.*` typing entirely).
+ */
+async function resolveOrCreateLocation(
+  tx: any,
+  tenantId: string,
+  name: string
+): Promise<string> {
+  const trimmed = name.trim();
+  const existing = await tx.query.locations.findFirst({
+    where: and(eq(locations.tenantId, tenantId), ilike(locations.name, trimmed)),
+  });
+  if (existing) {
+    return existing.id;
+  }
+  const [created] = await tx.insert(locations).values({ tenantId, name: trimmed }).returning();
+  return created.id;
+}
 
 export async function getStoresByLocationHandler(
   request: FastifyRequest<{ Params: { locationId: string } }>,
@@ -239,14 +266,16 @@ export async function createStoreHandler(
     });
   }
 
-  const { name, category, shopCutPercent, eircode, paymentMode, qrCode } = parseResult.data;
+  const { name, category, shopCutPercent, eircode, paymentMode, qrCode, newLocationName } =
+    parseResult.data;
   // A store no longer requires a location — this is only ever populated when
   // one was actually supplied (via the nested route param or the body).
   const targetLocationId = request.params?.locationId || parseResult.data.locationId || null;
 
   try {
-    // Verify the location belongs to this tenant, but only when one was
-    // actually provided — a store can be created with no location at all.
+    // Verify the location belongs to this tenant, but only when an existing
+    // one was referenced by id — a store can be created with no location at
+    // all, or with a brand-new one via newLocationName (handled below).
     if (targetLocationId) {
       const location = await db.query.locations.findFirst({
         where: and(eq(locations.id, targetLocationId), eq(locations.tenantId, tenantId)),
@@ -280,20 +309,28 @@ export async function createStoreHandler(
       typeof shopCutPercent === "number" ? Math.max(0, Math.min(100, shopCutPercent)) : 30;
     const bizCut = 100 - shopCut;
 
-    const [store] = await db
-      .insert(stores)
-      .values({
-        tenantId,
-        locationId: targetLocationId,
-        name: name.trim(),
-        category: category ? category.trim() : "Novelty Vending",
-        shopCutPercent: shopCut,
-        businessCutPercent: bizCut,
-        eircode: eircode?.trim() || null,
-        paymentMode,
-        qrCode: qrCode || null,
-      })
-      .returning();
+    const store = await db.transaction(async (tx) => {
+      // newLocationName (from the creatable combobox) only takes effect when
+      // no existing location was explicitly selected.
+      const resolvedLocationId =
+        targetLocationId || (newLocationName ? await resolveOrCreateLocation(tx, tenantId, newLocationName) : null);
+
+      const [inserted] = await tx
+        .insert(stores)
+        .values({
+          tenantId,
+          locationId: resolvedLocationId,
+          name: name.trim(),
+          category: category ? category.trim() : "Novelty Vending",
+          shopCutPercent: shopCut,
+          businessCutPercent: bizCut,
+          eircode: eircode?.trim() || null,
+          paymentMode,
+          qrCode: qrCode || null,
+        })
+        .returning();
+      return inserted;
+    });
 
     return reply.status(201).send({
       statusCode: 201,
@@ -349,7 +386,7 @@ export async function updateStoreHandler(
     });
   }
 
-  const { name, category, shopCutPercent, eircode, paymentMode, qrCode, locationId } =
+  const { name, category, shopCutPercent, eircode, paymentMode, qrCode, locationId, newLocationName } =
     parseResult.data;
 
   try {
@@ -408,8 +445,12 @@ export async function updateStoreHandler(
     if (eircode !== undefined) {
       dataToUpdate.eircode = eircode?.trim() || null;
     }
-    if (locationId !== undefined) {
-      // null explicitly unassigns; a string reassigns (already validated above).
+    // newLocationName (from the creatable combobox typing a brand-new name)
+    // always wins over locationId when both are present — the combobox sends
+    // locationId: null alongside newLocationName when creating, which must
+    // NOT be read as "unassign". Only fall back to plain locationId semantics
+    // (undefined = no change, null = unassign, string = reassign) otherwise.
+    if (!newLocationName && locationId !== undefined) {
       dataToUpdate.locationId = locationId;
     }
     if (paymentMode !== undefined) {
@@ -419,11 +460,18 @@ export async function updateStoreHandler(
       dataToUpdate.qrCode = qrCode || null;
     }
 
-    const [updated] = await db
-      .update(stores)
-      .set(dataToUpdate)
-      .where(and(eq(stores.id, id), eq(stores.tenantId, tenantId)))
-      .returning();
+    const updated = await db.transaction(async (tx) => {
+      if (newLocationName) {
+        dataToUpdate.locationId = await resolveOrCreateLocation(tx, tenantId, newLocationName);
+      }
+
+      const [row] = await tx
+        .update(stores)
+        .set(dataToUpdate)
+        .where(and(eq(stores.id, id), eq(stores.tenantId, tenantId)))
+        .returning();
+      return row;
+    });
 
     return reply.send({
       statusCode: 200,
