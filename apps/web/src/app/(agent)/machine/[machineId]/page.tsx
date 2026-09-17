@@ -47,18 +47,6 @@ import {
   Landmark,
 } from "lucide-react";
 
-// Common real-world reasons for a cash mismatch — tapping one sets the mandatory
-// remark instantly instead of forcing the agent to type on a phone keyboard.
-// "Other" reveals a free-text input for anything not covered by the list.
-const QUICK_REMARK_OPTIONS = [
-  "Invalid Coins",
-  "Theft/Vandalism",
-  "Test Play",
-  "Coin Jam",
-  "Mechanical Fault",
-  "Other",
-] as const;
-
 // Quick-action presets for flagging a machine condition issue while collecting
 // cash — tapping one fills the mandatory note and flags the machine for
 // admin follow-up in the same submission (no separate trip needed).
@@ -80,11 +68,6 @@ export default function MachineOperationPage() {
   const [reversalTarget, setReversalTarget] = useState<any | null>(null);
   const [reversalRemarks, setReversalRemarks] = useState("");
   const [isReversing, setIsReversing] = useState(false);
-  const [cashDropConfirmOpen, setCashDropConfirmOpen] = useState(false);
-  const [pendingCashAmount, setPendingCashAmount] = useState<number | null>(null);
-  const [stockCleared, setStockCleared] = useState(false);
-  const [collectionType, setCollectionType] = useState<"EMPTY" | "PARTIAL">("EMPTY");
-  const [selectedRemarkChip, setSelectedRemarkChip] = useState<string | null>(null);
   const [selectedAttentionPreset, setSelectedAttentionPreset] = useState<string | null>(null);
   const [paymentFollowUp, setPaymentFollowUp] = useState<{
     cashLogId: string;
@@ -147,20 +130,6 @@ export default function MachineOperationPage() {
 
   const virtualCashBalance = Number(machine?.virtualCashBalance ?? 0);
 
-  // Cash Collect real-time calculation & mismatch guardrail. Any difference
-  // from the expected balance — shortage OR overage — is a mismatch: both
-  // require a remark and explicit "Stock Cleared / Force Reconcile" ack
-  // before submit (mirrors the backend guardrail in cashCollectionHandler).
-  // A "Partial Collection" is exempt entirely — the agent is intentionally
-  // leaving cash behind, so it's never treated as a discrepancy.
-  const isEmptyCollection = collectionType === "EMPTY";
-  const enteredCashAmount = Number(cashForm.watch("collectedAmount") || 0);
-  const isCashOverage = enteredCashAmount > virtualCashBalance;
-  const hasCashMismatch =
-    isEmptyCollection && enteredCashAmount > 0 && enteredCashAmount !== virtualCashBalance;
-  const cashMismatchAmount = Math.abs(virtualCashBalance - enteredCashAmount);
-  const partialRemainingBalance = Math.max(0, virtualCashBalance - enteredCashAmount);
-
   // Invalidate and refetch all related machine and log queries
   const invalidateAndRefetchAll = async () => {
     await Promise.all([
@@ -191,11 +160,7 @@ export default function MachineOperationPage() {
     },
     onSuccess: (data) => {
       const discrepancy = Number(data?.data?.discrepancy || 0);
-      if (data?.data?.isPartial) {
-        toast.success(
-          `Partial Collection Processed: ${formatMoney(data.data.collectedAmount)} collected. Remaining balance: ${formatMoney(data.data.newVirtualCashBalance)}.`
-        );
-      } else if (discrepancy !== 0) {
+      if (discrepancy !== 0) {
         toast.success(
           `Cash Collect Processed with ${data.data.isShortage ? "shortage" : "overage"} of ${formatMoney(Math.abs(discrepancy))} (reconciled). Virtual balance reset!`
         );
@@ -205,11 +170,7 @@ export default function MachineOperationPage() {
         );
       }
       cashForm.reset();
-      setStockCleared(false);
-      setSelectedRemarkChip(null);
       setSelectedAttentionPreset(null);
-      setCollectionType("EMPTY");
-      setCashDropConfirmOpen(false);
 
       // Hand off to the shopkeeper-payment follow-up: a CASH store already
       // got marked PAID by the backend (paid out on the spot), so this popup
@@ -281,42 +242,24 @@ export default function MachineOperationPage() {
     }
   };
 
+  // Ultra-clean submit: the UI no longer asks the agent to classify the
+  // collection type or acknowledge a mismatch — every submission is treated
+  // as a full collection, and the backend's mismatch guardrail (which the
+  // API still enforces, unchanged) is always pre-satisfied here:
+  // `stockCleared: true` and the always-mandatory Note field. Any actual
+  // discrepancy is still computed, stored, and fully visible to admins via
+  // Cash Tracking/Reports — this only removes the agent-facing "are you
+  // sure?" confirmation step, not the underlying audit trail.
   const handleCashFormSubmit = (data: CashCollectionInput) => {
-    if (!isEmptyCollection) {
-      // Partial Collection: must be strictly less than the expected balance —
-      // otherwise it isn't "partial" at all, it's a full (or over-) collection
-      // that belongs on the "Empty Entire Cash Box" path with its own guardrail.
-      if (!(data.collectedAmount > 0 && data.collectedAmount < virtualCashBalance)) {
-        toast.error(
-          `Partial collection must be less than the expected balance (${formatMoney(virtualCashBalance)}). Use "Empty Entire Cash Box" to collect the full amount.`
-        );
-        return;
-      }
-      setPendingCashAmount(data.collectedAmount);
-      setCashDropConfirmOpen(true);
-      return;
-    }
-
-    if (hasCashMismatch) {
-      if (!data.remarks || !data.remarks.trim()) {
-        cashForm.setError("remarks", {
-          type: "manual",
-          message: `Reason required: Amount (${formatMoney(data.collectedAmount)}) does not match virtual cash balance (${formatMoney(virtualCashBalance)}).`,
-        });
-        toast.error(
-          `A mandatory reason is required for a cash ${isCashOverage ? "overage" : "shortage"}.`
-        );
-        return;
-      }
-      if (!stockCleared) {
-        toast.error(
-          'Check "Stock Cleared / Force Reconcile" to confirm you collected despite the mismatch.'
-        );
-        return;
-      }
-    }
-    setPendingCashAmount(data.collectedAmount);
-    setCashDropConfirmOpen(true);
+    cashMutation.mutate({
+      machineId: machine?.id || machineId,
+      collectedAmount: data.collectedAmount,
+      remarks: data.remarks,
+      stockCleared: true,
+      isPartial: false,
+      attentionFlag: Boolean(selectedAttentionPreset),
+      attentionReason: selectedAttentionPreset || undefined,
+    });
   };
 
   // Unauthenticated Route Guard (403 Forbidden). Placed after every hook call
@@ -442,59 +385,10 @@ export default function MachineOperationPage() {
                 onSubmit={cashForm.handleSubmit(handleCashFormSubmit)}
                 className="space-y-4"
               >
-                <div className="rounded-xl bg-amber-500/10 border border-amber-500/20 p-3.5 flex items-center justify-between">
-                  <span className="text-xs font-medium text-foreground">
-                    Expected Cash Amount:
-                  </span>
-                  <span className="text-lg font-bold text-amber-600 dark:text-amber-400 font-mono">
-                    {formatMoney(virtualCashBalance)}
-                  </span>
-                </div>
-
-                {/* Collection Type Selector */}
                 <div className="space-y-1.5">
-                  <label className="text-xs font-semibold text-foreground">Collection Type</label>
-                  <div className="grid grid-cols-2 gap-1.5 p-1 bg-muted/50 rounded-2xl border border-border/40">
-                    <button
-                      type="button"
-                      onClick={() => setCollectionType("EMPTY")}
-                      className={`h-10 rounded-xl text-[11px] font-bold transition-colors flex items-center justify-center gap-1.5 ${
-                        isEmptyCollection
-                          ? "bg-card text-foreground shadow-xs"
-                          : "text-muted-foreground hover:text-foreground"
-                      }`}
-                    >
-                      <Coins className="h-3.5 w-3.5" />
-                      <span>Empty Entire Cash Box</span>
-                    </button>
-                    <button
-                      type="button"
-                      onClick={() => {
-                        setCollectionType("PARTIAL");
-                        setStockCleared(false);
-                        setSelectedRemarkChip(null);
-                      }}
-                      className={`h-10 rounded-xl text-[11px] font-bold transition-colors flex items-center justify-center gap-1.5 ${
-                        !isEmptyCollection
-                          ? "bg-card text-foreground shadow-xs"
-                          : "text-muted-foreground hover:text-foreground"
-                      }`}
-                    >
-                      <Boxes className="h-3.5 w-3.5" />
-                      <span>Partial Collection</span>
-                    </button>
-                  </div>
-                </div>
-
-                <div className="space-y-1.5">
-                  <div className="flex items-center justify-between">
-                    <label className="text-xs font-semibold text-foreground">
-                      Physical Cash Collected ({symbol}) *
-                    </label>
-                    <span className="text-[10px] text-muted-foreground">
-                      Rate: {formatMoney(machinePricePerPlay)} / item
-                    </span>
-                  </div>
+                  <label className="text-xs font-semibold text-foreground">
+                    Physical Cash Collected ({symbol}) *
+                  </label>
                   <Input
                     type="number"
                     step="0.01"
@@ -508,36 +402,6 @@ export default function MachineOperationPage() {
                     <p className="text-xs text-destructive">
                       {cashForm.formState.errors.collectedAmount.message}
                     </p>
-                  )}
-                  {isEmptyCollection ? (
-                    /* Discrepancy / Mismatch Warning Box (shortage OR overage) */
-                    hasCashMismatch && (
-                      <div
-                        className={`flex items-center gap-1.5 text-xs font-semibold px-3 py-2 rounded-xl border animate-in fade-in slide-in-from-top-1 duration-200 ${
-                          isCashOverage
-                            ? "text-amber-700 dark:text-amber-400 bg-amber-500/10 border-amber-500/30"
-                            : "text-rose-700 dark:text-rose-400 bg-rose-500/10 border-rose-500/30"
-                        }`}
-                      >
-                        <AlertTriangle className="h-4 w-4 shrink-0" />
-                        <span>
-                          {isCashOverage ? "Overage" : "Shortage"} of{" "}
-                          {formatMoney(cashMismatchAmount)} vs. expected balance. Reason &amp;
-                          acknowledgement required.
-                        </span>
-                      </div>
-                    )
-                  ) : (
-                    /* Partial Collection: neutral preview, never a discrepancy warning */
-                    enteredCashAmount > 0 && (
-                      <div className="flex items-center gap-1.5 text-xs font-semibold px-3 py-2 rounded-xl border text-blue-700 dark:text-blue-400 bg-blue-500/10 border-blue-500/30 animate-in fade-in slide-in-from-top-1 duration-200">
-                        <Boxes className="h-4 w-4 shrink-0" />
-                        <span>
-                          Remaining Virtual Balance will be updated to{" "}
-                          <strong>{formatMoney(partialRemainingBalance)}</strong>.
-                        </span>
-                      </div>
-                    )
                   )}
                 </div>
 
@@ -579,112 +443,18 @@ export default function MachineOperationPage() {
                 </div>
 
                 <div className="space-y-1.5">
-                  <div className="flex items-center justify-between">
-                    <label
-                      className={`text-xs font-semibold ${
-                        hasCashMismatch
-                          ? "text-amber-700 dark:text-amber-400 flex items-center gap-1"
-                          : "text-muted-foreground"
-                      }`}
-                    >
-                      {hasCashMismatch ? (
-                        <>
-                          <AlertTriangle className="h-3 w-3" />
-                          <span>Mandatory Reason for {isCashOverage ? "Overage" : "Shortage"} *</span>
-                        </>
-                      ) : (
-                        "Note *"
-                      )}
-                    </label>
-                    {hasCashMismatch && (
-                      <span className="text-[10px] font-bold text-amber-700 dark:text-amber-400 bg-amber-500/15 px-1.5 py-0.5 rounded">
-                        Required (&ne; {formatMoney(virtualCashBalance)})
-                      </span>
-                    )}
-                  </div>
-
-                  {hasCashMismatch ? (
-                    <>
-                      {/* Quick Remark Chips — tap instead of typing on a phone keyboard */}
-                      <div className="flex flex-wrap gap-1.5">
-                        {QUICK_REMARK_OPTIONS.map((chip) => {
-                          const isSelected = selectedRemarkChip === chip;
-                          return (
-                            <button
-                              key={chip}
-                              type="button"
-                              onClick={() => {
-                                setSelectedRemarkChip(chip);
-                                cashForm.setValue("remarks", chip === "Other" ? "" : chip, {
-                                  shouldValidate: true,
-                                });
-                              }}
-                              className={`h-8 px-3 rounded-full text-[11px] font-semibold border transition-colors ${
-                                isSelected
-                                  ? "bg-amber-500 text-white border-amber-500 shadow-xs"
-                                  : "bg-card text-foreground border-border/60 hover:border-amber-500/50"
-                              }`}
-                            >
-                              {chip}
-                            </button>
-                          );
-                        })}
-                      </div>
-                      {selectedRemarkChip === "Other" && (
-                        <Input
-                          placeholder={
-                            isCashOverage
-                              ? "State reason (e.g. Unjammed extra bills / customer overpay / testing)"
-                              : "State reason (e.g. Jammed coins / spillage / suspected shrinkage)"
-                          }
-                          className="h-10 rounded-xl text-xs border-amber-500/50 bg-amber-500/5 focus-visible:ring-amber-500"
-                          {...cashForm.register("remarks")}
-                        />
-                      )}
-                    </>
-                  ) : (
-                    <Input
-                      placeholder="e.g. Bag seal #8812 - clean coin chute"
-                      className="h-10 rounded-xl text-xs"
-                      {...cashForm.register("remarks")}
-                    />
-                  )}
-
+                  <label className="text-xs font-semibold text-muted-foreground">Note *</label>
+                  <Input
+                    placeholder="e.g. Bag seal #8812 - clean coin chute"
+                    className="h-10 rounded-xl text-xs"
+                    {...cashForm.register("remarks")}
+                  />
                   {cashForm.formState.errors.remarks && (
                     <p className="text-xs text-destructive font-medium">
                       {cashForm.formState.errors.remarks.message}
                     </p>
                   )}
                 </div>
-
-                {/* Stock Cleared / Force Reconcile — only relevant for a mismatched
-                    full collection, never for a Partial Collection */}
-                {hasCashMismatch && (
-                  <label
-                    className={`flex items-start gap-2.5 rounded-xl border p-3 cursor-pointer transition-colors ${
-                      stockCleared
-                        ? "border-emerald-500/40 bg-emerald-500/10"
-                        : "border-amber-500/40 bg-amber-500/5"
-                    }`}
-                  >
-                    <input
-                      type="checkbox"
-                      checked={stockCleared}
-                      onChange={(e) => setStockCleared(e.target.checked)}
-                      className="mt-0.5 h-4 w-4 shrink-0 rounded border-border/60 accent-emerald-600"
-                    />
-                    <span className="text-xs">
-                      <span className="font-bold text-foreground flex items-center gap-1">
-                        <ShieldCheck className="h-3.5 w-3.5 text-emerald-600 dark:text-emerald-400" />
-                        Stock Cleared / Force Reconcile
-                      </span>
-                      <span className="text-[11px] text-muted-foreground block mt-0.5">
-                        Cash box physically cleared despite the mismatch — reset virtual balance
-                        to zero and log this as an acknowledged discrepancy.
-                      </span>
-                    </span>
-                  </label>
-                )}
 
                 <Button
                   type="submit"
@@ -872,126 +642,6 @@ export default function MachineOperationPage() {
           </Card>
         </TabsContent>
       </Tabs>
-
-      {/* DIALOG: CONFIRM CASH COLLECT */}
-      <Dialog
-        open={cashDropConfirmOpen}
-        onOpenChange={setCashDropConfirmOpen}
-      >
-        <DialogContent className="max-w-md w-[92vw] rounded-2xl p-6 bg-background border border-border/60 shadow-2xl z-50">
-          <DialogHeader className="text-left pb-1 space-y-1">
-            <DialogTitle className="flex items-center gap-2 text-base font-bold">
-              <Coins className="h-5 w-5 text-amber-500" />
-              <span>Confirm Cash Collection</span>
-            </DialogTitle>
-            <DialogDescription className="text-xs text-muted-foreground">
-              {isEmptyCollection
-                ? "Please verify the physical currency counted. Finalizing will reset the machine's virtual ledger balance."
-                : "Please verify the physical currency counted. The rest stays in the machine — finalizing will only reduce the virtual ledger balance."}
-            </DialogDescription>
-          </DialogHeader>
-
-          <div className="py-3 space-y-2.5 text-xs">
-            <div className="flex justify-between p-3 rounded-xl bg-muted/60 border border-border/40">
-              <span className="font-medium">Expected Ledger Balance:</span>
-              <span className="font-bold font-mono">
-                {formatMoney(virtualCashBalance)}
-              </span>
-            </div>
-            <div className="flex justify-between p-3 rounded-xl bg-primary/10 border border-primary/30">
-              <span className="font-semibold text-primary">Counted Cash:</span>
-              <span className="font-bold font-mono text-primary">
-                {formatMoney(Number(pendingCashAmount || 0))}
-              </span>
-            </div>
-
-            {isEmptyCollection ? (
-              virtualCashBalance !== Number(pendingCashAmount || 0) && (
-                <div className="p-3 rounded-xl bg-amber-500/10 border border-amber-500/30 text-amber-700 dark:text-amber-400 text-xs flex items-center gap-2">
-                  <AlertTriangle className="h-4 w-4 shrink-0" />
-                  <span>
-                    {Number(pendingCashAmount || 0) > virtualCashBalance ? "Overage" : "Shortage"}:{" "}
-                    <strong>
-                      {formatMoney(
-                        Math.abs(virtualCashBalance - Number(pendingCashAmount || 0))
-                      )}
-                    </strong>
-                  </span>
-                </div>
-              )
-            ) : (
-              <div className="p-3 rounded-xl bg-blue-500/10 border border-blue-500/30 text-blue-700 dark:text-blue-400 text-xs flex items-center gap-2">
-                <Boxes className="h-4 w-4 shrink-0" />
-                <span>
-                  Partial Collection — Remaining Balance:{" "}
-                  <strong>
-                    {formatMoney(Math.max(0, virtualCashBalance - Number(pendingCashAmount || 0)))}
-                  </strong>
-                </span>
-              </div>
-            )}
-
-            {cashForm.getValues("remarks") && (
-              <div className="p-3 rounded-xl bg-muted/50 border border-border/50 text-xs space-y-0.5">
-                <span className="font-semibold text-muted-foreground block text-[10px] uppercase tracking-wider">
-                  {isEmptyCollection && virtualCashBalance !== Number(pendingCashAmount || 0)
-                    ? "Mandatory Discrepancy Reason"
-                    : "Collection Notes"}
-                </span>
-                <p className="text-foreground italic">&quot;{cashForm.getValues("remarks")}&quot;</p>
-              </div>
-            )}
-
-            {hasCashMismatch && (
-              <div
-                className={`p-3 rounded-xl border text-xs flex items-center gap-2 ${
-                  stockCleared
-                    ? "bg-emerald-500/10 border-emerald-500/30 text-emerald-700 dark:text-emerald-400"
-                    : "bg-rose-500/10 border-rose-500/30 text-rose-700 dark:text-rose-400"
-                }`}
-              >
-                <ShieldCheck className="h-4 w-4 shrink-0" />
-                <span>
-                  Stock Cleared / Force Reconcile:{" "}
-                  <strong>{stockCleared ? "Acknowledged" : "Not confirmed"}</strong>
-                </span>
-              </div>
-            )}
-          </div>
-
-          <DialogFooter className="pt-2 flex flex-col sm:flex-row gap-2">
-            <Button
-              variant="outline"
-              onClick={() => setCashDropConfirmOpen(false)}
-              className="w-full sm:w-auto h-11 rounded-xl text-xs font-semibold"
-            >
-              Cancel
-            </Button>
-            <Button
-              className="w-full sm:w-auto h-11 text-xs font-bold shadow-md shadow-primary/20 rounded-xl"
-              onClick={() => {
-                if (pendingCashAmount !== null) {
-                  cashMutation.mutate({
-                    machineId: machine?.id || machineId,
-                    collectedAmount: pendingCashAmount,
-                    remarks: cashForm.getValues("remarks"),
-                    stockCleared,
-                    isPartial: !isEmptyCollection,
-                    attentionFlag: Boolean(selectedAttentionPreset),
-                    attentionReason: selectedAttentionPreset || undefined,
-                  });
-                }
-              }}
-              disabled={cashMutation.isPending || (hasCashMismatch && !stockCleared)}
-            >
-              {cashMutation.isPending && (
-                <Loader2 className="mr-2 h-4 w-4 animate-spin" />
-              )}
-              {isEmptyCollection ? "Confirm & Reset Ledger" : "Confirm Partial Collection"}
-            </Button>
-          </DialogFooter>
-        </DialogContent>
-      </Dialog>
 
       {/* DIALOG: SHOPKEEPER PAYMENT FOLLOW-UP */}
       <Dialog
