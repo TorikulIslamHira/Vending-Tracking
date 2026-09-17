@@ -78,7 +78,16 @@ echo "🧹 Freeing disk space before the build (prevents ENOSPC mid-build)..."
 # attached container — exactly the state --volumes would delete it in. That
 # risk isn't worth it for build-cache cleanup, so this only ever touches
 # images and the builder cache, never volumes.
-$DOCKER_CMD image prune -af || true
+#
+# Also deliberately plain `-f` (dangling only), NOT `-af` (all unused): right
+# after `down` above, every image — including nginx:alpine, postgres:16-alpine,
+# and last deploy's own app images — briefly has zero running containers, so
+# `-a` would consider all of them "unused" and delete them too. That was
+# happening every single deploy, forcing a full re-pull of nginx/postgres and
+# a full rebuild of the app images from scratch each time, for no actual disk
+# benefit (leftover untagged layers from a rebuild are already dangling, so
+# plain -f still cleans those up).
+$DOCKER_CMD image prune -f || true
 
 # The builder cache (BuildKit's cache mounts, e.g. the pnpm store — see the
 # Dockerfiles) is usually worth keeping: wiping it on every deploy would
