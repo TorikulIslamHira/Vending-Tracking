@@ -268,6 +268,9 @@ importers:
       '@fastify/jwt':
         specifier: ^9.0.4
         version: 9.1.0
+      '@googleapis/drive':
+        specifier: ^26.0.0
+        version: 26.0.0(supports-color@5.5.0)
       '@vending/database':
         specifier: workspace:*
         version: link:../../packages/database
@@ -289,9 +292,9 @@ importers:
       fastify:
         specifier: ^5.2.1
         version: 5.12.1
-      googleapis:
-        specifier: ^181.0.0
-        version: 181.0.0(supports-color@5.5.0)
+      google-auth-library:
+        specifier: ^11.0.2
+        version: 11.0.2(supports-color@5.5.0)
       node-cron:
         specifier: ^4.6.0
         version: 4.6.0
@@ -1036,6 +1039,10 @@ packages:
 
   '@floating-ui/utils@0.2.12':
     resolution: {integrity: sha512-HpCo8tmWzLVad5s2d19EhAz5zqrrQ6s69qd6moPMQvkOuSwDT1YgRfWSVuc4ennqrgv3OHppiOGMQ7oC13yIww==}
+
+  '@googleapis/drive@26.0.0':
+    resolution: {integrity: sha512-CsLfCWJEXUSa56KGnkW5DvT+I40f8i9ndDA+29s0SRjphS42/2NPCzEq2hg9C55y9m22xubrYliijuo3aHog/w==}
+    engines: {node: '>=22.0.0'}
 
   '@hookform/resolvers@3.10.0':
     resolution: {integrity: sha512-79Dv+3mDF7i+2ajj7SkypSKHhl1cbln1OGavqrsF7p6mbUv11xpqpacPsGDCTRvCSjEEIez2ef1NveSVL3b0Ag==}
@@ -2878,10 +2885,6 @@ packages:
     resolution: {integrity: sha512-fcI5bm1gN+9MNb+gvANRPFsxaJ07h/ZYvKCh6H3RoDJBUTwp5ySaCpCqnmX8gnGJUD/9bKmkacivRJT1g+xXyg==}
     engines: {node: '>=22'}
 
-  googleapis@181.0.0:
-    resolution: {integrity: sha512-fCzsqaVjA5FrA9DdXn4WlnmnLUvqjWx0JGZzcHbSC9iMfb8PK1lTxsvYpnaRf0j4b6usfKlW+YHSKjHnkgqmjQ==}
-    engines: {node: '>=22.0.0'}
-
   gopd@1.2.0:
     resolution: {integrity: sha512-ZUKRh6/kUFoAiTAtTYPZJ3hw9wNxx+BIBOijnlG9PnrJsCcSjs1wyyD6vJpaYtgnzDrKYRSqf3OO6Rfa93xsRg==}
     engines: {node: '>= 0.4'}
@@ -4628,6 +4631,12 @@ snapshots:
       react-dom: 19.0.0(react@19.0.0)
 
   '@floating-ui/utils@0.2.12': {}
+
+  '@googleapis/drive@26.0.0(supports-color@5.5.0)':
+    dependencies:
+      googleapis-common: 9.0.4(supports-color@5.5.0)
+    transitivePeerDependencies:
+      - supports-color
 
   '@hookform/resolvers@3.10.0(react-hook-form@7.86.0(react@19.0.0))':
     dependencies:
@@ -6698,13 +6707,6 @@ snapshots:
       google-logging-utils: 2.0.1
       qs: 6.16.0
       url-template: 2.0.8
-    transitivePeerDependencies:
-      - supports-color
-
-  googleapis@181.0.0(supports-color@5.5.0):
-    dependencies:
-      google-auth-library: 11.0.2(supports-color@5.5.0)
-      googleapis-common: 9.0.4(supports-color@5.5.0)
     transitivePeerDependencies:
       - supports-color
 

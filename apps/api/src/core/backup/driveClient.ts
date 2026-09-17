@@ -1,4 +1,5 @@
-import { google } from "googleapis";
+import { GoogleAuth } from "google-auth-library";
+import { drive } from "@googleapis/drive";
 
 /**
  * Reads the Google service-account credentials from either
@@ -46,10 +47,10 @@ export function getDriveClient() {
     );
   }
 
-  const auth = new google.auth.GoogleAuth({
+  const auth = new GoogleAuth({
     credentials,
     scopes: ["https://www.googleapis.com/auth/drive.file"],
   });
 
-  return google.drive({ version: "v3", auth });
+  return drive({ version: "v3", auth: auth as any });
 }

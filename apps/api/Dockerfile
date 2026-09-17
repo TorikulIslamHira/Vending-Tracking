@@ -33,6 +33,12 @@ COPY apps/api ./apps/api
 # type-checks and emits JS but never executes it. The real connection string
 # is supplied at container runtime via docker-compose's `environment:` block.
 
+# Caps tsc's heap the same way apps/web's build already does — this VPS is
+# memory-constrained enough that `tsc` can hit a fatal OOM without a limit
+# (V8's auto-detected default isn't reliable on a low-RAM host), and a bounded
+# limit fails predictably instead of crashing.
+ENV NODE_OPTIONS="--max-old-space-size=1024"
+
 # Build workspace packages and API TypeScript bundle
 RUN pnpm --filter @vending/shared-types run build && \
     pnpm --filter @vending/validation run build && \

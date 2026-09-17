@@ -1,5 +1,5 @@
 import { Readable } from "stream";
-import type { drive_v3 } from "googleapis";
+import type { drive_v3 } from "@googleapis/drive";
 
 export async function uploadFileToDrive(
   drive: drive_v3.Drive,

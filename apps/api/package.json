@@ -13,6 +13,7 @@
   "dependencies": {
     "@fastify/cors": "^10.0.2",
     "@fastify/jwt": "^9.0.4",
+    "@googleapis/drive": "^26.0.0",
     "@vending/database": "workspace:*",
     "@vending/shared-types": "workspace:*",
     "@vending/validation": "workspace:*",
@@ -20,7 +21,7 @@
     "dotenv": "^16.4.7",
     "drizzle-orm": "^0.40.0",
     "fastify": "^5.2.1",
-    "googleapis": "^181.0.0",
+    "google-auth-library": "^11.0.2",
     "node-cron": "^4.6.0"
   },
   "devDependencies": {
