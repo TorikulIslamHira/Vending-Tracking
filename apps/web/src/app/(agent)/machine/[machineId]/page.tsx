@@ -5,15 +5,8 @@ import { useParams, useRouter } from "next/navigation";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { useForm } from "react-hook-form";
 import { zodResolver } from "@hookform/resolvers/zod";
-import {
-  RestockSchema,
-  RestockInput,
-  ManualEntrySchema,
-  ManualEntryInput,
-  CashCollectionSchema,
-  CashCollectionInput,
-} from "@vending/validation";
-import { EntryType, IMachine, IPacketConfig } from "@vending/shared-types";
+import { CashCollectionSchema, CashCollectionInput } from "@vending/validation";
+import { EntryType, IMachine } from "@vending/shared-types";
 import { api as apiClient } from "@/lib/api";
 import { useAuthStore } from "@/store/useAuthStore";
 import { useCurrency } from "@/hooks/useTenantSettings";
@@ -39,11 +32,8 @@ import {
   DialogClose,
 } from "@/components/ui/dialog";
 import {
-  PackageOpen,
   Coins,
   ClipboardList,
-  Layers,
-  Sparkles,
   AlertTriangle,
   RotateCcw,
   ArrowLeft,
@@ -51,7 +41,6 @@ import {
   Clock,
   ShieldAlert,
   ShieldCheck,
-  Lock,
   Boxes,
   KeyRound,
   Banknote,
@@ -87,8 +76,7 @@ export default function MachineOperationPage() {
     setHasCheckedAuth(true);
   }, []);
 
-  const [activeTab, setActiveTab] = useState("restock");
-  const [isManualRestock, setIsManualRestock] = useState(false);
+  const [activeTab, setActiveTab] = useState("cash");
   const [reversalTarget, setReversalTarget] = useState<any | null>(null);
   const [reversalRemarks, setReversalRemarks] = useState("");
   const [isReversing, setIsReversing] = useState(false);
@@ -131,39 +119,7 @@ export default function MachineOperationPage() {
     },
   });
 
-  // 2. Query Packets Master Data
-  const { data: packets = [] } = useQuery<IPacketConfig[]>({
-    queryKey: ["packets"],
-    queryFn: async () => {
-      try {
-        const res = await apiClient.get("/packets");
-        return res.data.data;
-      } catch {
-        return [
-          {
-            id: "pkt-1",
-            tenantId: "tenant-demo",
-            name: "Gumball 32mm Mega Bag",
-            brand: "SweetBall Candy Co.",
-            quantityPerPacket: 100,
-            pricePerItem: 0.25,
-            createdAt: new Date().toISOString(),
-          },
-          {
-            id: "pkt-2",
-            tenantId: "tenant-demo",
-            name: "Sour Fizz Drops Standard",
-            brand: "Novelty Confections",
-            quantityPerPacket: 50,
-            pricePerItem: 0.5,
-            createdAt: new Date().toISOString(),
-          },
-        ];
-      }
-    },
-  });
-
-  // 3. Query Machine Inventory Logs
+  // 2. Query Machine Inventory Logs
   const { data: machineLogs = [], refetch: refetchLogs } = useQuery<any[]>({
     queryKey: ["machine-logs", machineId],
     queryFn: async () => {
@@ -175,29 +131,6 @@ export default function MachineOperationPage() {
       }
     },
     enabled: !!machineId,
-  });
-
-  // Form: Standard Restock
-  const standardForm = useForm<RestockInput>({
-    resolver: zodResolver(RestockSchema),
-    defaultValues: {
-      machineId: machine?.id || machineId,
-      packetId: packets[0]?.id || "pkt-1",
-      quantity: 1,
-      remarks: "",
-    },
-  });
-
-  // Form: Manual Restock
-  const manualForm = useForm<ManualEntryInput>({
-    resolver: zodResolver(ManualEntrySchema),
-    defaultValues: {
-      machineId: machine?.id || machineId,
-      quantityAdded: 50,
-      entryType: EntryType.MANUAL,
-      remarks: "",
-      brandName: "",
-    },
   });
 
   // Form: Cash Collection
@@ -212,13 +145,6 @@ export default function MachineOperationPage() {
   // Machine Pricing & Dynamic Stock Values
   const machinePricePerPlay = Number(machine?.pricePerPlay || 1.00) || 1.00;
 
-  // Single source of truth: read directly from the backend's unified calculation
-  // (GET /machines/:id) instead of recomputing independently from machineLogs.
-  // This is the exact same formula used by the fleet list and dashboard endpoints,
-  // so this figure can never drift from what an admin sees for the same machine.
-  // It still updates instantly after a mutation because invalidateAndRefetchAll()
-  // invalidates and refetches the ["machine", machineId] query below.
-  const currentEstimatedStock = machine?.currentEstimatedStock ?? 0;
   const virtualCashBalance = Number(machine?.virtualCashBalance ?? 0);
 
   // Cash Collect real-time calculation & mismatch guardrail. Any difference
@@ -234,14 +160,6 @@ export default function MachineOperationPage() {
     isEmptyCollection && enteredCashAmount > 0 && enteredCashAmount !== virtualCashBalance;
   const cashMismatchAmount = Math.abs(virtualCashBalance - enteredCashAmount);
   const partialRemainingBalance = Math.max(0, virtualCashBalance - enteredCashAmount);
-
-  // Selected Packet for piece calculation
-  const selectedPacketId = standardForm.watch("packetId") || packets[0]?.id;
-  const selectedPacket = packets.find((p) => p.id === selectedPacketId);
-  const packetCount = Number(standardForm.watch("quantity") || 1);
-  const totalCalculatedPieces = selectedPacket
-    ? packetCount * selectedPacket.quantityPerPacket
-    : 0;
 
   // Invalidate and refetch all related machine and log queries
   const invalidateAndRefetchAll = async () => {
@@ -263,46 +181,6 @@ export default function MachineOperationPage() {
   };
 
   // Mutations
-  const standardMutation = useMutation({
-    mutationFn: async (payload: RestockInput) => {
-      const res = await apiClient.post("/inventory/restock/standard", {
-        ...payload,
-        machineId: machine?.id || machineId,
-      });
-      return res.data;
-    },
-    onSuccess: (data) => {
-      toast.success(
-        `Standard Restock Logged: +${data.data.totalPiecesAdded} items (${data.data.packetsAdded} packets)`
-      );
-      standardForm.reset();
-      invalidateAndRefetchAll();
-    },
-    onError: (err: any) => {
-      toast.error(err.response?.data?.message || "Standard restock failed");
-    },
-  });
-
-  const manualMutation = useMutation({
-    mutationFn: async (payload: ManualEntryInput) => {
-      const res = await apiClient.post("/inventory/restock/manual", {
-        ...payload,
-        machineId: machine?.id || machineId,
-      });
-      return res.data;
-    },
-    onSuccess: (data) => {
-      toast.success(
-        `Manual Entry Logged: ${data.data.quantityAdded > 0 ? "+" : ""}${data.data.quantityAdded} items`
-      );
-      manualForm.reset();
-      invalidateAndRefetchAll();
-    },
-    onError: (err: any) => {
-      toast.error(err.response?.data?.message || "Manual restock failed");
-    },
-  });
-
   const cashMutation = useMutation({
     mutationFn: async (payload: CashCollectionInput) => {
       const res = await apiClient.post("/inventory/cash-collection", {
@@ -497,56 +375,40 @@ export default function MachineOperationPage() {
         >
           <ArrowLeft className="h-4 w-4" />
         </Button>
-        <div className="flex-1 min-w-0">
-          <div className="flex items-center gap-2">
-            <h1 className="text-base font-bold tracking-tight text-foreground font-mono truncate">
-              {machine?.serialNumber || machineId}
-            </h1>
-            <span className="flex h-2 w-2 rounded-full bg-emerald-500 shrink-0 ring-4 ring-emerald-500/20" />
-          </div>
-          <p className="text-xs text-muted-foreground truncate">
-            {machine?.location || "Physical Fleet Location"}
-          </p>
+        <div className="flex-1 min-w-0 flex items-center gap-1.5 text-xs font-semibold text-foreground truncate">
+          <span className="flex h-2 w-2 rounded-full bg-emerald-500 shrink-0 ring-4 ring-emerald-500/20" />
+          <span className="text-muted-foreground truncate">
+            {(machine as any)?.locationName || machine?.location || "Venue"}
+          </span>
+          <span className="text-muted-foreground">→</span>
+          <span className="truncate">
+            {(machine as any)?.storeName || machine?.serialNumber || machineId}
+          </span>
         </div>
       </div>
 
-      {/* Machine Status Snapshot */}
-      <Card className="border-border/50 bg-gradient-to-br from-card via-card/90 to-card/60 shadow-xs">
-        <CardContent className="p-3.5 grid grid-cols-2 gap-3 text-xs">
-          <div className="flex flex-col space-y-0.5">
-            <span className="text-[10px] text-muted-foreground uppercase font-semibold tracking-wider">
-              QR Identifier
-            </span>
-            <span className="font-mono font-bold text-foreground text-xs truncate">
-              {machine?.qrCode || `QR-${machineId}`}
-            </span>
-          </div>
-          <div className="flex flex-col items-end space-y-0.5">
-            <span className="text-[10px] text-muted-foreground uppercase font-semibold tracking-wider">
-              Virtual Cash Balance
-            </span>
-            <span className="font-bold text-amber-500 text-sm font-mono">
-              {formatMoney(virtualCashBalance)}
-            </span>
-          </div>
+      {/* Prominent Key Number — the single most important thing a field
+          agent needs to find and open the physical coin box. */}
+      <Card className="border-amber-500/40 bg-gradient-to-br from-amber-500/10 via-card to-card shadow-xs">
+        <CardContent className="p-4 flex flex-col items-center text-center gap-1">
+          <span className="text-[11px] font-bold uppercase tracking-widest text-amber-600 dark:text-amber-400 flex items-center gap-1.5">
+            <KeyRound className="h-3.5 w-3.5" />
+            <span>Key Number</span>
+          </span>
+          <span className="text-4xl font-black font-mono tracking-wide text-amber-600 dark:text-amber-400">
+            {machine?.keyNumber || "—"}
+          </span>
         </CardContent>
       </Card>
 
       {/* Operation Tabs */}
       <Tabs
-        defaultValue="restock"
+        defaultValue="cash"
         value={activeTab}
         onValueChange={setActiveTab}
         className="w-full"
       >
-        <TabsList className="grid w-full grid-cols-3 h-12 p-1 bg-muted/60 rounded-2xl border border-border/40">
-          <TabsTrigger
-            value="restock"
-            className="rounded-xl text-xs font-semibold gap-1.5 data-[state=active]:bg-card data-[state=active]:text-foreground data-[state=active]:shadow-xs transition-[background-color,color,box-shadow] duration-200"
-          >
-            <PackageOpen className="h-4 w-4 text-primary" />
-            <span>Restock</span>
-          </TabsTrigger>
+        <TabsList className="grid w-full grid-cols-2 h-12 p-1 bg-muted/60 rounded-2xl border border-border/40">
           <TabsTrigger
             value="cash"
             className="rounded-xl text-xs font-semibold gap-1.5 data-[state=active]:bg-card data-[state=active]:text-foreground data-[state=active]:shadow-xs transition-[background-color,color,box-shadow] duration-200"
@@ -562,280 +424,6 @@ export default function MachineOperationPage() {
             <span>Audit</span>
           </TabsTrigger>
         </TabsList>
-
-        {/* TAB 1: RESTOCK */}
-        <TabsContent value="restock" className="mt-3.5 space-y-3.5 focus-visible:outline-none">
-          {/* Prominent Current Estimated Stock Card */}
-          <Card className="border-border/70 bg-gradient-to-br from-card via-card/95 to-primary/5 shadow-xs overflow-hidden">
-            <CardContent className="p-4 space-y-3">
-              <div className="flex items-start justify-between gap-3">
-                <div className="space-y-1">
-                  <div className="flex items-center gap-1.5 text-xs font-semibold text-muted-foreground uppercase tracking-wider">
-                    <Boxes className="h-3.5 w-3.5 text-primary" />
-                    <span>Current Estimated Stock</span>
-                  </div>
-                  <div className="flex items-baseline gap-2">
-                    <span className="text-3xl font-black tracking-tight text-foreground font-mono">
-                      {currentEstimatedStock}
-                    </span>
-                    <span className="text-xs font-semibold text-muted-foreground">
-                      pieces inside
-                    </span>
-                  </div>
-                </div>
-
-                <div className="flex flex-col items-end gap-1">
-                  <span
-                    className={`inline-flex items-center gap-1 px-2.5 py-0.5 rounded-full text-[11px] font-bold ${
-                      currentEstimatedStock === 0
-                        ? "bg-rose-500/10 text-rose-600 dark:text-rose-400 border border-rose-500/20"
-                        : currentEstimatedStock < 20
-                        ? "bg-amber-500/10 text-amber-600 dark:text-amber-400 border border-amber-500/20"
-                        : "bg-emerald-500/10 text-emerald-600 dark:text-emerald-400 border border-emerald-500/20"
-                    }`}
-                  >
-                    <span
-                      className={`h-1.5 w-1.5 rounded-full ${
-                        currentEstimatedStock === 0
-                          ? "bg-rose-500"
-                          : currentEstimatedStock < 20
-                          ? "bg-amber-500"
-                          : "bg-emerald-500"
-                      }`}
-                    />
-                    {currentEstimatedStock === 0
-                      ? "Empty / Depleted"
-                      : currentEstimatedStock < 20
-                      ? "Low Stock"
-                      : "Sufficient"}
-                  </span>
-                  <span className="text-[10px] text-muted-foreground">
-                    Cap: {machine?.capacity || 100} pcs • {formatMoney(machinePricePerPlay)}/play
-                  </span>
-                </div>
-              </div>
-
-              {/* Progress bar / Stock ratio */}
-              <div className="space-y-1">
-                <div className="w-full bg-muted/80 rounded-full h-2 overflow-hidden">
-                  <div
-                    className={`h-full transition-all duration-500 rounded-full ${
-                      currentEstimatedStock < 20
-                        ? "bg-amber-500"
-                        : "bg-primary"
-                    }`}
-                    style={{
-                      width: `${Math.min(
-                        100,
-                        Math.max(
-                          0,
-                          Math.round(
-                            (currentEstimatedStock /
-                              (machine?.capacity || 100)) *
-                              100
-                          )
-                        )
-                      )}%`,
-                    }}
-                  />
-                </div>
-                <div className="flex justify-between text-[10px] text-muted-foreground font-medium pt-0.5">
-                  <span>
-                    Refilled: +{(machine as any)?.totalRestockedUnits ?? currentEstimatedStock} pcs
-                  </span>
-                  <span>
-                    Dispensed: -{(machine as any)?.totalUnitsSold ?? 0} pcs ({formatMoney((machine as any)?.totalCashCollected ?? 0)})
-                  </span>
-                </div>
-              </div>
-            </CardContent>
-          </Card>
-
-          {/* Mode Switcher */}
-          <div className="flex items-center justify-between rounded-xl bg-accent/40 border border-border/40 p-2.5 text-xs">
-            <div className="flex items-center gap-2">
-              <Sparkles className="h-4 w-4 text-primary" />
-              <span className="font-semibold text-foreground">
-                {isManualRestock ? "Manual Item Count" : "Standard Master Packets"}
-              </span>
-            </div>
-            <Button
-              variant="outline"
-              size="sm"
-              onClick={() => setIsManualRestock(!isManualRestock)}
-              className="h-8 text-xs px-3 rounded-lg border-border/80"
-            >
-              {isManualRestock ? "Switch to Standard" : "Manual / Loose"}
-            </Button>
-          </div>
-
-          {!isManualRestock ? (
-            /* STANDARD PACKET RESTOCK FORM */
-            <Card className="border-border/60">
-              <CardHeader className="pb-2 pt-4 px-4">
-                <CardTitle className="text-sm font-bold flex items-center gap-2">
-                  <Layers className="h-4 w-4 text-primary" />
-                  <span>Standard Packet Restock</span>
-                </CardTitle>
-                <CardDescription className="text-xs">
-                  Fixed batch restocking. System calculates total pieces automatically.
-                </CardDescription>
-              </CardHeader>
-              <CardContent className="px-4 pb-4">
-                <form
-                  onSubmit={standardForm.handleSubmit((d) =>
-                    standardMutation.mutate(d)
-                  )}
-                  className="space-y-4"
-                >
-                  <div className="space-y-1.5">
-                    <label className="text-xs font-semibold text-foreground">
-                      Select Master Packet *
-                    </label>
-                    <select
-                      className="flex h-11 w-full rounded-xl border border-input bg-transparent px-3 py-2 text-base md:text-sm shadow-xs focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
-                      {...standardForm.register("packetId")}
-                    >
-                      {packets.map((pkt) => (
-                        <option key={pkt.id} value={pkt.id} className="bg-card">
-                          {pkt.name} ({pkt.quantityPerPacket} pcs/pkt - {formatMoney(pkt.pricePerItem)})
-                        </option>
-                      ))}
-                    </select>
-                  </div>
-
-                  <div className="space-y-1.5">
-                    <label className="text-xs font-semibold text-foreground">
-                      Number of Packets *
-                    </label>
-                    <Input
-                      type="number"
-                      min={1}
-                      placeholder="1"
-                      className="h-11 text-base font-semibold rounded-xl"
-                      {...standardForm.register("quantity", { valueAsNumber: true })}
-                    />
-                    {standardForm.formState.errors.quantity && (
-                      <p className="text-xs text-destructive">
-                        {standardForm.formState.errors.quantity.message}
-                      </p>
-                    )}
-                  </div>
-
-                  {/* Dynamic Calculation Banner */}
-                  <div className="rounded-xl border border-primary/30 bg-primary/10 p-3.5 flex items-center justify-between">
-                    <span className="text-xs font-medium text-foreground">
-                      Calculated Total Units:
-                    </span>
-                    <span className="text-base font-black text-foreground">
-                      +{totalCalculatedPieces} pieces
-                    </span>
-                  </div>
-
-                  <div className="space-y-1.5">
-                    <label className="text-xs font-medium text-muted-foreground">
-                      Optional Field Remarks
-                    </label>
-                    <Input
-                      placeholder="e.g. Full restock - verified coin chute"
-                      className="h-10 rounded-xl text-xs"
-                      {...standardForm.register("remarks")}
-                    />
-                  </div>
-
-                  <Button
-                    type="submit"
-                    className="w-full h-12 text-sm font-bold shadow-md shadow-primary/20 rounded-xl"
-                    disabled={standardMutation.isPending}
-                  >
-                    {standardMutation.isPending && (
-                      <Loader2 className="mr-2 h-4 w-4 animate-spin" />
-                    )}
-                    Confirm Standard Restock
-                  </Button>
-                </form>
-              </CardContent>
-            </Card>
-          ) : (
-            /* MANUAL / LOOSE ITEMS RESTOCK FORM */
-            <Card className="border-amber-500/30">
-              <CardHeader className="pb-2 pt-4 px-4 bg-amber-500/5 rounded-t-2xl">
-                <CardTitle className="text-sm font-bold flex items-center gap-2 text-amber-600 dark:text-amber-400">
-                  <AlertTriangle className="h-4 w-4" />
-                  <span>Manual Item Adjustment</span>
-                </CardTitle>
-                <CardDescription className="text-xs">
-                  For non-standard items or loose refills. Remarks are strictly mandatory (&ge; 5 characters).
-                </CardDescription>
-              </CardHeader>
-              <CardContent className="px-4 py-4">
-                <form
-                  onSubmit={manualForm.handleSubmit((d) =>
-                    manualMutation.mutate(d)
-                  )}
-                  className="space-y-4"
-                >
-                  <div className="space-y-1.5">
-                    <label className="text-xs font-semibold text-foreground">
-                      Exact Piece Count Added *
-                    </label>
-                    <Input
-                      type="number"
-                      placeholder="50"
-                      className="h-11 text-base font-semibold rounded-xl"
-                      {...manualForm.register("quantityAdded", {
-                        valueAsNumber: true,
-                      })}
-                    />
-                    {manualForm.formState.errors.quantityAdded && (
-                      <p className="text-xs text-destructive">
-                        {manualForm.formState.errors.quantityAdded.message}
-                      </p>
-                    )}
-                  </div>
-
-                  <div className="space-y-1.5">
-                    <label className="text-xs font-semibold text-foreground">
-                      Brand / Product Name (Optional)
-                    </label>
-                    <Input
-                      placeholder="e.g. Wonka Assorted Loose Candies"
-                      className="h-10 rounded-xl text-xs"
-                      {...manualForm.register("brandName")}
-                    />
-                  </div>
-
-                  <div className="space-y-1.5">
-                    <label className="text-xs font-semibold text-foreground flex items-center gap-1 text-destructive">
-                      <span>Mandatory Audit Remarks *</span>
-                    </label>
-                    <Textarea
-                      placeholder="Explain reason for manual piece entry (min 5 characters)..."
-                      {...manualForm.register("remarks")}
-                      className="min-h-[85px] rounded-xl text-xs"
-                    />
-                    {manualForm.formState.errors.remarks && (
-                      <p className="text-xs text-destructive font-medium">
-                        {manualForm.formState.errors.remarks.message}
-                      </p>
-                    )}
-                  </div>
-
-                  <Button
-                    type="submit"
-                    className="w-full h-12 text-sm font-bold bg-amber-600 hover:bg-amber-700 text-white rounded-xl"
-                    disabled={manualMutation.isPending}
-                  >
-                    {manualMutation.isPending && (
-                      <Loader2 className="mr-2 h-4 w-4 animate-spin" />
-                    )}
-                    Log Manual Inventory Entry
-                  </Button>
-                </form>
-              </CardContent>
-            </Card>
-          )}
-        </TabsContent>
 
         {/* TAB 2: CASH COLLECT */}
         <TabsContent value="cash" className="mt-3.5 space-y-3.5 focus-visible:outline-none">
@@ -854,30 +442,6 @@ export default function MachineOperationPage() {
                 onSubmit={cashForm.handleSubmit(handleCashFormSubmit)}
                 className="space-y-4"
               >
-                {/* Store Location -> Machine Name, with Key Number prominently displayed */}
-                <div className="rounded-xl bg-muted/40 border border-border/50 p-3.5 space-y-2">
-                  <div className="flex items-center gap-1.5 text-xs font-semibold text-foreground truncate">
-                    <span className="text-muted-foreground truncate">
-                      {(machine as any)?.locationName || machine?.location || "Venue"}
-                    </span>
-                    <span className="text-muted-foreground">→</span>
-                    <span className="truncate">
-                      {(machine as any)?.storeName || machine?.serialNumber || machineId}
-                    </span>
-                  </div>
-                  {machine?.keyNumber && (
-                    <div className="flex items-center justify-between">
-                      <span className="text-[10px] font-bold uppercase tracking-wider text-amber-600 dark:text-amber-400 flex items-center gap-1">
-                        <KeyRound className="h-3 w-3" />
-                        <span>Key Number</span>
-                      </span>
-                      <span className="text-2xl font-black font-mono tracking-wide text-amber-600 dark:text-amber-400">
-                        {machine.keyNumber}
-                      </span>
-                    </div>
-                  )}
-                </div>
-
                 <div className="rounded-xl bg-amber-500/10 border border-amber-500/20 p-3.5 flex items-center justify-between">
                   <span className="text-xs font-medium text-foreground">
                     Expected Cash Amount:
