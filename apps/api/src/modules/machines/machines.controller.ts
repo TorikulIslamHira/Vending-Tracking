@@ -10,7 +10,7 @@ import { isRootSuperAdminEmail } from "../../core/rootAdmin";
  * Fetch all machines scoped to the authenticated tenant, optionally filtered by storeId
  */
 export async function getMachinesHandler(
-  request: FastifyRequest<{ Querystring: { storeId?: string; locationId?: string } }>,
+  request: FastifyRequest<{ Querystring: { storeId?: string } }>,
   reply: FastifyReply
 ): Promise<void> {
   const tenantId = request.tenantId;
@@ -25,11 +25,7 @@ export async function getMachinesHandler(
     const machineList = await db.query.machines.findMany({
       where: whereCondition,
       with: {
-        store: {
-          with: {
-            location: true,
-          },
-        },
+        store: true,
       },
       orderBy: [desc(machines.createdAt)],
     });
@@ -44,7 +40,7 @@ export async function getMachinesHandler(
         location: m.location,
         storeId: m.storeId,
         storeName: m.store?.name || m.location,
-        locationName: m.store?.location?.name || null,
+        locationAddress: m.store?.locationAddress || null,
         category: m.category || "Standard Confectionery",
         type: m.type || "Spiral Chute",
         capacity: m.capacity || 100,
@@ -85,11 +81,7 @@ export async function getMachineByIdHandler(
         or(eq(machines.id, id), eq(machines.qrCode, id), eq(machines.serialNumber, id))
       ),
       with: {
-        store: {
-          with: {
-            location: true,
-          },
-        },
+        store: true,
         inventoryLogs: {
           limit: 10,
           orderBy: (logs: any, { desc }: any) => [desc(logs.createdAt)],
@@ -130,7 +122,7 @@ export async function getMachineByIdHandler(
           location: machine.location,
           storeId: machine.storeId,
           storeName: machine.store?.name || machine.location,
-          locationName: machine.store?.location?.name || null,
+          locationAddress: machine.store?.locationAddress || null,
           storePaymentMode: machine.store?.paymentMode || null,
           storeShopCutPercent: machine.store?.shopCutPercent ?? null,
           category: machine.category || "Standard Confectionery",

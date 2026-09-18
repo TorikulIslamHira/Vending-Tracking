@@ -63,24 +63,6 @@ export const users = pgTable(
   ]
 );
 
-// Locations Table
-export const locations = pgTable(
-  "locations",
-  {
-    id: text("id").primaryKey().$defaultFn(() => crypto.randomUUID()),
-    tenantId: text("tenantId")
-      .notNull()
-      .references(() => tenants.id, { onDelete: "cascade" }),
-    name: text("name").notNull(),
-    address: text("address"),
-    createdAt: timestamp("createdAt", { withTimezone: true, mode: "date" }).defaultNow().notNull(),
-    updatedAt: timestamp("updatedAt", { withTimezone: true, mode: "date" }).defaultNow().notNull().$onUpdate(() => new Date()),
-  },
-  (table) => [
-    index("locations_tenantId_idx").on(table.tenantId),
-  ]
-);
-
 // Stores Table
 export const stores = pgTable(
   "stores",
@@ -89,16 +71,15 @@ export const stores = pgTable(
     tenantId: text("tenantId")
       .notNull()
       .references(() => tenants.id, { onDelete: "cascade" }),
-    // Optional: a store no longer has to belong to a physical "venue"
-    // grouping. ON DELETE SET NULL — deleting a location just unassigns its
-    // stores rather than destroying them (stores are the primary entity now,
-    // not owned children of a location).
-    locationId: text("locationId").references(() => locations.id, { onDelete: "set null" }),
     name: text("name").notNull(),
     category: text("category").default("Confectionery & Toys"),
     shopCutPercent: integer("shopCutPercent").default(30).notNull(),
     businessCutPercent: integer("businessCutPercent").default(70).notNull(),
     eircode: text("eircode"),
+    // Flat free-text address field — replaced the separate relational
+    // `locations` table/model entirely. Auto-filled from the Eircode via
+    // Google Geocoding on the frontend, but always manually editable.
+    locationAddress: text("locationAddress"),
     paymentMode: paymentModeEnum("paymentMode").default("CASH").notNull(),
     qrCode: text("qrCode"),
     createdAt: timestamp("createdAt", { withTimezone: true, mode: "date" }).defaultNow().notNull(),
@@ -106,7 +87,6 @@ export const stores = pgTable(
   },
   (table) => [
     index("stores_tenantId_idx").on(table.tenantId),
-    index("stores_locationId_idx").on(table.locationId),
     // Deliberately a plain index, not a unique constraint: adding a UNIQUE
     // constraint to an already-populated table makes `drizzle-kit push`
     // stop for an interactive "truncate table?" confirmation, which hangs
@@ -282,7 +262,6 @@ export const adminAuditLogs = pgTable(
 export const tenantsRelations = relations(tenants, ({ many }) => ({
   users: many(users),
   machines: many(machines),
-  locations: many(locations),
   stores: many(stores),
   packetConfigs: many(packetConfigs),
   inventoryLogs: many(inventoryLogs),
@@ -300,22 +279,10 @@ export const usersRelations = relations(users, ({ one, many }) => ({
   adminAuditLogs: many(adminAuditLogs),
 }));
 
-export const locationsRelations = relations(locations, ({ one, many }) => ({
-  tenant: one(tenants, {
-    fields: [locations.tenantId],
-    references: [tenants.id],
-  }),
-  stores: many(stores),
-}));
-
 export const storesRelations = relations(stores, ({ one, many }) => ({
   tenant: one(tenants, {
     fields: [stores.tenantId],
     references: [tenants.id],
-  }),
-  location: one(locations, {
-    fields: [stores.locationId],
-    references: [locations.id],
   }),
   machines: many(machines),
 }));
@@ -394,9 +361,6 @@ export type NewTenant = InferInsertModel<typeof tenants>;
 
 export type User = InferSelectModel<typeof users>;
 export type NewUser = InferInsertModel<typeof users>;
-
-export type Location = InferSelectModel<typeof locations>;
-export type NewLocation = InferInsertModel<typeof locations>;
 
 export type Store = InferSelectModel<typeof stores>;
 export type NewStore = InferInsertModel<typeof stores>;

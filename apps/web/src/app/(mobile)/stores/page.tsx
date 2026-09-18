@@ -10,7 +10,7 @@ import {
   useDeleteStore,
   StoreItem,
 } from "@/hooks/useStores";
-import { loadGooglePlacesScript, extractPostalCodeFromPlace } from "@/lib/googleMaps";
+import { loadGooglePlacesScript, geocodeEircode } from "@/lib/googleMaps";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Card, CardContent } from "@/components/ui/card";
@@ -67,8 +67,12 @@ export default function StoresPage() {
   const [shopCut, setShopCut] = useState(30);
   const [eircode, setEircode] = useState("");
   const [paymentMode, setPaymentMode] = useState<"CASH" | "BANK">("CASH");
-  const [address, setAddress] = useState("");
-  const addressInputRef = useRef<HTMLInputElement>(null);
+  const [locationAddress, setLocationAddress] = useState("");
+  const [isGeocodingAddress, setIsGeocodingAddress] = useState(false);
+  // Tracks the last value we auto-filled, so a subsequent Eircode edit only
+  // overwrites the address if the agent hasn't since typed their own — never
+  // stomps a manual correction.
+  const lastAutoFilledAddressRef = useRef<string>("");
 
   const filteredStores = stores.filter((st) => {
     const q = searchTerm.toLowerCase();
@@ -79,43 +83,41 @@ export default function StoresPage() {
     );
   });
 
-  // Google Places Autocomplete on the (optional) address field — only wired
-  // up when a Maps API key is configured; the Eircode field itself always
-  // stays manually editable since Google's Eircode coverage isn't complete
-  // for every Irish address.
+  // Debounced Eircode → Location auto-fill. Only wired up when a Maps API
+  // key is configured; the Location field always stays manually editable
+  // since Google's Eircode coverage isn't complete for every Irish address.
   useEffect(() => {
-    if (!GOOGLE_MAPS_API_KEY || !isDrawerOpen || !addressInputRef.current) return;
+    if (!GOOGLE_MAPS_API_KEY || !isDrawerOpen) return;
+    const trimmed = eircode.trim();
+    if (trimmed.length < 5) return;
+
+    // Only auto-fill if the address field is empty or still holds our own
+    // last auto-filled value — never overwrite something the agent typed.
+    if (locationAddress && locationAddress !== lastAutoFilledAddressRef.current) return;
 
     let cancelled = false;
-    let autocomplete: any = null;
-    const inputEl = addressInputRef.current;
-
-    loadGooglePlacesScript(GOOGLE_MAPS_API_KEY)
-      .then(() => {
-        if (cancelled || !inputEl) return;
-        const google = (window as any).google;
-        autocomplete = new google.maps.places.Autocomplete(inputEl, {
-          fields: ["address_components", "formatted_address"],
+    const timer = setTimeout(() => {
+      setIsGeocodingAddress(true);
+      loadGooglePlacesScript(GOOGLE_MAPS_API_KEY)
+        .then(() => geocodeEircode(trimmed))
+        .then((formattedAddress) => {
+          if (cancelled || !formattedAddress) return;
+          lastAutoFilledAddressRef.current = formattedAddress;
+          setLocationAddress(formattedAddress);
+        })
+        .catch(() => {
+          // Silent — the field just stays whatever it already was.
+        })
+        .finally(() => {
+          if (!cancelled) setIsGeocodingAddress(false);
         });
-        autocomplete.addListener("place_changed", () => {
-          const place = autocomplete.getPlace();
-          const postalCode = extractPostalCodeFromPlace(place);
-          if (postalCode) {
-            setEircode(postalCode);
-          }
-          if (place?.formatted_address) {
-            setAddress(place.formatted_address);
-          }
-        });
-      })
-      .catch(() => {
-        // Silent — the address field just behaves like a plain text input.
-      });
+    }, 600);
 
     return () => {
       cancelled = true;
+      clearTimeout(timer);
     };
-  }, [isDrawerOpen]);
+  }, [eircode, isDrawerOpen]);
 
   const handleOpenAdd = () => {
     setEditingStoreId(null);
@@ -124,7 +126,8 @@ export default function StoresPage() {
     setShopCut(30);
     setEircode("");
     setPaymentMode("CASH");
-    setAddress("");
+    setLocationAddress("");
+    lastAutoFilledAddressRef.current = "";
     setIsDrawerOpen(true);
   };
 
@@ -136,7 +139,8 @@ export default function StoresPage() {
     setShopCut(st.shopCutPercent);
     setEircode(st.eircode || "");
     setPaymentMode(st.paymentMode || "CASH");
-    setAddress("");
+    setLocationAddress(st.locationAddress || "");
+    lastAutoFilledAddressRef.current = "";
     setIsDrawerOpen(true);
   };
 
@@ -167,6 +171,7 @@ export default function StoresPage() {
           category: storeCategory.trim(),
           shopCutPercent: shopCut,
           eircode: eircode.trim() || undefined,
+          locationAddress: locationAddress.trim() || undefined,
           paymentMode,
         },
         {
@@ -180,6 +185,7 @@ export default function StoresPage() {
           category: storeCategory.trim(),
           shopCutPercent: shopCut,
           eircode: eircode.trim() || undefined,
+          locationAddress: locationAddress.trim() || undefined,
           paymentMode,
         },
         {
@@ -327,6 +333,24 @@ export default function StoresPage() {
             </div>
 
             <div className="space-y-1.5">
+              <label className="text-xs font-semibold text-foreground">
+                Location / Full Address
+              </label>
+              <Input
+                placeholder="Auto-fills from Eircode, or type manually"
+                value={locationAddress}
+                onChange={(e) => setLocationAddress(e.target.value)}
+                className="h-11 rounded-xl bg-muted/40 border-border/60 text-xs focus-visible:ring-primary shadow-xs"
+              />
+              {isGeocodingAddress && (
+                <p className="text-[11px] text-muted-foreground flex items-center gap-1">
+                  <Loader2 className="h-3 w-3 animate-spin" />
+                  Looking up address for this Eircode…
+                </p>
+              )}
+            </div>
+
+            <div className="space-y-1.5">
               <label className="text-xs font-semibold text-foreground">Store Category</label>
               <Input
                 placeholder="e.g. Convenience, Sweets, Arcade"
@@ -387,23 +411,6 @@ export default function StoresPage() {
                 </button>
               </div>
             </div>
-
-            {/* Address (optional, auto-fills Eircode when Google Maps is configured) */}
-            {GOOGLE_MAPS_API_KEY && (
-              <div className="space-y-1.5">
-                <label className="text-xs font-semibold text-foreground">
-                  Address{" "}
-                  <span className="text-muted-foreground font-normal">(for Eircode lookup)</span>
-                </label>
-                <Input
-                  ref={addressInputRef}
-                  placeholder="Start typing the shop's address..."
-                  value={address}
-                  onChange={(e) => setAddress(e.target.value)}
-                  className="h-11 rounded-xl bg-muted/40 border-border/60 text-xs focus-visible:ring-primary shadow-xs"
-                />
-              </div>
-            )}
 
             <div className="space-y-1.5">
               <label className="text-xs font-semibold text-foreground">Eircode</label>

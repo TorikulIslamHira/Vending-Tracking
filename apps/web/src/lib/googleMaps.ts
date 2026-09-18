@@ -52,3 +52,30 @@ export function extractPostalCodeFromPlace(place: any): string | null {
   const postal = components.find((c) => c.types?.includes("postal_code"));
   return postal?.long_name || null;
 }
+
+/**
+ * Reverse lookup: resolves an Eircode to a formatted street address via the
+ * Geocoding API's JS class (part of the core Maps JS namespace, no extra
+ * `libraries=` entry needed). Returns null on any failure so callers can
+ * fall back to leaving the address field untouched.
+ */
+export function geocodeEircode(eircode: string): Promise<string | null> {
+  return new Promise((resolve) => {
+    const google = (window as any).google;
+    if (!google?.maps?.Geocoder) {
+      resolve(null);
+      return;
+    }
+    const geocoder = new google.maps.Geocoder();
+    geocoder.geocode(
+      { address: `${eircode}, Ireland` },
+      (results: any, status: string) => {
+        if (status === "OK" && results && results[0]?.formatted_address) {
+          resolve(results[0].formatted_address);
+        } else {
+          resolve(null);
+        }
+      }
+    );
+  });
+}

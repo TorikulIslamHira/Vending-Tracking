@@ -24,6 +24,7 @@ export interface StoreItem {
   shopCutPercent: number;
   businessCutPercent: number;
   eircode?: string | null;
+  locationAddress?: string | null;
   paymentMode?: "CASH" | "BANK";
   qrCode?: string | null;
   machineCount: number;
@@ -63,6 +64,7 @@ export function useAllStores() {
             shopCutPercent: Number(st.shopCutPercent ?? 30),
             businessCutPercent: Number(st.businessCutPercent ?? 70),
             eircode: st.eircode ?? null,
+            locationAddress: st.locationAddress ?? null,
             paymentMode: st.paymentMode || "CASH",
             qrCode: st.qrCode ?? null,
             machineCount: Number(st.machineCount ?? 0),
@@ -99,6 +101,7 @@ export function useCreateStore() {
       category?: string;
       shopCutPercent: number;
       eircode?: string;
+      locationAddress?: string;
       paymentMode?: "CASH" | "BANK";
     }) => {
       const response = await api.post("/stores", {
@@ -106,6 +109,7 @@ export function useCreateStore() {
         category: newStore.category || "Novelty Vending",
         shopCutPercent: newStore.shopCutPercent,
         eircode: newStore.eircode,
+        locationAddress: newStore.locationAddress,
         paymentMode: newStore.paymentMode,
       });
       return response.data?.data;
@@ -137,6 +141,7 @@ export function useUpdateStore() {
       category?: string;
       shopCutPercent: number;
       eircode?: string;
+      locationAddress?: string;
       paymentMode?: "CASH" | "BANK";
     }) => {
       const response = await api.put(`/stores/${storeData.id}`, {
@@ -144,6 +149,7 @@ export function useUpdateStore() {
         category: storeData.category,
         shopCutPercent: storeData.shopCutPercent,
         eircode: storeData.eircode,
+        locationAddress: storeData.locationAddress,
         paymentMode: storeData.paymentMode,
       });
       return response.data?.data;

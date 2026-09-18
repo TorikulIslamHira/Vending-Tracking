@@ -10,8 +10,7 @@ import { machineRoutes } from "./modules/machines";
 import { packetRoutes } from "./modules/packets";
 import { inventoryRoutes } from "./modules/inventory";
 import { usersRoutes } from "./modules/users";
-import { locationsRoutes } from "./modules/locations";
-import { storesRoutes, locationStoresRoutes } from "./modules/stores";
+import { storesRoutes } from "./modules/stores";
 import { settingsRoutes } from "./modules/settings";
 import { auditRoutes } from "./modules/audit";
 import { registerBackupSchedules } from "./core/backup/scheduler";
@@ -78,8 +77,6 @@ export function buildServer(): FastifyInstance {
   // Register Core API Routes under /api/v1 prefix
   app.register(authRoutes, { prefix: "/api/v1/auth" });
   app.register(machineRoutes, { prefix: "/api/v1/machines" });
-  app.register(locationsRoutes, { prefix: "/api/v1/locations" });
-  app.register(locationStoresRoutes, { prefix: "/api/v1/locations" });
   app.register(storesRoutes, { prefix: "/api/v1/stores" });
   app.register(packetRoutes, { prefix: "/api/v1/packets" });
   app.register(inventoryRoutes, { prefix: "/api/v1/inventory" });

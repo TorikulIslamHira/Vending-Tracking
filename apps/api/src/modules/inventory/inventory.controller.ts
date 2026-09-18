@@ -775,11 +775,7 @@ export async function getCashLogsHandler(
       with: {
         machine: {
           with: {
-            store: {
-              with: {
-                location: true,
-              },
-            },
+            store: true,
           },
         },
         agent: {
@@ -851,11 +847,7 @@ export async function getReportsHandler(
     const tenantMachines = await db.query.machines.findMany({
       where: and(...machineWhereConditions),
       with: {
-        store: {
-          with: {
-            location: true,
-          },
-        },
+        store: true,
       },
       orderBy: [desc(machines.createdAt)],
     });
@@ -883,11 +875,7 @@ export async function getReportsHandler(
       with: {
         machine: {
           with: {
-            store: {
-              with: {
-                location: true,
-              },
-            },
+            store: true,
           },
         },
         agent: {
@@ -932,7 +920,7 @@ export async function getReportsHandler(
         machineId: m.serialNumber,
         storeId: m.storeId,
         storeName: m.store?.name || m.location || "Store Unit",
-        locationName: m.store?.location?.name || "Unassigned",
+        locationName: m.store?.locationAddress || "Unassigned",
         date: cashData?.lastDate || (toDate || new Date().toISOString().split("T")[0]),
         totalCash,
         shopCut,
@@ -966,7 +954,7 @@ export async function getReportsHandler(
           date: log.createdAt ? new Date(log.createdAt).toISOString().split("T")[0] : "",
           machineId: log.machine?.serialNumber || log.machineId,
           storeName: log.machine?.store?.name || log.machine?.location || "Store Unit",
-          locationName: log.machine?.store?.location?.name || "Unassigned",
+          locationName: log.machine?.store?.locationAddress || "Unassigned",
           collectedAmount: Number(log.collectedAmount || 0),
           expectedAmount: Number(log.expectedAmount || 0),
           discrepancy: Number(log.discrepancy || 0),
