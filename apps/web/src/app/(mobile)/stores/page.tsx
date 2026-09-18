@@ -350,16 +350,6 @@ export default function StoresPage() {
               )}
             </div>
 
-            <div className="space-y-1.5">
-              <label className="text-xs font-semibold text-foreground">Store Category</label>
-              <Input
-                placeholder="e.g. Convenience, Sweets, Arcade"
-                value={storeCategory}
-                onChange={(e) => setStoreCategory(e.target.value)}
-                className="h-11 rounded-xl bg-muted/40 border-border/60 text-xs focus-visible:ring-primary shadow-xs"
-              />
-            </div>
-
             {/* Commission Split Slider / Input */}
             <div className="p-3.5 rounded-2xl bg-muted/40 border border-border/50 space-y-2">
               <div className="flex items-center justify-between text-xs font-bold">
