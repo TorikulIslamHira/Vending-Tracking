@@ -10,7 +10,7 @@ import {
   useDeleteStore,
   StoreItem,
 } from "@/hooks/useStores";
-import { loadGooglePlacesScript, geocodeEircode } from "@/lib/googleMaps";
+import { geocodeEircodeOSM } from "@/lib/nominatim";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Card, CardContent } from "@/components/ui/card";
@@ -47,8 +47,6 @@ import {
   AlertTriangle,
 } from "lucide-react";
 
-const GOOGLE_MAPS_API_KEY = process.env.NEXT_PUBLIC_GOOGLE_MAPS_API_KEY;
-
 export default function StoresPage() {
   const router = useRouter();
   const { data: stores = [], isLoading } = useAllStores();
@@ -83,11 +81,12 @@ export default function StoresPage() {
     );
   });
 
-  // Debounced Eircode → Location auto-fill. Only wired up when a Maps API
-  // key is configured; the Location field always stays manually editable
-  // since Google's Eircode coverage isn't complete for every Irish address.
+  // Debounced Eircode → Location auto-fill via OpenStreetMap's free Nominatim
+  // API (no API key needed). The Location field always stays manually
+  // editable since Nominatim's Eircode coverage isn't complete for every
+  // Irish address.
   useEffect(() => {
-    if (!GOOGLE_MAPS_API_KEY || !isDrawerOpen) return;
+    if (!isDrawerOpen) return;
     const trimmed = eircode.trim();
     if (trimmed.length < 5) return;
 
@@ -98,8 +97,7 @@ export default function StoresPage() {
     let cancelled = false;
     const timer = setTimeout(() => {
       setIsGeocodingAddress(true);
-      loadGooglePlacesScript(GOOGLE_MAPS_API_KEY)
-        .then(() => geocodeEircode(trimmed))
+      geocodeEircodeOSM(trimmed)
         .then((formattedAddress) => {
           if (cancelled || !formattedAddress) return;
           lastAutoFilledAddressRef.current = formattedAddress;
@@ -111,7 +109,7 @@ export default function StoresPage() {
         .finally(() => {
           if (!cancelled) setIsGeocodingAddress(false);
         });
-    }, 600);
+    }, 700);
 
     return () => {
       cancelled = true;
