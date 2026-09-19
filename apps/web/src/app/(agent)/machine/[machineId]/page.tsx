@@ -6,7 +6,7 @@ import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { useForm } from "react-hook-form";
 import { zodResolver } from "@hookform/resolvers/zod";
 import { CashCollectionSchema, CashCollectionInput } from "@vending/validation";
-import { EntryType, IMachine } from "@vending/shared-types";
+import { IMachine } from "@vending/shared-types";
 import { api as apiClient } from "@/lib/api";
 import { useAuthStore } from "@/store/useAuthStore";
 import { useCurrency } from "@/hooks/useTenantSettings";
@@ -21,7 +21,6 @@ import {
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
-import { Textarea } from "@/components/ui/textarea";
 import {
   Dialog,
   DialogContent,
@@ -34,14 +33,10 @@ import {
 import {
   Coins,
   ClipboardList,
-  AlertTriangle,
-  RotateCcw,
   ArrowLeft,
   Loader2,
   Clock,
   ShieldAlert,
-  ShieldCheck,
-  Boxes,
   KeyRound,
   Banknote,
   Landmark,
@@ -65,9 +60,6 @@ export default function MachineOperationPage() {
   }, []);
 
   const [activeTab, setActiveTab] = useState("cash");
-  const [reversalTarget, setReversalTarget] = useState<any | null>(null);
-  const [reversalRemarks, setReversalRemarks] = useState("");
-  const [isReversing, setIsReversing] = useState(false);
   const [selectedAttentionPreset, setSelectedAttentionPreset] = useState<string | null>(null);
   const [paymentFollowUp, setPaymentFollowUp] = useState<{
     cashLogId: string;
@@ -116,6 +108,15 @@ export default function MachineOperationPage() {
     enabled: !!machineId,
   });
 
+  // The Audit tab is a cash-collection-only ledger — inventory restock/manual/
+  // reverse entries are excluded entirely (`machineLogs` combines both types).
+  const cashCollectionLogs = machineLogs.filter(
+    (log: any) =>
+      log.logType === "CASH" ||
+      log.entryType === "CASH_DROP" ||
+      log.entryType === "CASH_COLLECT"
+  );
+
   // Form: Cash Collection
   const cashForm = useForm<CashCollectionInput>({
     resolver: zodResolver(CashCollectionSchema),
@@ -159,16 +160,9 @@ export default function MachineOperationPage() {
       return res.data;
     },
     onSuccess: (data) => {
-      const discrepancy = Number(data?.data?.discrepancy || 0);
-      if (discrepancy !== 0) {
-        toast.success(
-          `Cash Collect Processed with ${data.data.isShortage ? "shortage" : "overage"} of ${formatMoney(Math.abs(discrepancy))} (reconciled). Virtual balance reset!`
-        );
-      } else {
-        toast.success(
-          `Cash Collect Processed: ${formatMoney(data.data.collectedAmount)} collected. Virtual balance reset!`
-        );
-      }
+      toast.success(
+        `Cash Collect Processed: ${formatMoney(data.data.collectedAmount)} collected. Virtual balance reset!`
+      );
       cashForm.reset();
       setSelectedAttentionPreset(null);
 
@@ -216,40 +210,13 @@ export default function MachineOperationPage() {
     },
   });
 
-  // Reversal Execution
-  const handleExecuteReversal = async () => {
-    if (!reversalTarget) return;
-    if (!reversalRemarks.trim() || reversalRemarks.trim().length < 5) {
-      toast.error("Reversal remarks are strictly mandatory (min 5 characters)");
-      return;
-    }
-
-    try {
-      setIsReversing(true);
-      await apiClient.post("/inventory/reverse", {
-        logId: reversalTarget.id,
-        remarks: reversalRemarks.trim(),
-      });
-
-      toast.success("Log successfully reversed with offset adjustment!");
-      setReversalTarget(null);
-      setReversalRemarks("");
-      invalidateAndRefetchAll();
-    } catch (err: any) {
-      toast.error(err.response?.data?.message || "Failed to reverse log entry");
-    } finally {
-      setIsReversing(false);
-    }
-  };
-
   // Ultra-clean submit: the UI no longer asks the agent to classify the
   // collection type or acknowledge a mismatch — every submission is treated
   // as a full collection, and the backend's mismatch guardrail (which the
   // API still enforces, unchanged) is always pre-satisfied here:
   // `stockCleared: true` and the always-mandatory Note field. Any actual
-  // discrepancy is still computed, stored, and fully visible to admins via
-  // Cash Tracking/Reports — this only removes the agent-facing "are you
-  // sure?" confirmation step, not the underlying audit trail.
+  // discrepancy is still computed and stored server-side for the underlying
+  // audit trail, even though no UI surface displays it anymore.
   const handleCashFormSubmit = (data: CashCollectionInput) => {
     cashMutation.mutate({
       machineId: machine?.id || machineId,
@@ -471,171 +438,58 @@ export default function MachineOperationPage() {
           </Card>
         </TabsContent>
 
-        {/* TAB 3: AUDIT & REVERSALS */}
+        {/* TAB 3: AUDIT — chronological cash collection ledger */}
         <TabsContent value="audit" className="mt-3.5 space-y-3.5 focus-visible:outline-none">
           <Card className="border-border/60">
             <CardHeader className="pb-2 pt-4 px-4">
               <CardTitle className="text-sm font-bold flex items-center gap-2">
                 <ClipboardList className="h-4 w-4 text-secondary" />
-                <span>Recent Machine Activity</span>
+                <span>Cash Collection History</span>
               </CardTitle>
               <CardDescription className="text-xs">
-                Chronological audit trail. Only the most recent restock entry can be reversed.
+                Chronological ledger of cash collected from this machine.
               </CardDescription>
             </CardHeader>
             <CardContent className="px-4 pb-4">
-              {machineLogs.length === 0 ? (
+              {cashCollectionLogs.length === 0 ? (
                 <div className="p-6 text-center text-xs text-muted-foreground">
-                  No recent activity recorded for this machine yet.
+                  No cash collections recorded for this machine yet.
                 </div>
               ) : (
                 <div className="space-y-2.5">
-                  {machineLogs.map((log: any, index: number) => {
-                    const isCash =
-                      log.logType === "CASH" ||
-                      log.entryType === "CASH_DROP" ||
-                      log.entryType === "CASH_COLLECT";
-                    const isStandard = log.entryType === EntryType.STANDARD;
-                    const isReverse = log.entryType === EntryType.REVERSE;
-
-                    // Condition 1: NEVER show Reverse for Cash Collect
-                    // Condition 2: ONLY show Reverse for the MOST RECENT entry (index 0) if it is an Inventory Restock (Standard or Manual)
-                    const canReverse = index === 0 && !isCash && !isReverse;
-
-                    if (isCash) {
-                      return (
-                        <div
-                          key={log.id}
-                          className="rounded-xl border border-amber-500/30 p-3.5 text-xs space-y-2 bg-gradient-to-r from-amber-500/5 via-card to-card hover:border-amber-500/50 transition-colors shadow-xs"
-                        >
-                          <div className="flex items-center justify-between">
-                            <span className="inline-flex items-center gap-1 rounded-full px-2.5 py-0.5 text-[10px] font-bold bg-amber-500/15 text-amber-700 dark:text-amber-400 border border-amber-500/30">
-                              <Coins className="h-3 w-3 text-amber-600 dark:text-amber-400" />
-                              <span>CASH COLLECT</span>
-                            </span>
-                            <span className="font-mono font-black text-amber-600 dark:text-amber-400 text-sm">
-                              {formatMoney(Number(log.collectedAmount || 0))}
-                            </span>
-                          </div>
-
-                          <p className="text-foreground font-medium leading-snug">
-                            {log.remarks || "Physical cash collection recorded from coin mechanism."}
-                          </p>
-
-                          {log.isPartial ? (
-                            <div className="flex items-center gap-1 text-[10px] text-blue-600 dark:text-blue-400 font-semibold bg-blue-500/10 px-2 py-1 rounded-lg border border-blue-500/20">
-                              <Boxes className="h-3 w-3 shrink-0" />
-                              <span>
-                                Partial Collection — {formatMoney(Math.abs(Number(log.discrepancy || 0)))} left in machine
-                              </span>
-                            </div>
-                          ) : (
-                            Number(log.discrepancy || 0) !== 0 && (
-                              <div className="flex items-center gap-1 text-[10px] text-rose-600 dark:text-rose-400 font-semibold bg-rose-500/10 px-2 py-1 rounded-lg border border-rose-500/20">
-                                <AlertTriangle className="h-3 w-3 shrink-0" />
-                                <span>
-                                  {Number(log.discrepancy) > 0 ? "Shortage" : "Overage"}: {formatMoney(Math.abs(Number(log.discrepancy)))} (Expected: {formatMoney(Number(log.expectedAmount || 0))})
-                                </span>
-                              </div>
-                            )
-                          )}
-
-                          {log.stockCleared && (
-                            <div className="flex items-center gap-1 text-[10px] text-emerald-600 dark:text-emerald-400 font-semibold bg-emerald-500/10 px-2 py-1 rounded-lg border border-emerald-500/20">
-                              <ShieldCheck className="h-3 w-3 shrink-0" />
-                              <span>Stock Cleared / Force Reconciled</span>
-                            </div>
-                          )}
-
-                          <div className="flex items-center justify-between pt-1.5 border-t border-amber-500/20 text-[10px] text-muted-foreground">
-                            <div className="flex items-center gap-1 font-mono">
-                              <Clock className="h-3 w-3 text-muted-foreground/70" />
-                              <span>
-                                {new Date(log.createdAt).toLocaleTimeString([], {
-                                  hour: "2-digit",
-                                  minute: "2-digit",
-                                })}{" "}
-                                •{" "}
-                                {new Date(log.createdAt).toLocaleDateString([], {
-                                  month: "short",
-                                  day: "numeric",
-                                })}
-                              </span>
-                            </div>
-                            <span className="font-medium text-foreground/80">
-                              {log.agent?.name || "Field Technician"}
-                            </span>
-                          </div>
-                        </div>
-                      );
-                    }
-
-                    return (
-                      <div
-                        key={log.id}
-                        className="rounded-xl border border-border/50 p-3.5 text-xs space-y-1.5 bg-card/60 hover:border-border/80 transition-colors"
-                      >
-                        <div className="flex items-center justify-between">
-                          <span
-                            className={`rounded-full px-2 py-0.5 text-[10px] font-bold ${
-                              isStandard
-                                ? "bg-blue-500/10 text-blue-600 dark:text-blue-400"
-                                : isReverse
-                                ? "bg-rose-500/10 text-rose-600 dark:text-rose-400"
-                                : "bg-emerald-500/10 text-emerald-600 dark:text-emerald-400"
-                            }`}
-                          >
-                            {log.entryType}
-                          </span>
-                          <span
-                            className={`font-mono font-black ${
-                              log.quantityAdded > 0
-                                ? "text-emerald-600 dark:text-emerald-400"
-                                : "text-rose-600 dark:text-rose-400"
-                            }`}
-                          >
-                            {log.quantityAdded > 0
-                              ? `+${log.quantityAdded}`
-                              : log.quantityAdded}{" "}
-                            pcs
+                  {cashCollectionLogs.map((log: any) => (
+                    <div
+                      key={log.id}
+                      className="rounded-xl border border-border/50 p-3.5 space-y-2.5 bg-card/60 hover:border-border/80 transition-colors shadow-xs"
+                    >
+                      <div className="flex items-center justify-between">
+                        <div className="flex items-center gap-1 font-mono text-[11px] text-muted-foreground">
+                          <Clock className="h-3 w-3 text-muted-foreground/70" />
+                          <span>
+                            {new Date(log.createdAt).toLocaleDateString([], {
+                              month: "short",
+                              day: "numeric",
+                              year: "numeric",
+                            })}{" "}
+                            •{" "}
+                            {new Date(log.createdAt).toLocaleTimeString([], {
+                              hour: "2-digit",
+                              minute: "2-digit",
+                            })}
                           </span>
                         </div>
-
-                        <p className="text-muted-foreground leading-snug">
-                          {log.remarks}
-                        </p>
-
-                        <div className="flex items-center justify-between pt-1.5 border-t border-border/30 text-[10px] text-muted-foreground">
-                          <div className="flex items-center gap-1 font-mono">
-                            <Clock className="h-3 w-3 text-muted-foreground/70" />
-                            <span>
-                              {new Date(log.createdAt).toLocaleTimeString([], {
-                                hour: "2-digit",
-                                minute: "2-digit",
-                              })}{" "}
-                              •{" "}
-                              {new Date(log.createdAt).toLocaleDateString([], {
-                                month: "short",
-                                day: "numeric",
-                              })}
-                            </span>
-                          </div>
-
-                          {canReverse && (
-                            <Button
-                              variant="ghost"
-                              size="sm"
-                              onClick={() => setReversalTarget(log)}
-                              className="h-7 text-[11px] px-2.5 text-rose-600 hover:text-rose-700 hover:bg-rose-500/10 rounded-lg font-semibold"
-                            >
-                              <RotateCcw className="h-3 w-3 mr-1" />
-                              <span>Reverse</span>
-                            </Button>
-                          )}
-                        </div>
+                        <span className="font-mono font-black text-amber-600 dark:text-amber-400 text-base">
+                          {formatMoney(Number(log.collectedAmount || 0))}
+                        </span>
                       </div>
-                    );
-                  })}
+
+                      {log.remarks && (
+                        <p className="text-xs text-foreground/80 italic bg-muted/40 p-2 rounded-lg border border-border/40">
+                          &ldquo;{log.remarks}&rdquo;
+                        </p>
+                      )}
+                    </div>
+                  ))}
                 </div>
               )}
             </CardContent>
@@ -763,71 +617,6 @@ export default function MachineOperationPage() {
         </DialogContent>
       </Dialog>
 
-      {/* DIALOG: ERROR REVERSAL */}
-      <Dialog
-        open={!!reversalTarget}
-        onOpenChange={(open) => !open && setReversalTarget(null)}
-      >
-        <DialogContent className="max-w-md w-[92vw] rounded-2xl p-6 bg-background border border-border/60 shadow-2xl z-50">
-          <DialogHeader className="text-left pb-1 space-y-1">
-            <DialogTitle className="flex items-center gap-2 text-base font-bold text-rose-600 dark:text-rose-400">
-              <ShieldAlert className="h-5 w-5 shrink-0" />
-              <span>Reverse Mistaken Log Entry</span>
-            </DialogTitle>
-            <DialogDescription className="text-xs text-muted-foreground">
-              Creates an immutable offset reversal to adjust inventory counts without deleting audit trail history.
-            </DialogDescription>
-          </DialogHeader>
-
-          {reversalTarget && (
-            <div className="py-2 space-y-3">
-              <div className="p-3 rounded-xl bg-muted/60 border border-border/40 text-xs space-y-1.5">
-                <p className="font-semibold text-foreground">Original Entry:</p>
-                <p className="text-muted-foreground">{reversalTarget.remarks || "No remarks provided"}</p>
-                <div className="flex items-center justify-between pt-1 border-t border-border/30">
-                  <span className="text-muted-foreground">Offset adjustment:</span>
-                  <span className="font-mono font-bold text-rose-600 dark:text-rose-400">
-                    -{reversalTarget.quantityAdded} pieces
-                  </span>
-                </div>
-              </div>
-
-              <div className="space-y-1.5">
-                <label className="text-xs font-semibold text-foreground">
-                  Reason for Reversal (Mandatory &ge; 5 chars) *
-                </label>
-                <Textarea
-                  placeholder="e.g. Mistakenly entered quantity from adjacent machine"
-                  value={reversalRemarks}
-                  onChange={(e) => setReversalRemarks(e.target.value)}
-                  className="min-h-[85px] text-xs rounded-xl bg-muted/20 border-border/60"
-                />
-              </div>
-            </div>
-          )}
-
-          <DialogFooter className="pt-2 flex flex-col sm:flex-row gap-2">
-            <Button
-              variant="outline"
-              onClick={() => setReversalTarget(null)}
-              className="w-full sm:w-auto h-11 rounded-xl text-xs font-semibold"
-            >
-              Cancel
-            </Button>
-            <Button
-              variant="destructive"
-              className="w-full sm:w-auto h-11 text-xs font-bold shadow-md rounded-xl"
-              onClick={handleExecuteReversal}
-              disabled={isReversing}
-            >
-              {isReversing && (
-                <Loader2 className="mr-2 h-4 w-4 animate-spin" />
-              )}
-              Confirm Reversal Entry
-            </Button>
-          </DialogFooter>
-        </DialogContent>
-      </Dialog>
     </div>
   );
 }

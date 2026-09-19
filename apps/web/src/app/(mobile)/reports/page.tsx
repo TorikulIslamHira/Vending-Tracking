@@ -20,13 +20,10 @@ import {
   ChevronDown,
   Check,
   X,
-  Boxes,
   Loader2,
   Building2,
   Clock,
   User,
-  AlertCircle,
-  ShieldCheck,
 } from "lucide-react";
 
 import { useAllStores, StoreItem } from "@/hooks/useStores";
@@ -343,7 +340,7 @@ export default function ReportsPage() {
       <div className="p-4 rounded-2xl bg-gradient-to-br from-primary/20 via-accent/25 to-card border border-primary/40 space-y-2.5 shadow-xs">
         <div className="flex items-center justify-between text-xs">
           <span className="font-bold text-foreground">
-            Total Reconciled Cash {selectedStore ? `(${selectedStore.name})` : "(All Stores)"}
+            Total Cash Collected {selectedStore ? `(${selectedStore.name})` : "(All Stores)"}
           </span>
           <span className="text-xl font-black font-mono text-foreground">
             {formatMoney(totalCollected)}
@@ -414,32 +411,6 @@ export default function ReportsPage() {
                   <span>{log.storeName} ({log.locationName})</span>
                   <span>{new Date(log.createdAt).toLocaleString()}</span>
                 </div>
-                {log.isPartial && (
-                  <span className="inline-flex items-center gap-1 text-[10px] font-bold text-blue-600 dark:text-blue-400 bg-blue-500/10 px-1.5 py-0.5 rounded w-fit">
-                    <Boxes className="h-3 w-3" />
-                    <span>Partial Collection — {formatMoney(Math.abs(log.discrepancy))} left in machine</span>
-                  </span>
-                )}
-                {!log.isPartial && log.discrepancy !== 0 && (
-                  <div className="flex items-center justify-between gap-2">
-                    <span className="inline-flex items-center gap-1 text-[10px] font-bold text-rose-600 dark:text-rose-400 bg-rose-500/10 px-1.5 py-0.5 rounded">
-                      <AlertCircle className="h-3 w-3" />
-                      <span>
-                        {log.isShortage ? "Shortage" : "Overage"}: {formatMoney(Math.abs(log.discrepancy))}
-                      </span>
-                    </span>
-                    <span
-                      className={`inline-flex items-center gap-1 text-[10px] font-bold px-1.5 py-0.5 rounded ${
-                        log.stockCleared
-                          ? "text-emerald-600 dark:text-emerald-400 bg-emerald-500/10"
-                          : "text-rose-600 dark:text-rose-400 bg-rose-500/10"
-                      }`}
-                    >
-                      <ShieldCheck className="h-3 w-3" />
-                      <span>{log.stockCleared ? "Reconciled" : "Not Reconciled"}</span>
-                    </span>
-                  </div>
-                )}
                 {log.remarks && (
                   <p className="text-[10px] text-foreground/80 italic bg-muted/40 p-1 rounded-md">
                     &ldquo;{log.remarks}&rdquo;

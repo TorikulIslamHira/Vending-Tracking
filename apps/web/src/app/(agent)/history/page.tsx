@@ -15,8 +15,6 @@ import {
   Coins,
   Clock,
   Boxes,
-  ShieldCheck,
-  AlertTriangle,
 } from "lucide-react";
 
 function getActionMeta(log: MyHistoryLogItem) {
@@ -136,36 +134,6 @@ export default function AgentHistoryPage() {
                       </span>
                     )}
                   </div>
-
-                  {isCash && log.isPartial && (
-                    <span className="inline-flex items-center gap-1 text-[10px] font-bold text-blue-600 dark:text-blue-400 bg-blue-500/10 px-1.5 py-0.5 rounded w-fit">
-                      <Boxes className="h-3 w-3" />
-                      <span>
-                        Partial Collection — {formatMoney(Math.abs(log.discrepancy ?? 0))} left in machine
-                      </span>
-                    </span>
-                  )}
-
-                  {isCash && !log.isPartial && log.discrepancy !== 0 && log.discrepancy != null && (
-                    <div className="flex items-center justify-between gap-2">
-                      <span className="inline-flex items-center gap-1 text-[10px] font-bold text-rose-600 dark:text-rose-400 bg-rose-500/10 px-1.5 py-0.5 rounded">
-                        <AlertTriangle className="h-3 w-3" />
-                        <span>
-                          {log.isShortage ? "Shortage" : "Overage"}: {formatMoney(Math.abs(log.discrepancy))}
-                        </span>
-                      </span>
-                      <span
-                        className={`inline-flex items-center gap-1 text-[10px] font-bold px-1.5 py-0.5 rounded ${
-                          log.stockCleared
-                            ? "text-emerald-600 dark:text-emerald-400 bg-emerald-500/10"
-                            : "text-rose-600 dark:text-rose-400 bg-rose-500/10"
-                        }`}
-                      >
-                        <ShieldCheck className="h-3 w-3" />
-                        <span>{log.stockCleared ? "Reconciled" : "Not Reconciled"}</span>
-                      </span>
-                    </div>
-                  )}
 
                   {log.remarks && (
                     <p className="text-[11px] text-muted-foreground leading-snug line-clamp-2">

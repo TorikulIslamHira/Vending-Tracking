@@ -21,8 +21,6 @@ import {
   ArrowLeft,
   Coins,
   Search,
-  AlertTriangle,
-  CheckCircle2,
   Clock,
   Loader2,
   DollarSign,
@@ -31,7 +29,6 @@ import {
   MapPin,
   ChevronRight,
   TrendingDown,
-  ShieldCheck,
 } from "lucide-react";
 
 interface PopulatedCashLog {
@@ -156,14 +153,6 @@ export default function MobileCashTrackingPage() {
     (sum, l) => sum + Number(l.collectedAmount),
     0
   );
-  const totalExpected = cashLogs.reduce(
-    (sum, l) => sum + Number(l.expectedAmount),
-    0
-  );
-  const totalDiscrepancy = cashLogs.reduce(
-    (sum, l) => sum + Number(l.discrepancy),
-    0
-  );
 
   return (
     <div className="w-full px-4 py-4 space-y-4 font-sans">
@@ -189,67 +178,29 @@ export default function MobileCashTrackingPage() {
           Cash Tracking & Drops
         </h1>
         <p className="text-xs text-muted-foreground">
-          Physical coin collections, expected vs. collected cash & discrepancy alerts.
+          Physical coin collections logged by field agents.
         </p>
       </div>
 
-      {/* 3. Mobile KPI Metric Cards */}
-      <div className="space-y-2.5">
-        <Card className="border-border/50 bg-gradient-to-r from-card to-card/60 shadow-xs">
-          <CardContent className="p-3.5 flex items-center justify-between">
-            <div className="space-y-0.5">
-              <span className="text-[10px] font-bold uppercase tracking-wider text-muted-foreground">
-                Total Cash Collected
-              </span>
-              <div className="text-2xl font-black font-mono text-foreground">
-                {formatMoney(totalCollected)}
-              </div>
-              <span className="text-[10px] text-muted-foreground">
-                {cashLogs.length} total agent collections
-              </span>
+      {/* 3. Mobile KPI Metric Card */}
+      <Card className="border-border/50 bg-gradient-to-r from-card to-card/60 shadow-xs">
+        <CardContent className="p-4 flex items-center justify-between">
+          <div className="space-y-0.5">
+            <span className="text-[10px] font-bold uppercase tracking-wider text-muted-foreground">
+              Total Cash Collected
+            </span>
+            <div className="text-3xl font-black font-mono text-foreground">
+              {formatMoney(totalCollected)}
             </div>
-            <div className="h-10 w-10 rounded-2xl bg-emerald-500/15 flex items-center justify-center text-emerald-600 dark:text-emerald-400 shadow-xs shrink-0">
-              <DollarSign className="h-5 w-5" />
-            </div>
-          </CardContent>
-        </Card>
-
-        <div className="grid grid-cols-2 gap-2.5">
-          <Card className="border-border/50 bg-card shadow-xs">
-            <CardContent className="p-3 space-y-1">
-              <span className="text-[10px] font-bold uppercase tracking-wider text-muted-foreground block">
-                Expected Total
-              </span>
-              <div className="text-lg font-black font-mono text-foreground">
-                {formatMoney(totalExpected)}
-              </div>
-              <span className="text-[10px] text-muted-foreground block truncate">
-                Dispense telemetry
-              </span>
-            </CardContent>
-          </Card>
-
-          <Card className="border-border/50 bg-card shadow-xs">
-            <CardContent className="p-3 space-y-1">
-              <span className="text-[10px] font-bold uppercase tracking-wider text-muted-foreground block">
-                Discrepancy
-              </span>
-              <div
-                className={`text-lg font-black font-mono ${
-                  totalDiscrepancy !== 0
-                    ? "text-rose-600 dark:text-rose-400"
-                    : "text-emerald-600 dark:text-emerald-400"
-                }`}
-              >
-                {formatMoney(totalDiscrepancy)}
-              </div>
-              <span className="text-[10px] text-muted-foreground block truncate">
-                {totalDiscrepancy !== 0 ? "Shortfall flagged" : "Zero shortfall"}
-              </span>
-            </CardContent>
-          </Card>
-        </div>
-      </div>
+            <span className="text-[10px] text-muted-foreground">
+              {cashLogs.length} total agent collections
+            </span>
+          </div>
+          <div className="h-12 w-12 rounded-2xl bg-emerald-500/15 flex items-center justify-center text-emerald-600 dark:text-emerald-400 shadow-xs shrink-0">
+            <DollarSign className="h-6 w-6" />
+          </div>
+        </CardContent>
+      </Card>
 
       {/* 4. Search Filter */}
       <div className="relative">
@@ -284,157 +235,67 @@ export default function MobileCashTrackingPage() {
             <p className="text-xs text-muted-foreground">Try adjusting your search query.</p>
           </div>
         ) : (
-          filteredLogs.map((log) => {
-            const hasDiscrepancy = !log.isPartial && Number(log.discrepancy) !== 0;
-            const isPartialCollection = Boolean(log.isPartial);
+          filteredLogs.map((log) => (
+            <Card
+              key={log.id}
+              onClick={() => setSelectedLog(log)}
+              className="border-border/50 bg-card shadow-xs hover:border-border/80 active:scale-[0.98] transition-all cursor-pointer overflow-hidden"
+            >
+              <CardContent className="p-4 space-y-3">
+                {/* Top Row: Timestamp & Amount */}
+                <div className="flex items-center justify-between gap-2">
+                  <div className="flex items-center gap-1.5 font-mono text-[11px] text-muted-foreground">
+                    <Clock className="h-3.5 w-3.5 text-muted-foreground/70" />
+                    <span>
+                      {new Date(log.createdAt).toLocaleString(undefined, {
+                        month: "short",
+                        day: "numeric",
+                        hour: "2-digit",
+                        minute: "2-digit",
+                      })}
+                    </span>
+                  </div>
+                  <span className="font-mono font-black text-base text-foreground">
+                    {formatMoney(Number(log.collectedAmount))}
+                  </span>
+                </div>
 
-            return (
-              <Card
-                key={log.id}
-                onClick={() => setSelectedLog(log)}
-                className={`border-border/50 shadow-xs hover:border-border/80 active:scale-[0.98] transition-all cursor-pointer overflow-hidden ${
-                  hasDiscrepancy
-                    ? "bg-rose-500/5 border-rose-500/30"
-                    : isPartialCollection
-                    ? "bg-blue-500/5 border-blue-500/30"
-                    : "bg-card"
-                }`}
-              >
-                <CardContent className="p-4 space-y-3">
-                  {/* Top Row: Timestamp & Status Badge */}
-                  <div className="flex items-center justify-between gap-2">
-                    <div className="flex items-center gap-1.5 font-mono text-[11px] text-muted-foreground">
-                      <Clock className="h-3.5 w-3.5 text-muted-foreground/70" />
-                      <span>
-                        {new Date(log.createdAt).toLocaleString(undefined, {
-                          month: "short",
-                          day: "numeric",
-                          hour: "2-digit",
-                          minute: "2-digit",
-                        })}
-                      </span>
-                    </div>
+                {/* Middle Row: Machine Details */}
+                <div className="space-y-0.5">
+                  <div className="flex items-center gap-1.5">
+                    <Boxes className="h-3.5 w-3.5 text-primary shrink-0" />
+                    <span className="font-mono font-bold text-xs text-foreground">
+                      {log.machine?.serialNumber || log.machineId}
+                    </span>
+                  </div>
+                  <p className="text-[11px] text-muted-foreground truncate">
+                    {log.machine?.location}
+                  </p>
+                </div>
 
-                    <span
-                      className={`inline-flex items-center gap-1 rounded-full px-2.5 py-0.5 text-[10px] font-bold ${
-                        hasDiscrepancy
-                          ? "bg-rose-500/15 text-rose-600 dark:text-rose-400"
-                          : isPartialCollection
-                          ? "bg-blue-500/15 text-blue-600 dark:text-blue-400"
-                          : "bg-emerald-500/15 text-emerald-600 dark:text-emerald-400"
-                      }`}
-                    >
-                      {hasDiscrepancy ? (
-                        <AlertTriangle className="h-3 w-3" />
-                      ) : isPartialCollection ? (
-                        <Boxes className="h-3 w-3" />
-                      ) : (
-                        <CheckCircle2 className="h-3 w-3" />
-                      )}
-                      <span>
-                        {hasDiscrepancy ? "Discrepancy" : isPartialCollection ? "Partial" : "Matched"}
-                      </span>
+                {log.remarks && (
+                  <p className="text-[10px] text-foreground/80 italic bg-muted/40 p-1.5 rounded-lg truncate">
+                    &ldquo;{log.remarks}&rdquo;
+                  </p>
+                )}
+
+                {/* Agent row */}
+                <div className="flex items-center justify-between text-[11px] pt-0.5 text-muted-foreground">
+                  <div className="flex items-center gap-1.5 truncate">
+                    <User className="h-3 w-3 text-muted-foreground/70 shrink-0" />
+                    <span className="font-medium text-foreground truncate">
+                      {log.agent?.name || "Field Agent"}
                     </span>
                   </div>
 
-                  {/* Middle Row: Machine Details */}
-                  <div className="space-y-0.5">
-                    <div className="flex items-center gap-1.5">
-                      <Boxes className="h-3.5 w-3.5 text-primary shrink-0" />
-                      <span className="font-mono font-bold text-xs text-foreground">
-                        {log.machine?.serialNumber || log.machineId}
-                      </span>
-                    </div>
-                    <p className="text-[11px] text-muted-foreground truncate">
-                      {log.machine?.location}
-                    </p>
+                  <div className="flex items-center gap-1 text-primary font-semibold shrink-0">
+                    <span>View</span>
+                    <ChevronRight className="h-3.5 w-3.5" />
                   </div>
-
-                  {/* Financial Breakdown Grid */}
-                  <div className="grid grid-cols-3 gap-2 pt-2 border-t border-border/40 text-xs text-center">
-                    <div className="bg-muted/30 p-2 rounded-xl">
-                      <span className="text-[9px] font-semibold uppercase tracking-wider text-muted-foreground block">
-                        Expected
-                      </span>
-                      <span className="font-mono font-bold text-muted-foreground">
-                        {formatMoney(Number(log.expectedAmount))}
-                      </span>
-                    </div>
-
-                    <div className="bg-muted/30 p-2 rounded-xl">
-                      <span className="text-[9px] font-semibold uppercase tracking-wider text-muted-foreground block">
-                        Collected
-                      </span>
-                      <span className="font-mono font-bold text-foreground">
-                        {formatMoney(Number(log.collectedAmount))}
-                      </span>
-                    </div>
-
-                    <div
-                      className={`p-2 rounded-xl ${
-                        hasDiscrepancy
-                          ? "bg-rose-500/15 text-rose-600 dark:text-rose-400"
-                          : isPartialCollection
-                          ? "bg-blue-500/15 text-blue-600 dark:text-blue-400"
-                          : "bg-emerald-500/15 text-emerald-600 dark:text-emerald-400"
-                      }`}
-                    >
-                      <span className="text-[9px] font-bold uppercase tracking-wider block">
-                        {hasDiscrepancy
-                          ? Number(log.discrepancy) > 0
-                            ? "Short"
-                            : "Over"
-                          : isPartialCollection
-                          ? "Left"
-                          : "Diff"}
-                      </span>
-                      <span className="font-mono font-black">
-                        {hasDiscrepancy || isPartialCollection
-                          ? `${formatMoney(Math.abs(Number(log.discrepancy)))}`
-                          : formatMoney(0)}
-                      </span>
-                    </div>
-                  </div>
-
-                  {/* Mismatch remark + reconciliation acknowledgement */}
-                  {(hasDiscrepancy || isPartialCollection) && log.remarks && (
-                    <p className="text-[10px] text-foreground/80 italic bg-muted/40 p-1.5 rounded-lg truncate">
-                      &ldquo;{log.remarks}&rdquo;
-                    </p>
-                  )}
-                  {hasDiscrepancy && (
-                    <div
-                      className={`inline-flex items-center gap-1 text-[10px] font-bold px-2 py-0.5 rounded-full ${
-                        log.stockCleared
-                          ? "bg-emerald-500/15 text-emerald-600 dark:text-emerald-400"
-                          : "bg-rose-500/15 text-rose-600 dark:text-rose-400"
-                      }`}
-                    >
-                      <ShieldCheck className="h-3 w-3" />
-                      <span>
-                        {log.stockCleared ? "Stock Cleared / Reconciled" : "Not Reconciled"}
-                      </span>
-                    </div>
-                  )}
-
-                  {/* Agent row */}
-                  <div className="flex items-center justify-between text-[11px] pt-0.5 text-muted-foreground">
-                    <div className="flex items-center gap-1.5 truncate">
-                      <User className="h-3 w-3 text-muted-foreground/70 shrink-0" />
-                      <span className="font-medium text-foreground truncate">
-                        {log.agent?.name || "Field Agent"}
-                      </span>
-                    </div>
-
-                    <div className="flex items-center gap-1 text-primary font-semibold shrink-0">
-                      <span>Audit View</span>
-                      <ChevronRight className="h-3.5 w-3.5" />
-                    </div>
-                  </div>
-                </CardContent>
-              </Card>
-            );
-          })
+                </div>
+              </CardContent>
+            </Card>
+          ))
         )}
       </div>
 
@@ -496,69 +357,15 @@ export default function MobileCashTrackingPage() {
               {/* Cash Numbers Card */}
               <div className="p-4 rounded-2xl bg-card border border-border/50 space-y-2">
                 <div className="flex justify-between items-center">
-                  <span className="text-muted-foreground">Expected Dispense Cash:</span>
-                  <span className="font-mono font-bold text-foreground">
-                    {formatMoney(Number(selectedLog.expectedAmount))}
-                  </span>
-                </div>
-                <div className="flex justify-between items-center">
-                  <span className="text-muted-foreground">Actual Cash Collected:</span>
-                  <span className="font-mono font-black text-sm text-foreground">
+                  <span className="text-muted-foreground font-semibold">Cash Collected:</span>
+                  <span className="font-mono font-black text-lg text-foreground">
                     {formatMoney(Number(selectedLog.collectedAmount))}
-                  </span>
-                </div>
-                <div className="flex justify-between items-center pt-2 border-t border-border/40">
-                  <span className="text-muted-foreground font-semibold">
-                    {selectedLog.isPartial ? "Remaining in Machine:" : "Audit Discrepancy:"}
-                  </span>
-                  <span
-                    className={`font-mono font-black text-sm ${
-                      selectedLog.isPartial
-                        ? "text-blue-600 dark:text-blue-400"
-                        : Number(selectedLog.discrepancy) !== 0
-                        ? "text-rose-600 dark:text-rose-400"
-                        : "text-emerald-600 dark:text-emerald-400"
-                    }`}
-                  >
-                    {selectedLog.isPartial
-                      ? `${formatMoney(Math.abs(Number(selectedLog.discrepancy)))} (Partial Collection)`
-                      : Number(selectedLog.discrepancy) !== 0
-                      ? `${formatMoney(Math.abs(Number(selectedLog.discrepancy)))} (${
-                          Number(selectedLog.discrepancy) > 0 ? "Shortfall" : "Overage"
-                        })`
-                      : `${formatMoney(0)} (Matched)`}
                   </span>
                 </div>
               </div>
 
-              {!selectedLog.isPartial && Number(selectedLog.discrepancy) !== 0 && (
-                <div className="p-4 rounded-2xl bg-card border border-border/50 space-y-2.5">
-                  <div className="flex justify-between items-center">
-                    <span className="text-muted-foreground font-semibold">Reconciliation Status:</span>
-                    <span
-                      className={`inline-flex items-center gap-1 text-[11px] font-bold px-2 py-0.5 rounded-full ${
-                        selectedLog.stockCleared
-                          ? "bg-emerald-500/15 text-emerald-600 dark:text-emerald-400"
-                          : "bg-rose-500/15 text-rose-600 dark:text-rose-400"
-                      }`}
-                    >
-                      <ShieldCheck className="h-3 w-3" />
-                      <span>{selectedLog.stockCleared ? "Stock Cleared / Reconciled" : "Not Reconciled"}</span>
-                    </span>
-                  </div>
-                  {selectedLog.remarks && (
-                    <div className="space-y-0.5">
-                      <span className="text-muted-foreground text-[10px] uppercase tracking-wider font-semibold block">
-                        Agent&apos;s Reason
-                      </span>
-                      <p className="text-foreground italic">&quot;{selectedLog.remarks}&quot;</p>
-                    </div>
-                  )}
-                </div>
-              )}
-
-              {selectedLog.isPartial && selectedLog.remarks && (
-                <div className="p-4 rounded-2xl bg-blue-500/5 border border-blue-500/30 space-y-0.5">
+              {selectedLog.remarks && (
+                <div className="p-4 rounded-2xl bg-card border border-border/50 space-y-0.5">
                   <span className="text-muted-foreground text-[10px] uppercase tracking-wider font-semibold block">
                     Agent&apos;s Note
                   </span>
