@@ -82,6 +82,7 @@ const styles = StyleSheet.create({
     fontSize: 14,
     fontFamily: "Helvetica-Bold",
     color: "#1c1917",
+    letterSpacing: 0.3,
   },
   sectionTitle: {
     fontSize: 10,
@@ -97,8 +98,8 @@ const styles = StyleSheet.create({
   tableHeaderRow: {
     flexDirection: "row",
     backgroundColor: "#1c1917",
-    paddingVertical: 6,
-    paddingHorizontal: 6,
+    paddingVertical: 7,
+    paddingHorizontal: 8,
   },
   tableHeaderCell: {
     fontSize: 7.5,
@@ -109,8 +110,8 @@ const styles = StyleSheet.create({
   },
   tableRow: {
     flexDirection: "row",
-    paddingVertical: 6,
-    paddingHorizontal: 6,
+    paddingVertical: 7,
+    paddingHorizontal: 8,
     borderTop: "1 solid #e7e5e4",
   },
   tableRowAlt: {
@@ -119,14 +120,24 @@ const styles = StyleSheet.create({
   tableCell: {
     fontSize: 8,
     color: "#292524",
+    letterSpacing: 0.2,
   },
-  colMachine: { width: "17%" },
-  colStore: { width: "23%" },
-  colLocation: { width: "18%" },
-  colSplit: { width: "10%", textAlign: "center" },
-  colCash: { width: "13%", textAlign: "right", paddingRight: 8 },
-  colShop: { width: "13%", textAlign: "right", paddingRight: 8, color: "#0f766e" },
-  colProfit: { width: "13%", textAlign: "right", color: "#1c1917", fontFamily: "Helvetica-Bold" },
+  // Widths must sum to exactly 100 — react-pdf's Yoga layout doesn't clamp
+  // row children to the parent's width, so an over-100 total (the bug here
+  // previously) silently squeezes/wraps whichever column runs out of room.
+  colMachine: { width: "16%" },
+  colStore: { width: "21%" },
+  colLocation: { width: "20%" },
+  colSplit: { width: "9%", textAlign: "center" },
+  colCash: { width: "11%", textAlign: "right", paddingRight: 8 },
+  colShop: { width: "12%", textAlign: "right", paddingRight: 8, color: "#0f766e" },
+  colProfit: {
+    width: "11%",
+    textAlign: "right",
+    paddingRight: 4,
+    color: "#1c1917",
+    fontFamily: "Helvetica-Bold",
+  },
   footer: {
     position: "absolute",
     bottom: 24,
