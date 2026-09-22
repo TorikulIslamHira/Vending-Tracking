@@ -6,13 +6,22 @@ import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Card, CardContent } from "@/components/ui/card";
 import {
+  Dialog,
+  DialogContent,
+  DialogHeader,
+  DialogTitle,
+  DialogDescription,
+  DialogFooter,
+} from "@/components/ui/dialog";
+import {
   BarChart3,
   Calendar,
   Filter,
   DollarSign,
   TrendingUp,
   Percent,
-  FileSpreadsheet,
+  FileText,
+  Download,
   Layers,
   MapPin,
   Store,
@@ -98,29 +107,64 @@ export default function ReportsPage() {
   const totalShopCut = summary.totalShopCut;
   const totalBizCut = summary.totalBusinessCut;
 
-  const handleExportCSV = () => {
-    const headers = "Date,Machine ID,Store,Location,Total Cash,Shop Cut,Business Cut,Split Ratio,Collections Count\n";
-    const rows = records
-      .map(
-        (r) =>
-          `${r.date},${r.machineId},"${r.storeName}","${r.locationName}",${r.totalCash.toFixed(
-            2
-          )},${r.shopCut.toFixed(2)},${r.businessCut.toFixed(2)},${r.splitRatio},${r.collectionsCount}`
-      )
-      .join("\n");
+  const [isGeneratingPdf, setIsGeneratingPdf] = useState(false);
+  const [pdfPreviewUrl, setPdfPreviewUrl] = useState<string | null>(null);
 
-    const blob = new Blob([headers + rows], { type: "text/csv" });
-    const url = URL.createObjectURL(blob);
+  const handleClosePdfPreview = () => {
+    if (pdfPreviewUrl) URL.revokeObjectURL(pdfPreviewUrl);
+    setPdfPreviewUrl(null);
+  };
+
+  const handleGeneratePdf = async () => {
+    if (records.length === 0) {
+      toast.error("No data to include in the report for this period.");
+      return;
+    }
+
+    setIsGeneratingPdf(true);
+    try {
+      const { pdf } = await import("@react-pdf/renderer");
+      const { ReconciliationPdfDocument } = await import(
+        "@/components/reports/ReconciliationPdfDocument"
+      );
+
+      const logoSrc =
+        typeof window !== "undefined" ? `${window.location.origin}/logo.png` : "/logo.png";
+
+      const blob = await pdf(
+        <ReconciliationPdfDocument
+          logoSrc={logoSrc}
+          storeLabel={selectedStore ? selectedStore.name : "All Active Stores"}
+          fromDate={fromDate}
+          toDate={toDate}
+          totalCollected={formatMoney(totalCollected)}
+          totalShopCut={formatMoney(totalShopCut)}
+          totalBizCut={formatMoney(totalBizCut)}
+          records={records}
+          formatMoney={formatMoney}
+          generatedAt={new Date().toLocaleString()}
+        />
+      ).toBlob();
+
+      const url = URL.createObjectURL(blob);
+      setPdfPreviewUrl(url);
+    } catch {
+      toast.error("Failed to generate PDF report");
+    } finally {
+      setIsGeneratingPdf(false);
+    }
+  };
+
+  const handleDownloadPdf = () => {
+    if (!pdfPreviewUrl) return;
     const a = document.createElement("a");
-    a.href = url;
+    a.href = pdfPreviewUrl;
     const filterSuffix = selectedStore
       ? `_${selectedStore.name.replace(/\s+/g, "_")}`
       : "_all_stores";
-    a.download = `reconciliation_report${filterSuffix}_${fromDate}_to_${toDate}.csv`;
+    a.download = `reconciliation_report${filterSuffix}_${fromDate}_to_${toDate}.pdf`;
     a.click();
-    URL.revokeObjectURL(url);
-
-    toast.success("Reconciliation CSV exported successfully!");
+    toast.success("PDF report downloaded!");
   };
 
   return (
@@ -518,15 +562,61 @@ export default function ReportsPage() {
         </div>
       </div>
 
-      {/* Screen 9 Action: Full-width Dark EXPORT CSV Button */}
+      {/* Screen 9 Action: Full-width Dark PDF Report Button */}
       <Button
-        onClick={handleExportCSV}
-        disabled={records.length === 0}
+        onClick={handleGeneratePdf}
+        disabled={records.length === 0 || isGeneratingPdf}
         className="w-full h-13 rounded-2xl bg-zinc-900 text-white dark:bg-zinc-100 dark:text-zinc-900 font-bold text-sm shadow-md active:scale-[0.97] transition-transform flex items-center justify-center gap-2 mt-2"
       >
-        <FileSpreadsheet className="h-4 w-4 text-primary" />
-        <span>EXPORT RECONCILIATION CSV</span>
+        {isGeneratingPdf ? (
+          <Loader2 className="h-4 w-4 animate-spin" />
+        ) : (
+          <FileText className="h-4 w-4 text-primary" />
+        )}
+        <span>{isGeneratingPdf ? "GENERATING PDF..." : "GENERATE PDF REPORT"}</span>
       </Button>
+
+      {/* PDF Preview Modal */}
+      <Dialog open={!!pdfPreviewUrl} onOpenChange={(open) => !open && handleClosePdfPreview()}>
+        <DialogContent className="max-w-2xl w-[95vw] h-[85vh] rounded-2xl p-4 bg-background border border-border/60 shadow-2xl z-50 flex flex-col">
+          <DialogHeader className="text-left pb-1 space-y-1 shrink-0">
+            <DialogTitle className="flex items-center gap-2 text-base font-bold">
+              <FileText className="h-5 w-5 text-primary" />
+              <span>PDF Report Preview</span>
+            </DialogTitle>
+            <DialogDescription className="text-xs text-muted-foreground">
+              Review the report below, then download or close.
+            </DialogDescription>
+          </DialogHeader>
+
+          <div className="flex-1 min-h-0 rounded-xl overflow-hidden border border-border/50 bg-muted/30">
+            {pdfPreviewUrl && (
+              <iframe
+                src={pdfPreviewUrl}
+                className="w-full h-full"
+                title="PDF Report Preview"
+              />
+            )}
+          </div>
+
+          <DialogFooter className="pt-2 flex flex-col sm:flex-row gap-2 shrink-0">
+            <Button
+              variant="outline"
+              onClick={handleClosePdfPreview}
+              className="w-full sm:w-auto h-11 rounded-xl text-xs font-semibold"
+            >
+              Cancel / Close
+            </Button>
+            <Button
+              onClick={handleDownloadPdf}
+              className="w-full sm:w-auto h-11 text-xs font-bold shadow-md rounded-xl"
+            >
+              <Download className="h-4 w-4 mr-1.5" />
+              Download PDF
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
     </div>
   );
 }
