@@ -65,7 +65,17 @@ if [ -n "$MISSING_VARS" ]; then
 fi
 
 echo "📥 1/5 Synchronizing latest changes from GitHub..."
-git fetch origin main
+# This repo is private. When run via the CI/CD workflow, GIT_AUTH_HEADER is
+# already exported into this process's environment (built from the GH_PAT
+# repository secret) — reuse it here rather than embedding a token in the
+# remote URL. Falls back to a plain fetch for a manual/interactive run on
+# the VPS, where a real TTY or a configured credential helper can handle
+# the prompt instead.
+if [ -n "${GIT_AUTH_HEADER:-}" ]; then
+  git -c http.extraheader="$GIT_AUTH_HEADER" fetch origin main
+else
+  git fetch origin main
+fi
 git reset --hard origin/main
 
 echo "🛑 2/5 Stopping existing containers to free server RAM..."

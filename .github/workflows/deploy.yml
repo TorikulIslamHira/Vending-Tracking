@@ -24,6 +24,7 @@ jobs:
           SUPER_ADMIN_PASSWORD: ${{ secrets.SUPER_ADMIN_PASSWORD }}
           JWT_SECRET: ${{ secrets.JWT_SECRET }}
           POSTGRES_PASSWORD: ${{ secrets.POSTGRES_PASSWORD }}
+          GH_PAT: ${{ secrets.GH_PAT }}
         run: |
           mkdir -p ~/.ssh
           echo "$VPS_SSH_KEY" > ~/.ssh/id_rsa
@@ -46,9 +47,23 @@ jobs:
           ENV_BLOB=$(printf 'SUPER_ADMIN_EMAIL=%s\nSUPER_ADMIN_PASSWORD=%s\nJWT_SECRET=%s\nPOSTGRES_PASSWORD=%s\n' \
             "$SUPER_ADMIN_EMAIL" "$SUPER_ADMIN_PASSWORD" "$JWT_SECRET" "$POSTGRES_PASSWORD" | base64 -w0)
 
-          $SSH_CMD "ENV_BLOB='$ENV_BLOB' bash -s" << 'EOF'
+          $SSH_CMD "ENV_BLOB='$ENV_BLOB' GH_PAT='$GH_PAT' bash -s" << 'EOF'
             set -e
             export DEBIAN_FRONTEND=noninteractive
+
+            # This repo is private, so every git operation against
+            # github.com needs auth. The token is passed as a per-request
+            # HTTP header (`-c http.extraheader=`) rather than embedded in
+            # the remote URL, so it's never persisted into .git/config on
+            # disk or exposed via `git remote -v`.
+            if [ -z "$GH_PAT" ]; then
+              echo "❌ GH_PAT secret is not set — add a fine-grained GitHub token"
+              echo "   (Contents: Read-only, scoped to this repo) as a repository secret."
+              exit 1
+            fi
+            # Exported (not just a local var) so deploy.sh's own git fetch —
+            # a separate process — inherits it too.
+            export GIT_AUTH_HEADER="AUTHORIZATION: basic $(printf 'x-access-token:%s' "$GH_PAT" | base64 -w0)"
 
             APP_DIR=""
             if [ -d "$HOME/Vending-Tracking" ]; then
@@ -59,7 +74,7 @@ jobs:
               APP_DIR="/var/www/Vending-Tracking"
             else
               echo "📁 Cloning repository for initial VPS setup..."
-              git clone https://github.com/TorikulIslamHira/Vending-Tracking.git "$HOME/Vending-Tracking"
+              git -c http.extraheader="$GIT_AUTH_HEADER" clone https://github.com/TorikulIslamHira/Vending-Tracking.git "$HOME/Vending-Tracking"
               APP_DIR="$HOME/Vending-Tracking"
             fi
 
@@ -95,7 +110,7 @@ jobs:
             rm -f /tmp/.env.secrets
 
             # Clean any dirty local state and synchronize with origin/main
-            git fetch origin main
+            git -c http.extraheader="$GIT_AUTH_HEADER" fetch origin main
             git reset --hard origin/main
 
             # Ensure deploy.sh is executable and execute deployment
