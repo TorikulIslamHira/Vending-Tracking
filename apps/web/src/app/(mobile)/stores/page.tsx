@@ -248,7 +248,9 @@ export default function StoresPage() {
                   </div>
                   <div className="min-w-0 space-y-0.5">
                     <h3 className="font-bold text-sm text-foreground truncate">{store.name}</h3>
-                    <p className="text-[11px] text-muted-foreground truncate">{store.category}</p>
+                    <p className="text-[11px] text-muted-foreground truncate">
+                      {store.locationAddress || store.eircode || "No location set"}
+                    </p>
                     <div className="flex flex-wrap items-center gap-1.5 pt-1">
                       <span className="inline-flex items-center gap-1 text-[11px] font-bold text-foreground bg-accent/60 px-2 py-0.5 rounded-md">
                         <Boxes className="h-3 w-3 text-primary" />

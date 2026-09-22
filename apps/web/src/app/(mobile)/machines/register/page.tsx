@@ -13,7 +13,6 @@ import {
   QrCode,
   Store,
   Boxes,
-  Layers,
   Loader2,
   Sparkles,
   RefreshCw,
@@ -24,7 +23,6 @@ interface MachineRegisterFormValues {
   storeId: string;
   machineId: string;
   keyNumber: string;
-  categoryName: string;
   dispenserType: string;
   capacity: number;
 }
@@ -81,7 +79,6 @@ function RegisterMachineForm() {
       storeId: defaultStoreId,
       machineId: "",
       keyNumber: "",
-      categoryName: "Standard Confectionery",
       dispenserType: "Spiral Chute",
       capacity: 100,
     },
@@ -133,7 +130,7 @@ function RegisterMachineForm() {
         location: storeLabel,
         storeId: data.storeId || undefined,
         keyNumber: data.keyNumber?.trim() || undefined,
-        category: data.categoryName.trim(),
+        category: "General",
         type: data.dispenserType,
         capacity: Number(data.capacity) || 100,
       },
@@ -259,20 +256,6 @@ function RegisterMachineForm() {
           <p className="text-[10px] text-muted-foreground">
             Physical lock key identifier assigned to field technicians.
           </p>
-        </div>
-
-        {/* Product Category */}
-        <div className="space-y-1.5">
-          <label className="text-xs font-semibold text-foreground flex items-center gap-1.5">
-            <Layers className="h-3.5 w-3.5 text-muted-foreground" />
-            <span>Product Name / Category</span>
-          </label>
-          <Input
-            {...register("categoryName")}
-            placeholder="e.g. Gumballs 32mm, Dragon Capsule Toys"
-            className="h-12 rounded-2xl bg-slate-100 dark:bg-zinc-800/80 border-transparent text-xs px-4 focus-visible:ring-primary shadow-xs"
-            required
-          />
         </div>
 
         {/* Full-width Solid Dark Action Button */}

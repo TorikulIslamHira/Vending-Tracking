@@ -351,7 +351,7 @@ export default function ReportsPage() {
           <div className="space-y-0.5">
             <span className="text-[10px] font-bold text-secondary flex items-center gap-1">
               <span className="h-1.5 w-1.5 rounded-full bg-secondary" />
-              <span>Shop Payout</span>
+              <span>Shop Commission</span>
             </span>
             <div className="font-mono font-bold text-sm text-foreground">
               {formatMoney(totalShopCut)}
@@ -361,7 +361,7 @@ export default function ReportsPage() {
           <div className="space-y-0.5">
             <span className="text-[10px] font-bold text-primary flex items-center gap-1">
               <span className="h-1.5 w-1.5 rounded-full bg-primary" />
-              <span>Business Retained</span>
+              <span>My Profit</span>
             </span>
             <div className="font-mono font-bold text-sm text-foreground">
               {formatMoney(totalBizCut)}
@@ -479,16 +479,16 @@ export default function ReportsPage() {
                       </span>
                     </div>
                     <div className="bg-secondary/10 p-1.5 rounded-xl">
-                      <span className="text-[9px] font-bold uppercase tracking-wider text-secondary block">
-                        Shop
+                      <span className="text-[9px] font-bold uppercase tracking-wider text-secondary block leading-tight">
+                        Shop Commission
                       </span>
                       <span className="font-mono font-bold text-secondary">
                         {formatMoney(rec.shopCut)}
                       </span>
                     </div>
                     <div className="bg-primary/15 p-1.5 rounded-xl">
-                      <span className="text-[9px] font-bold uppercase tracking-wider text-foreground block">
-                        Biz
+                      <span className="text-[9px] font-bold uppercase tracking-wider text-foreground block leading-tight">
+                        My Profit
                       </span>
                       <span className="font-mono font-bold text-foreground">
                         {formatMoney(rec.businessCut)}
