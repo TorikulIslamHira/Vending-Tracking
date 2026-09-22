@@ -287,13 +287,17 @@ export default function MachineOperationPage() {
         </Button>
         <div className="flex-1 min-w-0 flex items-center gap-1.5 text-xs font-semibold text-foreground truncate">
           <span className="flex h-2 w-2 rounded-full bg-emerald-500 shrink-0 ring-4 ring-emerald-500/20" />
-          <span className="text-muted-foreground truncate">
-            {machine?.location || "Venue"}
-          </span>
-          <span className="text-muted-foreground">→</span>
           <span className="truncate">
             {(machine as any)?.storeName || machine?.serialNumber || machineId}
           </span>
+          {((machine as any)?.locationAddress || machine?.keyNumber) && (
+            <>
+              <span className="text-muted-foreground">•</span>
+              <span className="text-muted-foreground truncate font-normal">
+                {(machine as any)?.locationAddress || `Machine ${machine?.keyNumber}`}
+              </span>
+            </>
+          )}
         </div>
       </div>
 
@@ -577,10 +581,10 @@ export default function MachineOperationPage() {
                   />
                 </div>
               </div>
-              <DialogFooter className="flex flex-col sm:flex-row gap-2">
+              <DialogFooter className="flex flex-col sm:flex-row sm:justify-center gap-2">
                 <Button
                   variant="outline"
-                  className="w-full sm:w-auto h-11 text-xs font-semibold rounded-xl"
+                  className="w-full h-11 text-xs font-semibold rounded-xl"
                   disabled={!expectedPaymentDate || paymentUpdateMutation.isPending}
                   onClick={() => {
                     if (paymentFollowUp) {
@@ -595,7 +599,7 @@ export default function MachineOperationPage() {
                   Set Expected Date
                 </Button>
                 <Button
-                  className="w-full sm:w-auto h-11 text-xs font-bold rounded-xl"
+                  className="w-full h-11 text-xs font-bold rounded-xl"
                   disabled={paymentUpdateMutation.isPending}
                   onClick={() => {
                     if (paymentFollowUp) {
