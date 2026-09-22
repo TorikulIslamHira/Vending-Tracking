@@ -211,11 +211,11 @@ export function ReconciliationPdfDocument({
             <Text style={styles.summaryValue}>{totalCollected}</Text>
           </View>
           <View style={styles.summaryCard}>
-            <Text style={styles.summaryLabel}>Total Shop Commission</Text>
+            <Text style={styles.summaryLabel}>Total Commission</Text>
             <Text style={styles.summaryValue}>{totalShopCut}</Text>
           </View>
           <View style={styles.summaryCard}>
-            <Text style={styles.summaryLabel}>Total My Profit</Text>
+            <Text style={styles.summaryLabel}>Total Profit</Text>
             <Text style={styles.summaryValue}>{totalBizCut}</Text>
           </View>
         </View>

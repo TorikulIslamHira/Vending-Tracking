@@ -320,7 +320,7 @@ export default function StoresPage() {
             </DrawerDescription>
           </DrawerHeader>
 
-          <form onSubmit={handleSaveStore} className="space-y-3.5 pt-2 max-h-[65vh] overflow-y-auto">
+          <form onSubmit={handleSaveStore} className="space-y-3.5 pt-2 max-h-[65dvh] overflow-y-auto">
             <div className="space-y-1.5">
               <label className="text-xs font-semibold text-foreground">Store Name</label>
               <Input

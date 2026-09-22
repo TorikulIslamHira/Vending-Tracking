@@ -10,6 +10,18 @@ const Drawer = ({
 }: React.ComponentProps<typeof DrawerPrimitive.Root>) => (
   <DrawerPrimitive.Root
     shouldScaleBackground={shouldScaleBackground}
+    // Vaul's default `repositionInputs={true}` imperatively rewrites the
+    // drawer's own inline `height`/`bottom` in response to
+    // `window.visualViewport` shrinking when the keyboard opens — the same
+    // signal Capacitor's `Keyboard.resize: KeyboardResize.Body` config
+    // (capacitor.config.ts) already acts on by resizing the whole WebView
+    // body natively. Two independent systems both fighting to own the same
+    // element's layout on every keyboard open/close is exactly what left a
+    // stale inline height/bottom behind on rapid toggles (the reported
+    // blank gap). The app's own useKeyboardAvoidingScroll hook already
+    // scrolls the focused field into view app-wide, so Vaul doesn't need
+    // to do its own repositioning on top of Capacitor's.
+    repositionInputs={false}
     {...props}
   />
 );
