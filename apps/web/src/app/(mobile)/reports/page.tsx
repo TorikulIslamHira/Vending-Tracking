@@ -38,6 +38,7 @@ import {
 import { useAllStores, StoreItem } from "@/hooks/useStores";
 import { useReconciliationReports, ReportRecord, DetailedCashLog } from "@/hooks/useInventory";
 import { useCurrency } from "@/hooks/useTenantSettings";
+import { ReconciliationReportPreview } from "@/components/reports/ReconciliationReportPreview";
 
 export default function ReportsPage() {
   const [fromDate, setFromDate] = useState(() => {
@@ -107,21 +108,29 @@ export default function ReportsPage() {
   const totalShopCut = summary.totalShopCut;
   const totalBizCut = summary.totalBusinessCut;
 
-  const [isGeneratingPdf, setIsGeneratingPdf] = useState(false);
-  const [pdfPreviewUrl, setPdfPreviewUrl] = useState<string | null>(null);
+  const [isPreviewOpen, setIsPreviewOpen] = useState(false);
+  const [isDownloadingPdf, setIsDownloadingPdf] = useState(false);
 
-  const handleClosePdfPreview = () => {
-    if (pdfPreviewUrl) URL.revokeObjectURL(pdfPreviewUrl);
-    setPdfPreviewUrl(null);
-  };
-
-  const handleGeneratePdf = async () => {
+  // Preview is a plain HTML/Tailwind mirror of the report (see
+  // ReconciliationReportPreview) rather than the actual PDF embedded in an
+  // <iframe> — mobile Chrome/Safari don't reliably render a blob-URL PDF
+  // inline; it tends to kick out to the OS-level PDF viewer at a zoomed-in,
+  // non-fit-to-width page instead. Opening it is just a state flip, no
+  // generation step needed, since it's built from data already in hand.
+  const handleOpenPreview = () => {
     if (records.length === 0) {
       toast.error("No data to include in the report for this period.");
       return;
     }
+    setIsPreviewOpen(true);
+  };
 
-    setIsGeneratingPdf(true);
+  const handleClosePreview = () => setIsPreviewOpen(false);
+
+  // The real PDF (@react-pdf/renderer) is only generated here, on demand,
+  // when the agent actually wants a file — not just to preview the report.
+  const handleDownloadPdf = async () => {
+    setIsDownloadingPdf(true);
     try {
       const { pdf } = await import("@react-pdf/renderer");
       const { ReconciliationPdfDocument } = await import(
@@ -147,24 +156,20 @@ export default function ReportsPage() {
       ).toBlob();
 
       const url = URL.createObjectURL(blob);
-      setPdfPreviewUrl(url);
+      const a = document.createElement("a");
+      a.href = url;
+      const filterSuffix = selectedStore
+        ? `_${selectedStore.name.replace(/\s+/g, "_")}`
+        : "_all_stores";
+      a.download = `reconciliation_report${filterSuffix}_${fromDate}_to_${toDate}.pdf`;
+      a.click();
+      URL.revokeObjectURL(url);
+      toast.success("PDF report downloaded!");
     } catch {
       toast.error("Failed to generate PDF report");
     } finally {
-      setIsGeneratingPdf(false);
+      setIsDownloadingPdf(false);
     }
-  };
-
-  const handleDownloadPdf = () => {
-    if (!pdfPreviewUrl) return;
-    const a = document.createElement("a");
-    a.href = pdfPreviewUrl;
-    const filterSuffix = selectedStore
-      ? `_${selectedStore.name.replace(/\s+/g, "_")}`
-      : "_all_stores";
-    a.download = `reconciliation_report${filterSuffix}_${fromDate}_to_${toDate}.pdf`;
-    a.click();
-    toast.success("PDF report downloaded!");
   };
 
   return (
@@ -564,55 +569,60 @@ export default function ReportsPage() {
 
       {/* Screen 9 Action: Full-width Dark PDF Report Button */}
       <Button
-        onClick={handleGeneratePdf}
-        disabled={records.length === 0 || isGeneratingPdf}
+        onClick={handleOpenPreview}
+        disabled={records.length === 0}
         className="w-full h-13 rounded-2xl bg-zinc-900 text-white dark:bg-zinc-100 dark:text-zinc-900 font-bold text-sm shadow-md active:scale-[0.97] transition-transform flex items-center justify-center gap-2 mt-2"
       >
-        {isGeneratingPdf ? (
-          <Loader2 className="h-4 w-4 animate-spin" />
-        ) : (
-          <FileText className="h-4 w-4 text-primary" />
-        )}
-        <span>{isGeneratingPdf ? "GENERATING PDF..." : "GENERATE PDF REPORT"}</span>
+        <FileText className="h-4 w-4 text-primary" />
+        <span>PREVIEW & GENERATE PDF REPORT</span>
       </Button>
 
-      {/* PDF Preview Modal */}
-      <Dialog open={!!pdfPreviewUrl} onOpenChange={(open) => !open && handleClosePdfPreview()}>
+      {/* Report Preview Modal */}
+      <Dialog open={isPreviewOpen} onOpenChange={(open) => !open && handleClosePreview()}>
         <DialogContent className="max-w-2xl w-[95vw] h-[85vh] rounded-2xl p-4 bg-background border border-border/60 shadow-2xl z-50 flex flex-col">
           <DialogHeader className="text-left pb-1 space-y-1 shrink-0">
             <DialogTitle className="flex items-center gap-2 text-base font-bold">
               <FileText className="h-5 w-5 text-primary" />
-              <span>PDF Report Preview</span>
+              <span>Report Preview</span>
             </DialogTitle>
             <DialogDescription className="text-xs text-muted-foreground">
-              Review the report below, then download or close.
+              Review the report below, then download a PDF or close.
             </DialogDescription>
           </DialogHeader>
 
-          <div className="flex-1 min-h-0 rounded-xl overflow-hidden border border-border/50 bg-muted/30">
-            {pdfPreviewUrl && (
-              <iframe
-                src={pdfPreviewUrl}
-                className="w-full h-full"
-                title="PDF Report Preview"
-              />
-            )}
+          <div className="flex-1 min-h-0 overflow-y-auto rounded-xl border border-border/50 bg-muted/30 p-2">
+            <ReconciliationReportPreview
+              storeLabel={selectedStore ? selectedStore.name : "All Active Stores"}
+              fromDate={fromDate}
+              toDate={toDate}
+              totalCollected={formatMoney(totalCollected)}
+              totalShopCut={formatMoney(totalShopCut)}
+              totalBizCut={formatMoney(totalBizCut)}
+              records={records}
+              formatMoney={formatMoney}
+              generatedAt={new Date().toLocaleString()}
+            />
           </div>
 
-          <DialogFooter className="pt-2 flex flex-col sm:flex-row gap-2 shrink-0">
+          <DialogFooter className="pt-2 flex flex-col sm:flex-row sm:justify-center gap-2 shrink-0">
             <Button
               variant="outline"
-              onClick={handleClosePdfPreview}
-              className="w-full sm:w-auto h-11 rounded-xl text-xs font-semibold"
+              onClick={handleClosePreview}
+              className="w-full h-11 rounded-xl text-xs font-semibold"
             >
               Cancel / Close
             </Button>
             <Button
               onClick={handleDownloadPdf}
-              className="w-full sm:w-auto h-11 text-xs font-bold shadow-md rounded-xl"
+              disabled={isDownloadingPdf}
+              className="w-full h-11 text-xs font-bold shadow-md rounded-xl"
             >
-              <Download className="h-4 w-4 mr-1.5" />
-              Download PDF
+              {isDownloadingPdf ? (
+                <Loader2 className="h-4 w-4 mr-1.5 animate-spin" />
+              ) : (
+                <Download className="h-4 w-4 mr-1.5" />
+              )}
+              {isDownloadingPdf ? "Generating..." : "Download PDF"}
             </Button>
           </DialogFooter>
         </DialogContent>

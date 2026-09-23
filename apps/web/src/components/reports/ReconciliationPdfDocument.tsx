@@ -117,6 +117,19 @@ const styles = StyleSheet.create({
   tableRowAlt: {
     backgroundColor: "#fafaf9",
   },
+  tableTotalRow: {
+    flexDirection: "row",
+    paddingVertical: 8,
+    paddingHorizontal: 8,
+    borderTop: "2 solid #1c1917",
+    backgroundColor: "#f5f5f4",
+  },
+  tableTotalCell: {
+    fontSize: 8.5,
+    fontFamily: "Helvetica-Bold",
+    color: "#1c1917",
+    letterSpacing: 0.2,
+  },
   tableCell: {
     fontSize: 8,
     color: "#292524",
@@ -262,6 +275,23 @@ export function ReconciliationPdfDocument({
                 </Text>
               </View>
             ))}
+            <View style={styles.tableTotalRow}>
+              <Text style={[styles.tableTotalCell, styles.colMachine]}>TOTAL</Text>
+              <Text style={[styles.tableTotalCell, styles.colStore]} />
+              <Text style={[styles.tableTotalCell, styles.colLocation]} />
+              <Text style={[styles.tableTotalCell, styles.colSplit]}>
+                {records.length}
+              </Text>
+              <Text style={[styles.tableTotalCell, styles.colCash]}>
+                {totalCollected}
+              </Text>
+              <Text style={[styles.tableTotalCell, styles.colShop]}>
+                {totalShopCut}
+              </Text>
+              <Text style={[styles.tableTotalCell, styles.colProfit]}>
+                {totalBizCut}
+              </Text>
+            </View>
           </View>
         )}
 
