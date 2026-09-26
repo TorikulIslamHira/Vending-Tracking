@@ -357,7 +357,7 @@ export default function MobileMachinesPage() {
 
                     <div className="flex items-center gap-2">
                       <Link
-                        href={`/machines/${machine.id}/qr`}
+                        href={`/scan?tab=generate&machineId=${encodeURIComponent(machine.id)}`}
                         className="inline-flex items-center gap-1 px-2.5 py-1 rounded-xl bg-accent/60 hover:bg-accent text-foreground text-[11px] font-bold transition-colors shadow-xs"
                       >
                         <QrCode className="h-3 w-3 text-primary" />

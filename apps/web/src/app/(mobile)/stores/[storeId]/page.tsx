@@ -55,7 +55,7 @@ export default function StoreMachinesPage() {
     if (selectedCount === 0) return;
     const firstSelected = rawMachines.find((m) => m.id === selectedIds[0]);
     if (firstSelected) {
-      router.push(`/machines/${firstSelected.serialNumber}/qr`);
+      router.push(`/scan?tab=generate&machineId=${encodeURIComponent(firstSelected.serialNumber)}`);
     }
   };
 
@@ -191,7 +191,9 @@ export default function StoreMachinesPage() {
                 <div
                   onClick={(e) => {
                     e.stopPropagation();
-                    router.push(`/machines/${machine.serialNumber}/qr`);
+                    router.push(
+                      `/scan?tab=generate&machineId=${encodeURIComponent(machine.serialNumber)}`
+                    );
                   }}
                   className="h-10 w-10 rounded-xl bg-accent/60 flex items-center justify-center text-primary hover:bg-primary hover:text-primary-foreground transition-colors shrink-0"
                   title="View QR Code"

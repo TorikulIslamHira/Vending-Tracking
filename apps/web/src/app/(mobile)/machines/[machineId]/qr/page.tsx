@@ -1,262 +1,28 @@
 "use client";
 
-import React, { useState, useEffect, useRef } from "react";
+import { useEffect } from "react";
 import { useParams, useRouter } from "next/navigation";
-import { useQuery } from "@tanstack/react-query";
-import { QRCodeSVG } from "qrcode.react";
-import { toast } from "sonner";
-import { api as apiClient } from "@/lib/api";
-import { Button } from "@/components/ui/button";
-import { Card, CardContent } from "@/components/ui/card";
-import {
-  ArrowLeft,
-  Download,
-  Printer,
-  CheckCircle,
-  MapPin,
-  KeyRound,
-  Sparkles,
-  ShieldCheck,
-} from "lucide-react";
+import { Loader2 } from "lucide-react";
 
-export default function MachineQrDisplayPage() {
+/**
+ * This standalone page was merged into the unified QR flow at /scan (see
+ * the Owner Requested Changes item: "combine Scan Machine QR and Machine
+ * QR Code into a single QR flow instead of living apart"). Kept as a thin
+ * redirect — not deleted outright — so any bookmark or stale link to this
+ * URL still lands somewhere useful instead of 404ing.
+ */
+export default function MachineQrRedirectPage() {
   const router = useRouter();
   const params = useParams();
-  const machineId = (params?.machineId as string) || "VM-NY-010";
-  const [origin, setOrigin] = useState("");
-  const qrRef = useRef<SVGSVGElement | null>(null);
-
-  // Real machine + store/venue data for the printed sticker — this page
-  // previously showed hardcoded placeholder text ("Gumball & Candy
-  // Dispenser", "Venue Location", "Assigned Store") for every machine.
-  const { data: machine } = useQuery<any>({
-    queryKey: ["machine-qr", machineId],
-    queryFn: async () => {
-      try {
-        const res = await apiClient.get(`/machines/${encodeURIComponent(machineId)}`);
-        return res.data?.data ?? null;
-      } catch {
-        return null;
-      }
-    },
-    enabled: Boolean(machineId),
-  });
-
-  const storeName: string | null = machine?.storeName || null;
-  const locationAddress: string | null =
-    machine?.locationAddress || machine?.eircode || null;
-  const keyNumber: string | null = machine?.keyNumber || null;
+  const machineId = (params?.machineId as string) || "";
 
   useEffect(() => {
-    if (typeof window !== "undefined") {
-      setOrigin(window.location.origin);
-    }
-  }, []);
-
-  const destinationUrl = `${
-    process.env.NEXT_PUBLIC_APP_URL || origin || "http://localhost:3000"
-  }/machine/${encodeURIComponent(machineId)}`;
-
-  const handleDownload = () => {
-    const svgElement = qrRef.current;
-    if (!svgElement) {
-      toast.error("QR Code element not found");
-      return;
-    }
-
-    try {
-      const svgData = new XMLSerializer().serializeToString(svgElement);
-      const canvas = document.createElement("canvas");
-      const ctx = canvas.getContext("2d");
-      const img = new Image();
-
-      canvas.width = 400;
-      canvas.height = 400;
-
-      img.onload = () => {
-        if (ctx) {
-          ctx.fillStyle = "#ffffff";
-          ctx.fillRect(0, 0, 400, 400);
-          ctx.drawImage(img, 20, 20, 360, 360);
-          const pngUrl = canvas.toDataURL("image/png");
-          const downloadLink = document.createElement("a");
-          downloadLink.href = pngUrl;
-          downloadLink.download = `${machineId}-qr.png`;
-          document.body.appendChild(downloadLink);
-          downloadLink.click();
-          document.body.removeChild(downloadLink);
-          toast.success(`QR code image saved as ${machineId}-qr.png`);
-        }
-      };
-
-      img.src = "data:image/svg+xml;base64," + btoa(unescape(encodeURIComponent(svgData)));
-    } catch {
-      // Fallback SVG download
-      const svgBlob = new Blob([new XMLSerializer().serializeToString(svgElement)], {
-        type: "image/svg+xml;charset=utf-8",
-      });
-      const svgUrl = URL.createObjectURL(svgBlob);
-      const downloadLink = document.createElement("a");
-      downloadLink.href = svgUrl;
-      downloadLink.download = `${machineId}-qr.svg`;
-      document.body.appendChild(downloadLink);
-      downloadLink.click();
-      document.body.removeChild(downloadLink);
-      toast.success(`QR code saved as ${machineId}-qr.svg`);
-    }
-  };
-
-  const handlePrint = () => {
-    if (typeof window !== "undefined") {
-      window.print();
-    }
-  };
-
-  const handleDone = () => {
-    toast.success("Machine QR ready for field operations!");
-    router.push("/dashboard");
-  };
+    router.replace(`/scan?tab=generate&machineId=${encodeURIComponent(machineId)}`);
+  }, [machineId, router]);
 
   return (
-    <>
-      {/* SCREEN VIEW ONLY (Completely hidden during print) */}
-      <div className="w-full px-4 py-4 space-y-5 flex flex-col justify-between min-h-[780px] print:hidden">
-        {/* Top Header — sticky against the scrollable <main> */}
-        <div className="space-y-4">
-          <div className="flex items-center gap-2 sticky top-0 z-20 -mx-4 px-4 pb-3 pt-[calc(0.75rem+env(safe-area-inset-top))] bg-card/95 backdrop-blur-md border-b border-border/40">
-            <button
-              onClick={() => router.back()}
-              className="h-10 w-10 rounded-2xl bg-muted/50 flex items-center justify-center text-muted-foreground hover:text-foreground active:scale-95 transition-transform shrink-0"
-            >
-              <ArrowLeft className="h-4 w-4" />
-            </button>
-            <div>
-              <h1 className="text-lg font-black tracking-tight text-foreground">
-                Machine QR Code
-              </h1>
-              <p className="text-[11px] text-muted-foreground">
-                Ready for field agent scan & restock
-              </p>
-            </div>
-          </div>
-
-          {/* Screen 7: QR Code Display Card */}
-          <Card className="w-full border-border/60 bg-gradient-to-b from-card to-card/60 shadow-lg text-center overflow-hidden">
-            <CardContent className="p-6 space-y-4 flex flex-col items-center">
-              {/* Machine Badge */}
-              <div className="inline-flex items-center gap-1.5 px-3 py-1 rounded-full bg-primary/20 text-primary text-xs font-black font-mono">
-                <Sparkles className="h-3.5 w-3.5" />
-                <span>#{machineId}</span>
-              </div>
-
-              {/* High-Resolution SVG QR Visual Representation */}
-              <div className="p-4 rounded-3xl bg-white text-zinc-950 shadow-md border-4 border-primary/40 inline-flex flex-col items-center">
-                <QRCodeSVG
-                  ref={qrRef}
-                  value={destinationUrl}
-                  size={190}
-                  level="H"
-                  includeMargin={false}
-                  className="w-48 h-48"
-                />
-                <span className="text-[10px] font-black font-mono tracking-widest text-zinc-900 mt-2 uppercase">
-                  {machineId}
-                </span>
-              </div>
-
-              {/* Destination & Security Badge */}
-              <div className="inline-flex items-center gap-1 text-[10px] font-bold text-emerald-600 dark:text-emerald-400 bg-emerald-500/10 px-2.5 py-0.5 rounded-full">
-                <ShieldCheck className="h-3.5 w-3.5" />
-                <span>Protected Field Agent Route</span>
-              </div>
-
-              {/* Machine & Venue Details — bound to the real machine/store
-                  data (previously hardcoded placeholder text), hidden when
-                  a given field genuinely has no value rather than showing
-                  a fake label on a printed sticker. */}
-              <div className="space-y-1 pt-1">
-                <h2 className="font-black text-base text-foreground">
-                  {storeName || "Unassigned Machine"}
-                </h2>
-                {(locationAddress || keyNumber) && (
-                  <div className="flex items-center justify-center gap-3 text-xs text-muted-foreground">
-                    {locationAddress && (
-                      <span className="flex items-center gap-1 truncate">
-                        <MapPin className="h-3.5 w-3.5 text-primary shrink-0" />
-                        <span className="truncate">{locationAddress}</span>
-                      </span>
-                    )}
-                    {locationAddress && keyNumber && <span>•</span>}
-                    {keyNumber && (
-                      <span className="flex items-center gap-1">
-                        <KeyRound className="h-3.5 w-3.5 text-secondary shrink-0" />
-                        <span>Key: {keyNumber}</span>
-                      </span>
-                    )}
-                  </div>
-                )}
-              </div>
-            </CardContent>
-          </Card>
-        </div>
-
-        {/* Action Buttons: Download, Print, Done */}
-        <div className="space-y-2.5 pb-2">
-          <Button
-            type="button"
-            variant="outline"
-            onClick={handleDownload}
-            className="w-full h-12 rounded-2xl text-xs font-bold gap-2 border-border/80 bg-card active:scale-[0.98] transition-transform shadow-xs"
-          >
-            <Download className="h-4 w-4 text-primary" />
-            <span>Download QR Image</span>
-          </Button>
-
-          <Button
-            type="button"
-            variant="outline"
-            onClick={handlePrint}
-            className="w-full h-12 rounded-2xl text-xs font-bold gap-2 border-border/80 bg-card active:scale-[0.98] transition-transform shadow-xs"
-          >
-            <Printer className="h-4 w-4 text-secondary" />
-            <span>Print Sticker Label (50mm)</span>
-          </Button>
-
-          <Button
-            type="button"
-            onClick={handleDone}
-            className="w-full h-13 rounded-2xl bg-zinc-900 text-white dark:bg-zinc-100 dark:text-zinc-900 font-bold text-sm shadow-md active:scale-[0.97] transition-transform gap-2"
-          >
-            <CheckCircle className="h-4 w-4" />
-            <span>Done & Return to Dashboard</span>
-          </Button>
-        </div>
-      </div>
-
-      {/* PRINT-ONLY LABEL STICKER (Dynamically adapts to POS thermal rolls, 50mm stickers, or A4 sheets) */}
-      <div className="hidden print:flex print-qr-container">
-        <div className="flex flex-col items-center justify-center w-full max-w-[80mm] p-2 text-center text-black bg-white">
-          <span className="text-[12px] font-black uppercase tracking-wider text-black text-center leading-tight">
-            Bee Novelty Vending
-          </span>
-          <div className="my-2 flex items-center justify-center w-full max-w-[220px] aspect-square">
-            <QRCodeSVG
-              value={destinationUrl}
-              size={256}
-              level="M"
-              includeMargin={false}
-              className="print-qr-svg"
-              style={{ width: "100%", height: "auto", maxWidth: "100%" }}
-            />
-          </div>
-          <span className="text-[14px] font-mono font-black tracking-widest text-center uppercase leading-none text-black">
-            {machineId}
-          </span>
-          <span className="text-[8px] font-bold text-center uppercase tracking-widest text-zinc-700 mt-1">
-            Authorized Field Agent Scan
-          </span>
-        </div>
-      </div>
-    </>
+    <div className="w-full min-h-[400px] flex items-center justify-center">
+      <Loader2 className="h-6 w-6 animate-spin text-primary" />
+    </div>
   );
 }

@@ -136,7 +136,9 @@ function RegisterMachineForm() {
       },
       {
         onSuccess: () => {
-          router.push(`/machines/${encodeURIComponent(data.machineId.trim().toUpperCase())}/qr`);
+          router.push(
+            `/scan?tab=generate&machineId=${encodeURIComponent(data.machineId.trim().toUpperCase())}`
+          );
         },
       }
     );
