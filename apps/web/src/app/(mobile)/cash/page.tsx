@@ -29,6 +29,7 @@ import {
   MapPin,
   ChevronRight,
   TrendingDown,
+  ArrowUpRight,
 } from "lucide-react";
 
 interface PopulatedCashLog {
@@ -178,9 +179,27 @@ export default function MobileCashTrackingPage() {
           Cash Tracking & Drops
         </h1>
         <p className="text-xs text-muted-foreground">
-          Physical coin collections logged by field agents.
+          The full ledger — every agent&apos;s cash collections, tenant-wide.
         </p>
       </div>
+
+      {/* Cross-link to Reports & Splits — same underlying collections, with
+          date-range/store filtering and the revenue-split breakdown this
+          page doesn't have. Addresses the UX audit's "three disconnected
+          cash-collection logs" finding. */}
+      <button
+        type="button"
+        onClick={() => router.push("/reports")}
+        className="w-full flex items-center justify-between gap-2 p-3 rounded-xl bg-muted/40 border border-border/50 hover:bg-muted/60 active:scale-[0.99] transition-all text-left"
+      >
+        <span className="text-xs font-semibold text-foreground">
+          Need date-range filtering or the revenue split?
+        </span>
+        <span className="flex items-center gap-1 text-xs font-bold text-primary shrink-0">
+          <span>Open Reports</span>
+          <ArrowUpRight className="h-3.5 w-3.5" />
+        </span>
+      </button>
 
       {/* 3. Mobile KPI Metric Card */}
       <Card className="border-border/50 bg-gradient-to-r from-card to-card/60 shadow-xs">

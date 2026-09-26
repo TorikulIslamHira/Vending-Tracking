@@ -1,6 +1,7 @@
 "use client";
 
 import React, { useState, useRef, useEffect } from "react";
+import { useRouter } from "next/navigation";
 import { toast } from "sonner";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -41,6 +42,7 @@ import { useCurrency } from "@/hooks/useTenantSettings";
 import { ReconciliationReportPreview } from "@/components/reports/ReconciliationReportPreview";
 
 export default function ReportsPage() {
+  const router = useRouter();
   const [fromDate, setFromDate] = useState(() => {
     const now = new Date();
     return new Date(now.getFullYear(), now.getMonth(), 1).toISOString().split("T")[0];
@@ -442,6 +444,17 @@ export default function ReportsPage() {
               <Clock className="h-3.5 w-3.5 text-primary" />
               <span>Individual Collections ({detailedLogs.length})</span>
             </h3>
+            {/* Cross-link to the canonical full ledger — same underlying
+                collections without this page's date-range/store filter
+                applied. Addresses the UX audit's "three disconnected
+                cash-collection logs" finding. */}
+            <button
+              type="button"
+              onClick={() => router.push("/cash")}
+              className="text-[10px] font-bold text-primary hover:underline shrink-0"
+            >
+              View in Full Ledger
+            </button>
           </div>
 
           <div className="space-y-1.5">

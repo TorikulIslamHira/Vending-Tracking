@@ -6,6 +6,7 @@ import { Card, CardContent } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { useMyHistory, MyHistoryLogItem } from "@/hooks/useInventory";
 import { useCurrency } from "@/hooks/useTenantSettings";
+import { useAuthStore } from "@/store/useAuthStore";
 import {
   ArrowLeft,
   ClipboardList,
@@ -15,6 +16,7 @@ import {
   Coins,
   Clock,
   Boxes,
+  ArrowUpRight,
 } from "lucide-react";
 
 function getActionMeta(log: MyHistoryLogItem) {
@@ -52,6 +54,8 @@ export default function AgentHistoryPage() {
   const router = useRouter();
   const { data: logs = [], isLoading } = useMyHistory();
   const { format: formatMoney } = useCurrency();
+  const { user } = useAuthStore();
+  const isAdmin = user?.role === "ADMIN";
 
   return (
     <div className="space-y-4 pb-4">
@@ -70,10 +74,30 @@ export default function AgentHistoryPage() {
             My Activity History
           </h1>
           <p className="text-xs text-muted-foreground truncate">
-            Your recent restocks, cash collections &amp; reversals
+            Your own restocks, cash collections &amp; reversals only
           </p>
         </div>
       </div>
+
+      {/* Cross-link to the canonical all-agents ledger — Admin only, since
+          /cash is an admin-only route a Field Agent could never reach
+          anyway (see middleware.ts's ADMIN_ONLY_PREFIXES). Addresses the
+          UX audit's "three disconnected cash-collection logs" finding. */}
+      {isAdmin && (
+        <button
+          type="button"
+          onClick={() => router.push("/cash")}
+          className="w-full flex items-center justify-between gap-2 p-3 rounded-xl bg-muted/40 border border-border/50 hover:bg-muted/60 active:scale-[0.99] transition-all text-left"
+        >
+          <span className="text-xs font-semibold text-foreground">
+            Looking for everyone&apos;s collections?
+          </span>
+          <span className="flex items-center gap-1 text-xs font-bold text-primary shrink-0">
+            <span>View Full Ledger</span>
+            <ArrowUpRight className="h-3.5 w-3.5" />
+          </span>
+        </button>
+      )}
 
       {/* Timeline */}
       {isLoading ? (
