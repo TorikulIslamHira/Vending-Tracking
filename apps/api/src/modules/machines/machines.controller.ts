@@ -123,6 +123,7 @@ export async function getMachineByIdHandler(
           storeId: machine.storeId,
           storeName: machine.store?.name || machine.location,
           locationAddress: machine.store?.locationAddress || null,
+          eircode: machine.store?.eircode || null,
           storePaymentMode: machine.store?.paymentMode || null,
           storeShopCutPercent: machine.store?.shopCutPercent ?? null,
           category: machine.category || "Standard Confectionery",

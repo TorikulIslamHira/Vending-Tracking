@@ -2,8 +2,10 @@
 
 import React, { useState, useEffect, useRef } from "react";
 import { useParams, useRouter } from "next/navigation";
+import { useQuery } from "@tanstack/react-query";
 import { QRCodeSVG } from "qrcode.react";
 import { toast } from "sonner";
+import { api as apiClient } from "@/lib/api";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent } from "@/components/ui/card";
 import {
@@ -12,7 +14,7 @@ import {
   Printer,
   CheckCircle,
   MapPin,
-  Store,
+  KeyRound,
   Sparkles,
   ShieldCheck,
 } from "lucide-react";
@@ -23,6 +25,27 @@ export default function MachineQrDisplayPage() {
   const machineId = (params?.machineId as string) || "VM-NY-010";
   const [origin, setOrigin] = useState("");
   const qrRef = useRef<SVGSVGElement | null>(null);
+
+  // Real machine + store/venue data for the printed sticker — this page
+  // previously showed hardcoded placeholder text ("Gumball & Candy
+  // Dispenser", "Venue Location", "Assigned Store") for every machine.
+  const { data: machine } = useQuery<any>({
+    queryKey: ["machine-qr", machineId],
+    queryFn: async () => {
+      try {
+        const res = await apiClient.get(`/machines/${encodeURIComponent(machineId)}`);
+        return res.data?.data ?? null;
+      } catch {
+        return null;
+      }
+    },
+    enabled: Boolean(machineId),
+  });
+
+  const storeName: string | null = machine?.storeName || null;
+  const locationAddress: string | null =
+    machine?.locationAddress || machine?.eircode || null;
+  const keyNumber: string | null = machine?.keyNumber || null;
 
   useEffect(() => {
     if (typeof window !== "undefined") {
@@ -147,22 +170,31 @@ export default function MachineQrDisplayPage() {
                 <span>Protected Field Agent Route</span>
               </div>
 
-              {/* Machine & Venue Details */}
+              {/* Machine & Venue Details — bound to the real machine/store
+                  data (previously hardcoded placeholder text), hidden when
+                  a given field genuinely has no value rather than showing
+                  a fake label on a printed sticker. */}
               <div className="space-y-1 pt-1">
                 <h2 className="font-black text-base text-foreground">
-                  Gumball & Candy Dispenser
+                  {storeName || "Unassigned Machine"}
                 </h2>
-                <div className="flex items-center justify-center gap-3 text-xs text-muted-foreground">
-                  <span className="flex items-center gap-1">
-                    <MapPin className="h-3.5 w-3.5 text-primary" />
-                    <span>Venue Location</span>
-                  </span>
-                  <span>•</span>
-                  <span className="flex items-center gap-1">
-                    <Store className="h-3.5 w-3.5 text-secondary" />
-                    <span>Assigned Store</span>
-                  </span>
-                </div>
+                {(locationAddress || keyNumber) && (
+                  <div className="flex items-center justify-center gap-3 text-xs text-muted-foreground">
+                    {locationAddress && (
+                      <span className="flex items-center gap-1 truncate">
+                        <MapPin className="h-3.5 w-3.5 text-primary shrink-0" />
+                        <span className="truncate">{locationAddress}</span>
+                      </span>
+                    )}
+                    {locationAddress && keyNumber && <span>•</span>}
+                    {keyNumber && (
+                      <span className="flex items-center gap-1">
+                        <KeyRound className="h-3.5 w-3.5 text-secondary shrink-0" />
+                        <span>Key: {keyNumber}</span>
+                      </span>
+                    )}
+                  </div>
+                )}
               </div>
             </CardContent>
           </Card>
