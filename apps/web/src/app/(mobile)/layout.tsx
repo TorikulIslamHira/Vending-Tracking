@@ -77,50 +77,41 @@ export default function MobileLayout({
     }
   }, [mounted, isAuthPage, isAuthenticated, user, router]);
 
-  // Bottom Navigation Bar is displayed on primary and secondary operational list views (never on auth pages)
-  const bottomNavRoutes = [
-    "/dashboard",
-    "/stores",
-    "/reports",
-    "/settings",
-    "/assignments",
-    "/machines",
-    "/inventory-logs",
-    "/cash",
-    "/packets",
-    "/users",
-  ];
+  // Which routes belong under each bottom-tab, kept as one explicit source
+  // of truth (rather than duplicated ad-hoc conditions) so a route can't
+  // silently drift out of sync with which tab it should highlight. Grouping
+  // follows each page's own "back to" navigation target, not guesswork —
+  // e.g. cash/page.tsx's back button goes to /settings ("Settings & More"),
+  // so /cash belongs under the Settings tab, not Reports.
+  const TAB_ROUTE_GROUPS: Record<string, string[]> = {
+    "/dashboard": ["/dashboard", "/"],
+    "/stores": ["/stores", "/machines"],
+    "/reports": ["/reports"],
+    "/settings": [
+      "/settings",
+      "/assignments",
+      "/users",
+      "/packets",
+      "/cash",
+      "/audit-log",
+      "/inventory-logs",
+    ],
+  };
 
-  const showBottomNav = !isAuthPage && bottomNavRoutes.includes(pathname);
+  const bottomNavRoutes = Object.values(TAB_ROUTE_GROUPS).flat();
 
-  // Active tab determination helper
+  const showBottomNav =
+    !isAuthPage &&
+    bottomNavRoutes.some((route) => pathname === route || pathname.startsWith(`${route}/`));
+
+  // Active tab determination — a route matches a tab if it's an exact
+  // match or a nested sub-route of one of that tab's grouped routes (so a
+  // page like /settings/anything still highlights "More" correctly).
   const getIsActiveTab = (tabHref: string) => {
-    if (tabHref === "/dashboard") {
-      return pathname === "/dashboard" || pathname === "/";
-    }
-    if (tabHref === "/stores") {
-      return (
-        pathname === "/stores" ||
-        pathname === "/machines" ||
-        pathname.startsWith("/stores")
-      );
-    }
-    if (tabHref === "/reports") {
-      return (
-        pathname === "/reports" ||
-        pathname === "/cash" ||
-        pathname === "/inventory-logs"
-      );
-    }
-    if (tabHref === "/settings") {
-      return (
-        pathname === "/settings" ||
-        pathname === "/assignments" ||
-        pathname === "/users" ||
-        pathname === "/packets"
-      );
-    }
-    return pathname === tabHref;
+    const groupRoutes = TAB_ROUTE_GROUPS[tabHref] ?? [tabHref];
+    return groupRoutes.some(
+      (route) => pathname === route || pathname.startsWith(`${route}/`)
+    );
   };
 
   return (
