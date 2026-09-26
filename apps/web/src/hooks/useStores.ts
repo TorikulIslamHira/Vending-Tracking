@@ -14,6 +14,8 @@ export interface StoreMachineItem {
   keyNumber?: string;
   qrCode?: string;
   virtualCashBalance?: number;
+  attentionNeeded?: boolean;
+  attentionReason?: string | null;
   createdAt?: string;
 }
 
@@ -79,6 +81,8 @@ export function useAllStores() {
                   keyNumber: m.keyNumber || "",
                   qrCode: m.qrCode || m.serialNumber,
                   virtualCashBalance: Number(m.virtualCashBalance || 0),
+                  attentionNeeded: Boolean(m.attentionNeeded),
+                  attentionReason: m.attentionReason ?? null,
                 }))
               : [],
           }));

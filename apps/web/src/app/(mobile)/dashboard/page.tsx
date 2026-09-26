@@ -166,7 +166,7 @@ export default function MobileDashboardPage() {
           </Card>
 
           {/* Metric Card 3: Attention Needed */}
-          <Link href="/browse" className="block">
+          <Link href="/browse?flagged=true" className="block">
             <Card className="w-full border-border/50 bg-gradient-to-r from-card to-card/60 shadow-xs hover:border-rose-500/40 active:scale-[0.99] transition-all">
               <CardContent className="p-3.5 flex items-center justify-between">
                 <div className="space-y-0.5">

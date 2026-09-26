@@ -49,6 +49,8 @@ export async function getAllStoresHandler(
         keyNumber: m.keyNumber || "",
         qrCode: m.qrCode,
         virtualCashBalance: Number(m.virtualCashBalance || 0),
+        attentionNeeded: Boolean(m.attentionNeeded),
+        attentionReason: m.attentionReason || null,
         createdAt: m.createdAt,
       })),
       createdAt: st.createdAt,

@@ -1,7 +1,7 @@
 "use client";
 
-import React, { useState } from "react";
-import { useRouter } from "next/navigation";
+import React, { Suspense, useState } from "react";
+import { useRouter, useSearchParams } from "next/navigation";
 import { Card, CardContent } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -20,10 +20,13 @@ import {
   Loader2,
   Building2,
   ArrowRight,
+  AlertTriangle,
 } from "lucide-react";
 
-export default function BrowseMachinesDirectoryPage() {
+function BrowseMachinesDirectoryContent() {
   const router = useRouter();
+  const searchParams = useSearchParams();
+  const flaggedOnly = searchParams.get("flagged") === "true";
   const [searchQuery, setSearchQuery] = useState("");
   const [expandedStores, setExpandedStores] = useState<Record<string, boolean>>({});
 
@@ -51,19 +54,26 @@ export default function BrowseMachinesDirectoryPage() {
         (store.eircode && store.eircode.toLowerCase().includes(searchLower));
 
       const matchingMachines = storeMachines.filter((m: StoreMachineItem) => {
-        if (!searchLower || storeMatches) return true;
-        return (
+        const matchesSearch =
+          !searchLower ||
+          storeMatches ||
           m.serialNumber.toLowerCase().includes(searchLower) ||
           (m.keyNumber && m.keyNumber.toLowerCase().includes(searchLower)) ||
           (m.category && m.category.toLowerCase().includes(searchLower)) ||
-          (m.type && m.type.toLowerCase().includes(searchLower))
-        );
+          (m.type && m.type.toLowerCase().includes(searchLower));
+        const matchesFlagged = !flaggedOnly || m.attentionNeeded;
+        return matchesSearch && matchesFlagged;
       });
 
       return {
         store,
         machines: matchingMachines,
-        hasMatch: storeMatches || matchingMachines.length > 0,
+        // Under the flagged-only filter, a store with zero flagged machines
+        // shouldn't show at all — even if its name/category matched the
+        // search text, an empty flagged accordion is just confusing.
+        hasMatch: flaggedOnly
+          ? matchingMachines.length > 0
+          : storeMatches || matchingMachines.length > 0,
       };
     })
     .filter((item) => item.hasMatch);
@@ -71,12 +81,13 @@ export default function BrowseMachinesDirectoryPage() {
   // Unassigned fleet units
   const unassignedMachines = machinesList.filter((m) => !m.storeId);
   const matchingUnassigned = unassignedMachines.filter((m) => {
-    if (!searchLower) return true;
-    return (
+    const matchesSearch =
+      !searchLower ||
       m.serialNumber.toLowerCase().includes(searchLower) ||
       (m.keyNumber && m.keyNumber.toLowerCase().includes(searchLower)) ||
-      (m.location && m.location.toLowerCase().includes(searchLower))
-    );
+      (m.location && m.location.toLowerCase().includes(searchLower));
+    const matchesFlagged = !flaggedOnly || m.attentionNeeded;
+    return matchesSearch && matchesFlagged;
   });
 
   const totalVisibleMachines =
@@ -107,10 +118,29 @@ export default function BrowseMachinesDirectoryPage() {
             </span>
           </div>
           <p className="text-xs text-muted-foreground truncate">
-            Browse all stores and select machines manually
+            {flaggedOnly
+              ? "Showing only machines flagged for attention"
+              : "Browse all stores and select machines manually"}
           </p>
         </div>
       </div>
+
+      {/* Flagged-Only Filter Banner */}
+      {flaggedOnly && (
+        <div className="flex items-center justify-between gap-2 p-2.5 rounded-xl bg-rose-500/10 border border-rose-500/30">
+          <div className="flex items-center gap-1.5 text-[11px] font-semibold text-rose-600 dark:text-rose-400">
+            <AlertTriangle className="h-3.5 w-3.5 shrink-0" />
+            <span>Flagged machines only</span>
+          </div>
+          <button
+            type="button"
+            onClick={() => router.push("/browse")}
+            className="text-[11px] font-bold text-rose-600 dark:text-rose-400 hover:underline shrink-0"
+          >
+            Show All
+          </button>
+        </div>
+      )}
 
       {/* Search / Filter Bar */}
       <div className="relative">
@@ -196,13 +226,23 @@ export default function BrowseMachinesDirectoryPage() {
                             onClick={() =>
                               router.push(`/machine/${encodeURIComponent(m.serialNumber || m.id)}`)
                             }
-                            className="p-2.5 rounded-xl bg-background border border-border/60 hover:border-primary/60 active:scale-[0.99] transition-all cursor-pointer flex items-center justify-between gap-2 shadow-2xs"
+                            className={`p-2.5 rounded-xl bg-background border active:scale-[0.99] transition-all cursor-pointer flex items-center justify-between gap-2 shadow-2xs ${
+                              m.attentionNeeded
+                                ? "border-rose-500/50 hover:border-rose-500/70"
+                                : "border-border/60 hover:border-primary/60"
+                            }`}
                           >
                             <div className="min-w-0 space-y-0.5">
-                              <div className="flex items-center gap-1.5">
+                              <div className="flex items-center gap-1.5 flex-wrap">
                                 <span className="font-mono font-bold text-xs text-foreground">
                                   {m.serialNumber}
                                 </span>
+                                {m.attentionNeeded && (
+                                  <span className="inline-flex items-center gap-0.5 text-[9px] font-bold text-rose-600 dark:text-rose-400 bg-rose-500/10 px-1.5 py-0.2 rounded-md">
+                                    <AlertTriangle className="h-2.5 w-2.5" />
+                                    <span>Flagged</span>
+                                  </span>
+                                )}
                                 {m.keyNumber && (
                                   <span className="inline-flex items-center gap-0.5 text-[9px] font-mono font-bold text-amber-600 dark:text-amber-400 bg-amber-500/10 px-1.5 py-0.2 rounded-md">
                                     <KeyRound className="h-2.5 w-2.5" />
@@ -270,13 +310,23 @@ export default function BrowseMachinesDirectoryPage() {
                     onClick={() =>
                       router.push(`/machine/${encodeURIComponent(m.serialNumber || m.id)}`)
                     }
-                    className="p-2.5 rounded-xl bg-background border border-border/60 hover:border-primary/60 active:scale-[0.99] transition-all cursor-pointer flex items-center justify-between gap-2 shadow-2xs"
+                    className={`p-2.5 rounded-xl bg-background border active:scale-[0.99] transition-all cursor-pointer flex items-center justify-between gap-2 shadow-2xs ${
+                      m.attentionNeeded
+                        ? "border-rose-500/50 hover:border-rose-500/70"
+                        : "border-border/60 hover:border-primary/60"
+                    }`}
                   >
                     <div className="min-w-0 space-y-0.5">
-                      <div className="flex items-center gap-1.5">
+                      <div className="flex items-center gap-1.5 flex-wrap">
                         <span className="font-mono font-bold text-xs text-foreground">
                           {m.serialNumber}
                         </span>
+                        {m.attentionNeeded && (
+                          <span className="inline-flex items-center gap-0.5 text-[9px] font-bold text-rose-600 dark:text-rose-400 bg-rose-500/10 px-1.5 py-0.2 rounded-md">
+                            <AlertTriangle className="h-2.5 w-2.5" />
+                            <span>Flagged</span>
+                          </span>
+                        )}
                         {m.keyNumber && (
                           <span className="inline-flex items-center gap-0.5 text-[9px] font-mono font-bold text-amber-600 dark:text-amber-400 bg-amber-500/10 px-1.5 py-0.2 rounded-md">
                             <KeyRound className="h-2.5 w-2.5" />
@@ -300,13 +350,17 @@ export default function BrowseMachinesDirectoryPage() {
       ) : (
         <div className="p-8 text-center border border-dashed border-border/60 rounded-2xl space-y-2 bg-card">
           <Boxes className="h-7 w-7 text-muted-foreground/40 mx-auto" />
-          <p className="text-xs font-semibold text-foreground">No Stores or Machines Found</p>
+          <p className="text-xs font-semibold text-foreground">
+            {flaggedOnly ? "No Flagged Machines" : "No Stores or Machines Found"}
+          </p>
           <p className="text-[11px] text-muted-foreground max-w-xs mx-auto">
-            {searchQuery
+            {flaggedOnly
+              ? "Every machine is currently clear — nothing needs attention right now."
+              : searchQuery
               ? `No fleet units matched "${searchQuery}".`
               : "Register stores and machines in the admin portal to view the directory here."}
           </p>
-          {searchQuery && (
+          {searchQuery && !flaggedOnly && (
             <Button
               variant="outline"
               size="sm"
@@ -316,8 +370,32 @@ export default function BrowseMachinesDirectoryPage() {
               Clear Search Filter
             </Button>
           )}
+          {flaggedOnly && (
+            <Button
+              variant="outline"
+              size="sm"
+              onClick={() => router.push("/browse")}
+              className="h-8 text-xs rounded-xl mt-1"
+            >
+              Show All Machines
+            </Button>
+          )}
         </div>
       )}
     </div>
+  );
+}
+
+export default function BrowseMachinesDirectoryPage() {
+  return (
+    <Suspense
+      fallback={
+        <div className="w-full min-h-[400px] flex items-center justify-center">
+          <Loader2 className="h-6 w-6 animate-spin text-primary" />
+        </div>
+      }
+    >
+      <BrowseMachinesDirectoryContent />
+    </Suspense>
   );
 }
