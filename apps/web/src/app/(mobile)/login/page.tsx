@@ -134,7 +134,6 @@ function LoginForm() {
             </div>
             <Input
               type="password"
-              placeholder="••••••••"
               autoComplete="current-password"
               className="h-12 rounded-2xl bg-slate-100 dark:bg-zinc-800/80 border-transparent focus-visible:border-primary/50 focus-visible:ring-2 focus-visible:ring-primary text-sm px-4 shadow-xs"
               {...register("password")}
