@@ -82,6 +82,8 @@ export default function QRScannerPage() {
   const [cameraError, setCameraError] = useState<string | null>(null);
   const [permissionDenied, setPermissionDenied] = useState(false);
   const html5QrCodeRef = useRef<Html5Qrcode | null>(null);
+  const manualEntryRef = useRef<HTMLDivElement | null>(null);
+  const manualCodeInputRef = useRef<HTMLInputElement | null>(null);
 
   const { data: machinesList = [], isLoading: isMachinesLoading } = useMachines();
 
@@ -152,6 +154,15 @@ export default function QRScannerPage() {
       } else {
         setCameraError(message || "Camera access is unavailable on this device.");
       }
+
+      // The camera is a dead end on this device/browser — surface the
+      // manual-entry fallback immediately instead of leaving the agent to
+      // notice it further down the page (it was easy to miss, per the UX
+      // audit's "no way forward from this screen" finding).
+      requestAnimationFrame(() => {
+        manualEntryRef.current?.scrollIntoView({ behavior: "smooth", block: "center" });
+        manualCodeInputRef.current?.focus();
+      });
     }
   };
 
@@ -216,6 +227,10 @@ export default function QRScannerPage() {
                             : "Enable camera access for this site in your browser settings, then reload this page and try again."}
                         </p>
                       )}
+                      <p className="text-xs font-semibold text-primary pt-1 flex items-center justify-center gap-1">
+                        <Keyboard className="h-3.5 w-3.5" />
+                        <span>Or enter the code manually below ↓</span>
+                      </p>
                     </div>
                   </>
                 ) : (
@@ -262,8 +277,17 @@ export default function QRScannerPage() {
         </CardContent>
       </Card>
 
-      {/* Manual Input Fallback */}
-      <Card className="border-border/60">
+      {/* Manual Input Fallback — ref + highlight so the camera-error state
+          above can pull attention here instead of relying on the agent to
+          scroll down and notice it on their own. */}
+      <Card
+        ref={manualEntryRef}
+        className={
+          status === "error"
+            ? "border-primary/60 ring-2 ring-primary/30 shadow-md transition-all"
+            : "border-border/60 transition-all"
+        }
+      >
         <CardHeader className="pb-2 pt-4 px-4">
           <CardTitle className="text-xs font-semibold uppercase tracking-wider text-muted-foreground flex items-center gap-1.5">
             <Keyboard className="h-3.5 w-3.5" />
@@ -276,6 +300,7 @@ export default function QRScannerPage() {
         <CardContent className="px-4 pb-4">
           <form onSubmit={handleManualSubmit} className="flex gap-2">
             <Input
+              ref={manualCodeInputRef}
               placeholder="e.g. VM-GC-2608-0001 or QR code"
               value={manualCode}
               onChange={(e) => setManualCode(e.target.value)}
