@@ -81,7 +81,7 @@ export default function MobileDashboardPage() {
             size="icon"
             onClick={() => router.push("/scan")}
             className="h-10 w-10 rounded-2xl border-border/60 shadow-xs active:scale-95 shrink-0"
-            title="Scan QR Code"
+            title="Switch to Field Agent Mode (Scan QR)"
           >
             <QrCode className="h-4 w-4 text-primary" />
           </Button>

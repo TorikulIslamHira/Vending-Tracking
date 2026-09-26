@@ -16,6 +16,7 @@ import {
   ShieldAlert,
   Loader2,
   LogIn,
+  ArrowLeftRight,
 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 
@@ -96,9 +97,27 @@ export default function AgentMobileLayout({
               <span className="text-xs font-bold tracking-tight block leading-tight">
                 {defaultThemeConfig.appName}
               </span>
-              <span className="text-[10px] text-muted-foreground block font-medium">
-                Field Agent Mode
-              </span>
+              {/* For an Admin, this label doubles as an explicit mode
+                  switcher — a Field Agent never has anywhere else to switch
+                  to (RBAC-blocked from every admin route), so it stays a
+                  plain, non-interactive label for that role. Addresses the
+                  UX audit's "implicit swap between two nav sets with no
+                  visible toggle" finding. */}
+              {mounted && isAdmin ? (
+                <button
+                  type="button"
+                  onClick={() => router.push("/dashboard")}
+                  className="flex items-center gap-1 text-[10px] text-primary font-semibold hover:underline"
+                >
+                  <span>Field Agent Mode</span>
+                  <ArrowLeftRight className="h-2.5 w-2.5" />
+                  <span>Switch to Admin</span>
+                </button>
+              ) : (
+                <span className="text-[10px] text-muted-foreground block font-medium">
+                  Field Agent Mode
+                </span>
+              )}
             </div>
           </div>
 
