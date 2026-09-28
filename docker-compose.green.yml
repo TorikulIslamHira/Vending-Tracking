@@ -1,0 +1,50 @@
+# Blue-Green deployment override — used ALONGSIDE docker-compose.yml, never
+# alone, and only for the `api`/`web` services:
+#
+#   docker compose -p vending-green -f docker-compose.yml -f docker-compose.green.yml \
+#     up -d --no-deps --build api web
+#
+# Why a separate Compose *project* (-p vending-green) rather than just this
+# override file on its own: it gives the "green" api/web containers their own
+# Compose bookkeeping, completely independent of the live ("blue") stack's
+# `vending-api`/`vending-web` containers, which are still running under the
+# default project the whole time. Nothing here ever touches `db` or `nginx` —
+# both keep running as the one shared instance throughout the swap, which is
+# exactly what makes this zero-downtime instead of a restart.
+#
+# Only two things actually need to change from the base file:
+#   1. container_name — so green can run side-by-side with blue without a
+#      naming collision.
+#   2. ports — cleared entirely. Nginx reaches every service by its container
+#      name over the Docker network, never through a host-published port, so
+#      green doesn't need one published (and doing so would collide with
+#      blue's already-published 3000/3001 anyway).
+# Everything else (environment, image build context, depends_on) is inherited
+# unchanged from docker-compose.yml — that's the whole point of an override
+# file instead of hand-written `docker run` commands: zero duplicated config
+# to drift out of sync.
+#
+# The `vending-network` below is declared external and pinned to the exact
+# network name the default project already created, so green's containers
+# join that same network rather than getting a new project-scoped one of
+# their own — required for both stacks (and nginx) to resolve each other by
+# container name. Confirm the real name on your VPS with `docker network ls`
+# if your project directory isn't named exactly "Vending-Tracking" (Compose
+# derives the network name from the project directory by default).
+
+services:
+  api:
+    container_name: vending-api-green
+    # A plain `ports: []` is silently ignored by Compose's merge (an empty
+    # sequence in an override doesn't count as "set", so it falls back to
+    # the base file's list) — `!reset` is required to actually clear it.
+    ports: !reset []
+
+  web:
+    container_name: vending-web-green
+    ports: !reset []
+
+networks:
+  vending-network:
+    external: true
+    name: vending-tracking_vending-network
