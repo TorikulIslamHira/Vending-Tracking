@@ -70,14 +70,16 @@ export default function AgentMobileLayout({
         },
   ];
 
-  // The Machine View / Cash Collection page is a natural endpoint of an
-  // Admin's workflow, not a mid-flow step like Scan or History — an Admin
-  // landing there shouldn't be boxed into the 3-tab restricted nav when
-  // they're done, so it gets the same global Admin nav as every other admin
-  // page instead. Field Agents on the same page keep the restricted nav,
-  // since Dashboard/Stores/Reports are RBAC-blocked for them anyway.
-  const isMachineViewPage = pathname.startsWith("/machine/");
-  const showAdminNav = isAdmin && isMachineViewPage;
+  // Machine View (Cash Collection) and the Fleet Directory (/browse, incl.
+  // its flagged-machines filter) are workflow endpoints an Admin lands on
+  // from all over the app — Dashboard, the embedded scanner, a flagged-unit
+  // alert — not mid-flow steps like Scan or History, so they shouldn't box
+  // an Admin into the 3-tab restricted nav. They get the same global Admin
+  // nav as every other admin page instead. Field Agents on these same pages
+  // keep the restricted nav, since Dashboard/Stores/Reports are RBAC-blocked
+  // for them anyway.
+  const isAdminNavPage = pathname.startsWith("/machine/") || pathname.startsWith("/browse");
+  const showAdminNav = isAdmin && isAdminNavPage;
   const adminNavItems = [
     {
       label: "Dashboard",
