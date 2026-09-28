@@ -1,5 +1,5 @@
 import { FastifyReply, FastifyRequest } from "fastify";
-import { eq, and, or, gt, desc, gte, lte, isNull } from "drizzle-orm";
+import { eq, and, or, gt, desc, gte, lte, isNull, isNotNull } from "drizzle-orm";
 import {
   RestockSchema,
   ManualEntrySchema,
@@ -844,10 +844,13 @@ export async function getReportsHandler(
   const { fromDate, toDate, storeId, machineId } = request.query;
 
   try {
-    // 1. Fetch machines belonging to this tenant, optionally filtered by storeId
-    const machineWhereConditions = [eq(machines.tenantId, tenantId)];
+    // 1. Fetch machines belonging to this tenant, optionally filtered by
+    // storeId/machineId — split into active and soft-deleted so a deleted
+    // machine's historical cash logs never silently blend into the Active
+    // Machine Payout Breakdown; they're aggregated separately below instead.
+    const sharedMachineConditions = [eq(machines.tenantId, tenantId)];
     if (storeId && storeId !== "ALL" && storeId !== "all") {
-      machineWhereConditions.push(eq(machines.storeId, storeId));
+      sharedMachineConditions.push(eq(machines.storeId, storeId));
     }
     if (machineId && machineId !== "ALL" && machineId !== "all") {
       const matchCondition = or(
@@ -856,17 +859,22 @@ export async function getReportsHandler(
         eq(machines.qrCode, machineId)
       );
       if (matchCondition) {
-        machineWhereConditions.push(matchCondition);
+        sharedMachineConditions.push(matchCondition);
       }
     }
 
-    const tenantMachines = await db.query.machines.findMany({
-      where: and(...machineWhereConditions),
-      with: {
-        store: true,
-      },
-      orderBy: [desc(machines.createdAt)],
-    });
+    const [tenantMachines, deletedMachines] = await Promise.all([
+      db.query.machines.findMany({
+        where: and(...sharedMachineConditions, isNull(machines.deletedAt)),
+        with: { store: true },
+        orderBy: [desc(machines.createdAt)],
+      }),
+      db.query.machines.findMany({
+        where: and(...sharedMachineConditions, isNotNull(machines.deletedAt)),
+        with: { store: true },
+        orderBy: [desc(machines.createdAt)],
+      }),
+    ]);
 
     // 2. Build cash logs date range filter with inclusive full-day boundaries
     const cashLogConditions = [eq(cashLogs.tenantId, tenantId)];
@@ -905,51 +913,84 @@ export async function getReportsHandler(
       orderBy: [desc(cashLogs.createdAt)],
     });
 
-    // Filter logs matching tenant machines
+    // Split logs between active and deleted machines
     const validMachineIds = new Set(tenantMachines.map((m) => m.id));
+    const validDeletedMachineIds = new Set(deletedMachines.map((m) => m.id));
     const filteredLogs = logs.filter((l) => validMachineIds.has(l.machineId));
+    const deletedLogs = logs.filter((l) => validDeletedMachineIds.has(l.machineId));
 
-    // Aggregate cash collected by machineId
-    const cashMap = new Map<string, { totalCash: number; count: number; lastDate: string }>();
-    for (const log of filteredLogs) {
-      const current = cashMap.get(log.machineId) || {
-        totalCash: 0,
-        count: 0,
-        lastDate: log.createdAt ? new Date(log.createdAt).toISOString().split("T")[0] : new Date().toISOString().split("T")[0],
-      };
-      current.totalCash += Number(log.collectedAmount || 0);
-      current.count += 1;
-      cashMap.set(log.machineId, current);
-    }
+    // Aggregates cash logs by machineId, then folds each machine's store
+    // split percentage in — shared by both the active and deleted-machine
+    // breakdowns so the payout math can never drift between the two.
+    const buildPayoutRecords = (
+      machineList: typeof tenantMachines,
+      machineLogs: typeof logs
+    ) => {
+      const cashMap = new Map<string, { totalCash: number; count: number; lastDate: string }>();
+      for (const log of machineLogs) {
+        const current = cashMap.get(log.machineId) || {
+          totalCash: 0,
+          count: 0,
+          lastDate: log.createdAt
+            ? new Date(log.createdAt).toISOString().split("T")[0]
+            : new Date().toISOString().split("T")[0],
+        };
+        current.totalCash += Number(log.collectedAmount || 0);
+        current.count += 1;
+        cashMap.set(log.machineId, current);
+      }
 
-    // 4. Construct machine payout breakdown records
-    const records = tenantMachines.map((m) => {
-      const cashData = cashMap.get(m.id);
-      const totalCash = Number((cashData?.totalCash || 0).toFixed(2));
-      const shopPercent = Number(m.store?.shopCutPercent ?? 30);
-      const bizPercent = Number(m.store?.businessCutPercent ?? (100 - shopPercent));
-      const shopCut = Number((totalCash * (shopPercent / 100)).toFixed(2));
-      const businessCut = Number((totalCash * (bizPercent / 100)).toFixed(2));
+      return machineList.map((m) => {
+        const cashData = cashMap.get(m.id);
+        const totalCash = Number((cashData?.totalCash || 0).toFixed(2));
+        const shopPercent = Number(m.store?.shopCutPercent ?? 30);
+        const bizPercent = Number(m.store?.businessCutPercent ?? (100 - shopPercent));
+        const shopCut = Number((totalCash * (shopPercent / 100)).toFixed(2));
+        const businessCut = Number((totalCash * (bizPercent / 100)).toFixed(2));
 
-      return {
-        id: `rec-${m.id}`,
-        machineId: m.serialNumber,
-        storeId: m.storeId,
-        storeName: m.store?.name || m.location || "Store Unit",
-        locationName: m.store?.locationAddress || "Unassigned",
-        date: cashData?.lastDate || (toDate || new Date().toISOString().split("T")[0]),
-        totalCash,
-        shopCut,
-        businessCut,
-        splitRatio: `${shopPercent}% / ${bizPercent}%`,
-        collectionsCount: cashData?.count || 0,
-      };
-    });
+        return {
+          id: `rec-${m.id}`,
+          machineId: m.serialNumber,
+          storeId: m.storeId,
+          storeName: m.store?.name || m.location || "Store Unit",
+          locationName: m.store?.locationAddress || "Unassigned",
+          date: cashData?.lastDate || (toDate || new Date().toISOString().split("T")[0]),
+          totalCash,
+          shopCut,
+          businessCut,
+          splitRatio: `${shopPercent}% / ${bizPercent}%`,
+          collectionsCount: cashData?.count || 0,
+        };
+      });
+    };
 
-    // 5. Calculate summary aggregates
+    // 4. Construct machine payout breakdown records (active machines only)
+    const records = buildPayoutRecords(tenantMachines, filteredLogs);
+
+    // 5. Calculate summary aggregates (active machines only)
     const totalCollected = Number(records.reduce((sum, r) => sum + r.totalCash, 0).toFixed(2));
     const totalShopCut = Number(records.reduce((sum, r) => sum + r.shopCut, 0).toFixed(2));
     const totalBusinessCut = Number(records.reduce((sum, r) => sum + r.businessCut, 0).toFixed(2));
+
+    // 6. Deleted-machine historical aggregates — same payout math, kept
+    // separate from the active summary above so the frontend can render
+    // it as its own "Deleted Machines Data" section rather than mixing it
+    // into live-fleet numbers.
+    const deletedRecords = buildPayoutRecords(deletedMachines, deletedLogs);
+    const deletedRecordsWithData = deletedRecords.filter((r) => r.collectionsCount > 0);
+    const deletedMachinesSummary = {
+      count: deletedRecordsWithData.length,
+      totalCash: Number(
+        deletedRecordsWithData.reduce((sum, r) => sum + r.totalCash, 0).toFixed(2)
+      ),
+      totalShopCut: Number(
+        deletedRecordsWithData.reduce((sum, r) => sum + r.shopCut, 0).toFixed(2)
+      ),
+      totalBusinessCut: Number(
+        deletedRecordsWithData.reduce((sum, r) => sum + r.businessCut, 0).toFixed(2)
+      ),
+      collectionsCount: deletedLogs.length,
+    };
 
     return reply.send({
       statusCode: 200,
@@ -980,6 +1021,7 @@ export async function getReportsHandler(
           remarks: log.remarks,
           agentName: log.agent?.name || "Field Agent",
         })),
+        deletedMachinesSummary,
       },
     });
   } catch (err: any) {
@@ -998,6 +1040,13 @@ export async function getReportsHandler(
         },
         records: [],
         detailedLogs: [],
+        deletedMachinesSummary: {
+          count: 0,
+          totalCash: 0,
+          totalShopCut: 0,
+          totalBusinessCut: 0,
+          collectionsCount: 0,
+        },
       },
     });
   }

@@ -34,10 +34,16 @@ import {
   Building2,
   Clock,
   User,
+  Archive,
 } from "lucide-react";
 
 import { useAllStores, StoreItem } from "@/hooks/useStores";
-import { useReconciliationReports, ReportRecord, DetailedCashLog } from "@/hooks/useInventory";
+import {
+  useReconciliationReports,
+  ReportRecord,
+  DetailedCashLog,
+  DeletedMachinesSummary,
+} from "@/hooks/useInventory";
 import { useCurrency } from "@/hooks/useTenantSettings";
 import { ReconciliationReportPreview } from "@/components/reports/ReconciliationReportPreview";
 
@@ -52,6 +58,7 @@ export default function ReportsPage() {
   const [isComboboxOpen, setIsComboboxOpen] = useState(false);
   const [storeSearchQuery, setStoreSearchQuery] = useState("");
   const [showDetailedLogs, setShowDetailedLogs] = useState(false);
+  const [showDeletedMachines, setShowDeletedMachines] = useState(false);
   const comboboxRef = useRef<HTMLDivElement>(null);
   const searchInputRef = useRef<HTMLInputElement>(null);
 
@@ -109,6 +116,14 @@ export default function ReportsPage() {
   const totalCollected = summary.totalCollected;
   const totalShopCut = summary.totalShopCut;
   const totalBizCut = summary.totalBusinessCut;
+
+  const deletedSummary: DeletedMachinesSummary = reportData?.deletedMachinesSummary || {
+    count: 0,
+    totalCash: 0,
+    totalShopCut: 0,
+    totalBusinessCut: 0,
+    collectionsCount: 0,
+  };
 
   const [isPreviewOpen, setIsPreviewOpen] = useState(false);
   const [isDownloadingPdf, setIsDownloadingPdf] = useState(false);
@@ -390,6 +405,85 @@ export default function ReportsPage() {
             )}
           </div>
         </CardContent>
+      </Card>
+
+      {/* Deleted Machines Data — historical cash logs from soft-deleted
+          machines, kept out of the Active Machine Payout Breakdown below so
+          a removed machine's past collections never silently disappear from
+          the books, but also never get counted as live-fleet performance. */}
+      <Card className="border-border/50 bg-card shadow-xs">
+        <button
+          type="button"
+          onClick={() => setShowDeletedMachines((p) => !p)}
+          className="w-full p-3.5 flex items-center justify-between gap-2 text-left"
+        >
+          <div className="flex items-center gap-2 min-w-0">
+            <div className="h-8 w-8 rounded-xl bg-muted/60 flex items-center justify-center text-muted-foreground shrink-0">
+              <Archive className="h-4 w-4" />
+            </div>
+            <div className="min-w-0">
+              <span className="text-xs font-bold text-foreground block">
+                Deleted Machines Data
+              </span>
+              <span className="text-[10px] text-muted-foreground">
+                {deletedSummary.count > 0
+                  ? `${deletedSummary.count} deleted ${deletedSummary.count === 1 ? "machine has" : "machines have"} data in this period`
+                  : "No deleted machines have data in this period"}
+              </span>
+            </div>
+          </div>
+          <ChevronDown
+            className={`h-4 w-4 text-muted-foreground shrink-0 transition-transform duration-200 ${
+              showDeletedMachines ? "rotate-180" : ""
+            }`}
+          />
+        </button>
+
+        {showDeletedMachines && (
+          <CardContent className="pt-0 pb-3.5 px-3.5 space-y-2.5 animate-in fade-in slide-in-from-top-2 duration-200 border-t border-border/40">
+            {deletedSummary.count > 0 ? (
+              <>
+                <div className="flex items-center justify-between text-xs pt-2.5">
+                  <span className="font-bold text-foreground">Total Cash Collected</span>
+                  <span className="text-base font-black font-mono text-foreground">
+                    {formatMoney(deletedSummary.totalCash)}
+                  </span>
+                </div>
+                <div className="grid grid-cols-2 gap-2 pt-1 border-t border-border/30 text-xs">
+                  <div className="space-y-0.5">
+                    <span className="text-[10px] font-bold text-secondary flex items-center gap-1">
+                      <span className="h-1.5 w-1.5 rounded-full bg-secondary" />
+                      <span>Commission</span>
+                    </span>
+                    <div className="font-mono font-bold text-sm text-foreground">
+                      {formatMoney(deletedSummary.totalShopCut)}
+                    </div>
+                  </div>
+                  <div className="space-y-0.5">
+                    <span className="text-[10px] font-bold text-primary flex items-center gap-1">
+                      <span className="h-1.5 w-1.5 rounded-full bg-primary" />
+                      <span>Profit</span>
+                    </span>
+                    <div className="font-mono font-bold text-sm text-foreground">
+                      {formatMoney(deletedSummary.totalBusinessCut)}
+                    </div>
+                  </div>
+                </div>
+                <p className="text-[10px] text-muted-foreground pt-1 border-t border-border/30">
+                  {deletedSummary.collectionsCount}{" "}
+                  {deletedSummary.collectionsCount === 1 ? "collection" : "collections"} logged
+                  before deletion, across {deletedSummary.count}{" "}
+                  {deletedSummary.count === 1 ? "machine" : "machines"}.
+                </p>
+              </>
+            ) : (
+              <p className="text-[11px] text-muted-foreground pt-2.5">
+                Machines removed from the fleet will show their historical collection totals here
+                for any period in which they were still active.
+              </p>
+            )}
+          </CardContent>
+        )}
       </Card>
 
       {/* Aggregate Financial Summary Banner */}
