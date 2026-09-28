@@ -7,6 +7,7 @@ import { useAuthStore } from "@/store/useAuthStore";
 import { cn } from "@/lib/utils";
 import {
   LayoutDashboard,
+  Store,
   BarChart3,
   MoreHorizontal,
 } from "lucide-react";
@@ -22,6 +23,11 @@ const tabs: TabItem[] = [
     label: "Dashboard",
     href: "/dashboard",
     icon: LayoutDashboard,
+  },
+  {
+    label: "Stores",
+    href: "/stores",
+    icon: Store,
   },
   {
     label: "Reports",
@@ -79,11 +85,10 @@ export default function MobileLayout({
   // so /cash belongs under the Settings tab, not Reports.
   const TAB_ROUTE_GROUPS: Record<string, string[]> = {
     "/dashboard": ["/dashboard", "/"],
+    "/stores": ["/stores", "/machines"],
     "/reports": ["/reports"],
     "/settings": [
       "/settings",
-      "/stores",
-      "/machines",
       "/assignments",
       "/users",
       "/packets",

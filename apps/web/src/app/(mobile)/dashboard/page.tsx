@@ -188,7 +188,7 @@ export default function MobileDashboardPage() {
               and quick fleet shortcuts, embedded right below the stats so an
               Admin never has to leave this page to jump into a machine. */}
           <div className="pt-3">
-            <MachineScanner />
+            <MachineScanner showBrowseAndShortcuts={false} />
           </div>
         </div>
       )}

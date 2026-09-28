@@ -76,13 +76,19 @@ function resolveScanTarget(scannedText: string): ScanTarget {
 }
 
 /**
- * Camera/manual QR scanner + Browse-directory banner + Quick Fleet
- * Shortcuts — shared verbatim between the Field Agent's /scan page and the
- * Admin Dashboard's merged command-center view, so the two never drift out
- * of sync. Self-contained: reads only from shared hooks/theme tokens, no
- * assumption about which page/layout it's embedded in.
+ * Camera/manual QR scanner, optionally followed by a Browse-directory
+ * banner + Quick Fleet Shortcuts grid — shared verbatim between the Field
+ * Agent's /scan page (full) and the Admin Dashboard's merged command-center
+ * view (compact: scanner + manual entry only, since the Dashboard exposes
+ * Browse/shortcuts via the Fleet Directory link on Settings instead), so
+ * the two never drift out of sync. Self-contained: reads only from shared
+ * hooks/theme tokens, no assumption about which page/layout it's embedded in.
  */
-export function MachineScanner() {
+export function MachineScanner({
+  showBrowseAndShortcuts = true,
+}: {
+  showBrowseAndShortcuts?: boolean;
+}) {
   const router = useRouter();
   const [manualCode, setManualCode] = useState("");
   const [status, setStatus] = useState<ScannerStatus>("idle");
@@ -321,89 +327,93 @@ export function MachineScanner() {
         </CardContent>
       </Card>
 
-      {/* Dedicated Browse All Machines Action Banner */}
-      <Card
-        onClick={() => router.push("/browse")}
-        className="border-border/60 bg-gradient-to-r from-card via-card/95 to-primary/10 hover:border-primary/50 transition-all cursor-pointer shadow-xs active:scale-[0.99] p-4 flex items-center justify-between"
-      >
-        <div className="flex items-center gap-3 min-w-0 pr-2">
-          <div className="h-10 w-10 rounded-2xl bg-primary/15 text-primary flex items-center justify-center shrink-0">
-            <Store className="h-5 w-5" />
-          </div>
-          <div className="min-w-0">
-            <h3 className="text-xs font-bold text-foreground flex items-center gap-1.5">
-              <span>Browse All Machines</span>
-              <span className="text-[9px] font-bold text-primary bg-primary/10 px-1.5 py-0.2 rounded-md">
-                Directory
+      {showBrowseAndShortcuts && (
+        <>
+          {/* Dedicated Browse All Machines Action Banner */}
+          <Card
+            onClick={() => router.push("/browse")}
+            className="border-border/60 bg-gradient-to-r from-card via-card/95 to-primary/10 hover:border-primary/50 transition-all cursor-pointer shadow-xs active:scale-[0.99] p-4 flex items-center justify-between"
+          >
+            <div className="flex items-center gap-3 min-w-0 pr-2">
+              <div className="h-10 w-10 rounded-2xl bg-primary/15 text-primary flex items-center justify-center shrink-0">
+                <Store className="h-5 w-5" />
+              </div>
+              <div className="min-w-0">
+                <h3 className="text-xs font-bold text-foreground flex items-center gap-1.5">
+                  <span>Browse All Machines</span>
+                  <span className="text-[9px] font-bold text-primary bg-primary/10 px-1.5 py-0.2 rounded-md">
+                    Directory
+                  </span>
+                </h3>
+                <p className="text-[11px] text-muted-foreground truncate">
+                  Explore stores and select units without scanning QR
+                </p>
+              </div>
+            </div>
+            <div className="h-8 w-8 rounded-xl bg-muted/60 flex items-center justify-center text-foreground shrink-0 border border-border/40">
+              <ArrowRight className="h-4 w-4" />
+            </div>
+          </Card>
+
+          {/* Real Dynamic Quick Fleet Shortcuts */}
+          <div className="pt-2">
+            <div className="flex items-center justify-between mb-2 px-1">
+              <span className="text-[11px] font-semibold uppercase tracking-wider text-muted-foreground">
+                Quick Fleet Shortcuts
               </span>
-            </h3>
-            <p className="text-[11px] text-muted-foreground truncate">
-              Explore stores and select units without scanning QR
-            </p>
-          </div>
-        </div>
-        <div className="h-8 w-8 rounded-xl bg-muted/60 flex items-center justify-center text-foreground shrink-0 border border-border/40">
-          <ArrowRight className="h-4 w-4" />
-        </div>
-      </Card>
+              {machinesList.length > 0 && (
+                <span className="text-[10px] font-bold text-primary bg-primary/10 px-2 py-0.5 rounded-full">
+                  {machinesList.length} Active {machinesList.length === 1 ? "Unit" : "Units"}
+                </span>
+              )}
+            </div>
 
-      {/* Real Dynamic Quick Fleet Shortcuts */}
-      <div className="pt-2">
-        <div className="flex items-center justify-between mb-2 px-1">
-          <span className="text-[11px] font-semibold uppercase tracking-wider text-muted-foreground">
-            Quick Fleet Shortcuts
-          </span>
-          {machinesList.length > 0 && (
-            <span className="text-[10px] font-bold text-primary bg-primary/10 px-2 py-0.5 rounded-full">
-              {machinesList.length} Active {machinesList.length === 1 ? "Unit" : "Units"}
-            </span>
-          )}
-        </div>
-
-        {isMachinesLoading ? (
-          <div className="flex items-center justify-center p-6 border border-dashed border-border/60 rounded-xl">
-            <Loader2 className="h-5 w-5 animate-spin text-primary" />
+            {isMachinesLoading ? (
+              <div className="flex items-center justify-center p-6 border border-dashed border-border/60 rounded-xl">
+                <Loader2 className="h-5 w-5 animate-spin text-primary" />
+              </div>
+            ) : machinesList.length > 0 ? (
+              <div className="grid grid-cols-2 gap-2">
+                {machinesList.slice(0, 6).map((item) => (
+                  <Button
+                    key={item.id}
+                    variant="outline"
+                    size="sm"
+                    onClick={() =>
+                      router.push(`/machine/${encodeURIComponent(item.serialNumber || item.id)}`)
+                    }
+                    className="flex items-center justify-between text-xs h-13 px-3 border-border/80 text-left bg-card hover:border-primary/50 transition-colors shadow-2xs"
+                  >
+                    <div className="flex flex-col items-start truncate min-w-0 pr-1">
+                      <span className="font-bold text-foreground font-mono truncate max-w-full">
+                        {item.serialNumber || item.id}
+                      </span>
+                      <span className="text-[10px] text-muted-foreground truncate max-w-full">
+                        {item.storeName || item.location}
+                      </span>
+                      {item.keyNumber && (
+                        <span className="text-[9px] font-mono text-amber-600 dark:text-amber-400 font-semibold flex items-center gap-0.5 mt-0.5">
+                          <KeyRound className="h-2.5 w-2.5 shrink-0" />
+                          <span>{item.keyNumber}</span>
+                        </span>
+                      )}
+                    </div>
+                    <ArrowRight className="h-3.5 w-3.5 text-muted-foreground shrink-0" />
+                  </Button>
+                ))}
+              </div>
+            ) : (
+              <div className="p-4 border border-dashed border-border/60 rounded-xl text-center">
+                <Boxes className="h-5 w-5 text-muted-foreground mx-auto mb-1.5" />
+                <p className="text-xs font-medium text-foreground">No registered machines yet</p>
+                <p className="text-[11px] text-muted-foreground mt-0.5">
+                  Machines registered by the admin will appear here for one-tap routing.
+                </p>
+              </div>
+            )}
           </div>
-        ) : machinesList.length > 0 ? (
-          <div className="grid grid-cols-2 gap-2">
-            {machinesList.slice(0, 6).map((item) => (
-              <Button
-                key={item.id}
-                variant="outline"
-                size="sm"
-                onClick={() =>
-                  router.push(`/machine/${encodeURIComponent(item.serialNumber || item.id)}`)
-                }
-                className="flex items-center justify-between text-xs h-13 px-3 border-border/80 text-left bg-card hover:border-primary/50 transition-colors shadow-2xs"
-              >
-                <div className="flex flex-col items-start truncate min-w-0 pr-1">
-                  <span className="font-bold text-foreground font-mono truncate max-w-full">
-                    {item.serialNumber || item.id}
-                  </span>
-                  <span className="text-[10px] text-muted-foreground truncate max-w-full">
-                    {item.storeName || item.location}
-                  </span>
-                  {item.keyNumber && (
-                    <span className="text-[9px] font-mono text-amber-600 dark:text-amber-400 font-semibold flex items-center gap-0.5 mt-0.5">
-                      <KeyRound className="h-2.5 w-2.5 shrink-0" />
-                      <span>{item.keyNumber}</span>
-                    </span>
-                  )}
-                </div>
-                <ArrowRight className="h-3.5 w-3.5 text-muted-foreground shrink-0" />
-              </Button>
-            ))}
-          </div>
-        ) : (
-          <div className="p-4 border border-dashed border-border/60 rounded-xl text-center">
-            <Boxes className="h-5 w-5 text-muted-foreground mx-auto mb-1.5" />
-            <p className="text-xs font-medium text-foreground">No registered machines yet</p>
-            <p className="text-[11px] text-muted-foreground mt-0.5">
-              Machines registered by the admin will appear here for one-tap routing.
-            </p>
-          </div>
-        )}
-      </div>
+        </>
+      )}
     </div>
   );
 }
