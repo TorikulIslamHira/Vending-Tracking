@@ -43,6 +43,13 @@
       "when": 1790575776779,
       "tag": "0005_add_machine_issue_logs",
       "breakpoints": true
+    },
+    {
+      "idx": 6,
+      "version": "7",
+      "when": 1790599511225,
+      "tag": "0006_smart_lady_mastermind",
+      "breakpoints": true
     }
   ]
 }
