@@ -103,6 +103,21 @@ export default function MachineOperationPage() {
   const [keyNumberDraft, setKeyNumberDraft] = useState("");
   const updateKeyNumberMutation = useUpdateMachineKeyNumber();
 
+  // Natural "go back to wherever I came from" navigation — a machine can be
+  // opened from /scan, /browse, a Quick Fleet Shortcut, or straight from the
+  // Dashboard's embedded scanner, so a hardcoded destination was always
+  // wrong for at least one of those entry points. Falls back to "/" (which
+  // resolves to each role's real home via middleware) only when there's no
+  // history to go back to, e.g. a deep link opened in a fresh tab — and
+  // never to a legacy /restock or /inventory route.
+  const handleBack = () => {
+    if (typeof window !== "undefined" && window.history.length > 1) {
+      router.back();
+    } else {
+      router.push("/");
+    }
+  };
+
   // 1. Query Machine Data
   const { data: machine, refetch: refetchMachine } = useQuery<IMachine>({
     queryKey: ["machine", machineId],
@@ -443,7 +458,7 @@ export default function MachineOperationPage() {
         <Button
           variant="outline"
           size="icon"
-          onClick={() => router.push("/scan")}
+          onClick={handleBack}
           className="h-10 w-10 shrink-0 rounded-xl border-border/60 shadow-xs"
         >
           <ArrowLeft className="h-4 w-4" />
