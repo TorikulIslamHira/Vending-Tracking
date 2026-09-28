@@ -13,6 +13,8 @@
   "dependencies": {
     "@fastify/cors": "^10.0.2",
     "@fastify/jwt": "^9.0.4",
+    "@fastify/multipart": "^10.1.2",
+    "@fastify/static": "^10.1.5",
     "@googleapis/drive": "^26.0.0",
     "@vending/database": "workspace:*",
     "@vending/shared-types": "workspace:*",

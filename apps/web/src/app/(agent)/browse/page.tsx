@@ -103,7 +103,7 @@ function BrowseMachinesDirectoryContent() {
         <Button
           variant="outline"
           size="icon"
-          onClick={() => router.push("/scan")}
+          onClick={() => router.push("/")}
           className="h-10 w-10 shrink-0 rounded-xl border-border/60 shadow-xs"
         >
           <ArrowLeft className="h-4 w-4" />

@@ -36,6 +36,20 @@
       "when": 1789707638456,
       "tag": "0004_add_store_location_address",
       "breakpoints": true
+    },
+    {
+      "idx": 5,
+      "version": "7",
+      "when": 1790575776779,
+      "tag": "0005_add_machine_issue_logs",
+      "breakpoints": true
+    },
+    {
+      "idx": 6,
+      "version": "7",
+      "when": 1790599511225,
+      "tag": "0006_smart_lady_mastermind",
+      "breakpoints": true
     }
   ]
 }

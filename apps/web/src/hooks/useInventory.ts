@@ -271,10 +271,19 @@ export interface DetailedCashLog {
   agentName: string;
 }
 
+export interface DeletedMachinesSummary {
+  count: number;
+  totalCash: number;
+  totalShopCut: number;
+  totalBusinessCut: number;
+  collectionsCount: number;
+}
+
 export interface ReportsResponse {
   summary: ReportSummary;
   records: ReportRecord[];
   detailedLogs: DetailedCashLog[];
+  deletedMachinesSummary: DeletedMachinesSummary;
 }
 
 export function useReconciliationReports(params?: {
@@ -305,6 +314,13 @@ export function useReconciliationReports(params?: {
           },
           records: [],
           detailedLogs: [],
+          deletedMachinesSummary: {
+            count: 0,
+            totalCash: 0,
+            totalShopCut: 0,
+            totalBusinessCut: 0,
+            collectionsCount: 0,
+          },
         };
       } catch {
         return {
@@ -317,6 +333,13 @@ export function useReconciliationReports(params?: {
           },
           records: [],
           detailedLogs: [],
+          deletedMachinesSummary: {
+            count: 0,
+            totalCash: 0,
+            totalShopCut: 0,
+            totalBusinessCut: 0,
+            collectionsCount: 0,
+          },
         };
       }
     },

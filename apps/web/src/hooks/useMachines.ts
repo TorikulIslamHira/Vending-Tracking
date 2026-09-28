@@ -101,3 +101,85 @@ export function useCreateMachine() {
     },
   });
 }
+
+export function useUpdateMachineKeyNumber() {
+  const queryClient = useQueryClient();
+
+  return useMutation({
+    mutationFn: async ({ machineId, keyNumber }: { machineId: string; keyNumber: string }) => {
+      const response = await api.put(`/machines/${encodeURIComponent(machineId)}`, {
+        keyNumber: keyNumber.trim() || null,
+      });
+      return response.data?.data;
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ["machine"] });
+      queryClient.invalidateQueries({ queryKey: ["machines"] });
+      toast.success("Key number updated");
+    },
+    onError: (err: any) => {
+      toast.error(err?.response?.data?.message || "Failed to update key number");
+    },
+  });
+}
+
+export function useResolveIssue() {
+  const queryClient = useQueryClient();
+
+  return useMutation({
+    mutationFn: async ({
+      machineId,
+      note,
+      repairPhotoUrl,
+    }: {
+      machineId: string;
+      note?: string;
+      repairPhotoUrl?: string | null;
+    }) => {
+      const response = await api.patch(`/machines/${encodeURIComponent(machineId)}/resolve-issue`, {
+        note,
+        repairPhotoUrl,
+      });
+      return response.data?.data;
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ["machine"] });
+      queryClient.invalidateQueries({ queryKey: ["machines"] });
+      queryClient.invalidateQueries({ queryKey: ["machine-issues"] });
+      queryClient.invalidateQueries({ queryKey: ["dashboard-metrics"] });
+      toast.success("Issue resolved — machine is back to normal status");
+    },
+    onError: (err: any) => {
+      toast.error(err?.response?.data?.message || "Failed to resolve issue");
+    },
+  });
+}
+
+export interface MachineIssueLogItem {
+  id: string;
+  reason: string;
+  issuePhotoUrl: string | null;
+  status: "OPEN" | "RESOLVED";
+  reportedByAgentName: string;
+  resolvedByAgentName: string | null;
+  resolvedNote: string | null;
+  repairPhotoUrl: string | null;
+  resolvedAt: string | null;
+  createdAt: string;
+}
+
+export function useMachineIssues(machineId: string) {
+  return useQuery<MachineIssueLogItem[]>({
+    queryKey: ["machine-issues", machineId],
+    queryFn: async () => {
+      try {
+        const res = await api.get(`/machines/${encodeURIComponent(machineId)}/issues`);
+        return Array.isArray(res.data?.data) ? res.data.data : [];
+      } catch {
+        return [];
+      }
+    },
+    enabled: Boolean(machineId),
+    staleTime: 1000 * 15,
+  });
+}

@@ -33,3 +33,9 @@ Thumbs.db
 
 # Scratch & temporary test scripts
 test-endpoints.cjs
+
+# Locally-uploaded issue/repair photos (local-disk dev storage — see
+# apps/api/src/modules/uploads). Never committed; needs a persistent Docker
+# volume before this ships to production so files survive a redeploy.
+apps/api/uploads/issues/*
+!apps/api/uploads/issues/.gitkeep

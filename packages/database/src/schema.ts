@@ -20,6 +20,7 @@ export const machineStatusEnum = pgEnum("MachineStatus", ["ONLINE", "OFFLINE"]);
 export const entryTypeEnum = pgEnum("EntryType", ["STANDARD", "MANUAL", "REVERSE"]);
 export const paymentModeEnum = pgEnum("PaymentMode", ["CASH", "BANK"]);
 export const shopPaymentStatusEnum = pgEnum("ShopPaymentStatus", ["PAID", "PENDING"]);
+export const issueStatusEnum = pgEnum("IssueStatus", ["OPEN", "RESOLVED"]);
 
 // ==============================================================================
 // 2. Tables (matching exact PostgreSQL column identifiers)
@@ -29,7 +30,7 @@ export const shopPaymentStatusEnum = pgEnum("ShopPaymentStatus", ["PAID", "PENDI
 export const tenants = pgTable("tenants", {
   id: text("id").primaryKey().$defaultFn(() => crypto.randomUUID()),
   name: text("name").notNull(),
-  currency: text("currency").default("USD").notNull(),
+  currency: text("currency").default("EUR").notNull(),
   themeConfig: jsonb("themeConfig"),
   isActive: boolean("isActive").default(true).notNull(),
   createdAt: timestamp("createdAt", { withTimezone: true, mode: "date" }).defaultNow().notNull(),
@@ -232,6 +233,47 @@ export const cashLogs = pgTable(
   ]
 );
 
+// Machine Issue Logs Table — full lifecycle of a flagged-machine issue,
+// from the agent reporting it (optionally with a photo) through to
+// resolution (optionally with a proof-of-repair photo + note). This is
+// distinct from `machines.attentionNeeded`/`attentionReason`, which only
+// ever holds the machine's *current* flag state — this table is the
+// historical record those two live fields are derived from, and what
+// powers the machine's chronological issue/repair history in the UI.
+export const machineIssueLogs = pgTable(
+  "machine_issue_logs",
+  {
+    id: text("id").primaryKey().$defaultFn(() => crypto.randomUUID()),
+    tenantId: text("tenantId")
+      .notNull()
+      .references(() => tenants.id, { onDelete: "cascade" }),
+    machineId: text("machineId")
+      .notNull()
+      .references(() => machines.id, { onDelete: "cascade" }),
+    reportedByAgentId: text("reportedByAgentId")
+      .notNull()
+      .references(() => users.id, { onDelete: "restrict" }),
+    // The quick-action preset text (Malfunction / Key Lost / Locker Broken)
+    // or a custom reason, mirroring machines.attentionReason at report time.
+    reason: text("reason").notNull(),
+    issuePhotoUrl: text("issuePhotoUrl"),
+    // The cash-collection log this issue was reported alongside, if any —
+    // an issue can also be reported/resolved independently of a collection.
+    cashLogId: text("cashLogId").references(() => cashLogs.id, { onDelete: "set null" }),
+    status: issueStatusEnum("status").default("OPEN").notNull(),
+    resolvedByAgentId: text("resolvedByAgentId").references(() => users.id, { onDelete: "set null" }),
+    resolvedNote: text("resolvedNote"),
+    repairPhotoUrl: text("repairPhotoUrl"),
+    resolvedAt: timestamp("resolvedAt", { withTimezone: true, mode: "date" }),
+    createdAt: timestamp("createdAt", { withTimezone: true, mode: "date" }).defaultNow().notNull(),
+  },
+  (table) => [
+    index("machine_issue_logs_tenantId_idx").on(table.tenantId),
+    index("machine_issue_logs_machineId_idx").on(table.machineId),
+    index("machine_issue_logs_status_idx").on(table.status),
+  ]
+);
+
 // Admin Audit Logs Table — records sensitive administrative actions
 // (currently: machine deletion). Visible only to the root Super Admin.
 export const adminAuditLogs = pgTable(
@@ -267,6 +309,7 @@ export const tenantsRelations = relations(tenants, ({ many }) => ({
   inventoryLogs: many(inventoryLogs),
   cashLogs: many(cashLogs),
   adminAuditLogs: many(adminAuditLogs),
+  machineIssueLogs: many(machineIssueLogs),
 }));
 
 export const usersRelations = relations(users, ({ one, many }) => ({
@@ -277,6 +320,8 @@ export const usersRelations = relations(users, ({ one, many }) => ({
   inventoryLogs: many(inventoryLogs),
   cashLogs: many(cashLogs),
   adminAuditLogs: many(adminAuditLogs),
+  reportedIssues: many(machineIssueLogs, { relationName: "reportedIssues" }),
+  resolvedIssues: many(machineIssueLogs, { relationName: "resolvedIssues" }),
 }));
 
 export const storesRelations = relations(stores, ({ one, many }) => ({
@@ -298,6 +343,7 @@ export const machinesRelations = relations(machines, ({ one, many }) => ({
   }),
   inventoryLogs: many(inventoryLogs),
   cashLogs: many(cashLogs),
+  issueLogs: many(machineIssueLogs),
 }));
 
 export const packetConfigsRelations = relations(packetConfigs, ({ one, many }) => ({
@@ -342,6 +388,35 @@ export const cashLogsRelations = relations(cashLogs, ({ one }) => ({
   }),
 }));
 
+export const machineIssueLogsRelations = relations(machineIssueLogs, ({ one }) => ({
+  tenant: one(tenants, {
+    fields: [machineIssueLogs.tenantId],
+    references: [tenants.id],
+  }),
+  machine: one(machines, {
+    fields: [machineIssueLogs.machineId],
+    references: [machines.id],
+  }),
+  cashLog: one(cashLogs, {
+    fields: [machineIssueLogs.cashLogId],
+    references: [cashLogs.id],
+  }),
+  // Two distinct FKs to `users` (reporter vs. resolver) need distinct
+  // relationNames on both sides so Drizzle's relational query builder can
+  // tell them apart — see usersRelations' matching reportedIssues/
+  // resolvedIssues above.
+  reportedByAgent: one(users, {
+    fields: [machineIssueLogs.reportedByAgentId],
+    references: [users.id],
+    relationName: "reportedIssues",
+  }),
+  resolvedByAgent: one(users, {
+    fields: [machineIssueLogs.resolvedByAgentId],
+    references: [users.id],
+    relationName: "resolvedIssues",
+  }),
+}));
+
 export const adminAuditLogsRelations = relations(adminAuditLogs, ({ one }) => ({
   tenant: one(tenants, {
     fields: [adminAuditLogs.tenantId],
@@ -376,6 +451,9 @@ export type NewInventoryLog = InferInsertModel<typeof inventoryLogs>;
 
 export type CashLog = InferSelectModel<typeof cashLogs>;
 export type NewCashLog = InferInsertModel<typeof cashLogs>;
+
+export type MachineIssueLog = InferSelectModel<typeof machineIssueLogs>;
+export type NewMachineIssueLog = InferInsertModel<typeof machineIssueLogs>;
 
 export type AdminAuditLog = InferSelectModel<typeof adminAuditLogs>;
 export type NewAdminAuditLog = InferInsertModel<typeof adminAuditLogs>;

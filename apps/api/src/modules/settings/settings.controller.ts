@@ -31,7 +31,7 @@ export async function getSettingsHandler(
     return reply.send({
       statusCode: 200,
       data: {
-        currency: tenant.currency || "USD",
+        currency: tenant.currency || "EUR",
         defaultShopCut: theme.defaultShopCut ?? 30,
         defaultBizCut: theme.defaultBizCut ?? 70,
         lowStockAlerts: theme.lowStockAlerts ?? true,

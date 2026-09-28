@@ -57,6 +57,18 @@ export default function AgentHistoryPage() {
   const { user } = useAuthStore();
   const isAdmin = user?.role === "ADMIN";
 
+  // Same "go back to wherever I came from" logic as the Machine View page —
+  // this screen is reachable from both the Scan tab and the Admin Portal, so
+  // a hardcoded destination was always wrong for one of them. Falls back to
+  // "/" (resolves to each role's real home) only when there's no history.
+  const handleBack = () => {
+    if (typeof window !== "undefined" && window.history.length > 1) {
+      router.back();
+    } else {
+      router.push("/");
+    }
+  };
+
   return (
     <div className="space-y-4 pb-4">
       {/* Header */}
@@ -64,7 +76,7 @@ export default function AgentHistoryPage() {
         <Button
           variant="outline"
           size="icon"
-          onClick={() => router.push("/scan")}
+          onClick={handleBack}
           className="h-10 w-10 shrink-0 rounded-xl border-border/60 shadow-xs"
         >
           <ArrowLeft className="h-4 w-4" />

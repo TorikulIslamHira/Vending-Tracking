@@ -62,7 +62,7 @@ export default function StoresPage() {
   // Form Fields
   const [storeName, setStoreName] = useState("");
   const [storeCategory, setStoreCategory] = useState("");
-  const [shopCut, setShopCut] = useState(30);
+  const [shopCut, setShopCut] = useState(25);
   const [eircode, setEircode] = useState("");
   const [paymentMode, setPaymentMode] = useState<"CASH" | "BANK">("CASH");
   const [locationAddress, setLocationAddress] = useState("");
@@ -121,7 +121,7 @@ export default function StoresPage() {
     setEditingStoreId(null);
     setStoreName("");
     setStoreCategory("Confectionery & Toys");
-    setShopCut(30);
+    setShopCut(25);
     setEircode("");
     setPaymentMode("CASH");
     setLocationAddress("");

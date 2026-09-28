@@ -2,6 +2,9 @@ import "dotenv/config";
 import Fastify, { FastifyInstance } from "fastify";
 import cors from "@fastify/cors";
 import jwt from "@fastify/jwt";
+import multipart from "@fastify/multipart";
+import fastifyStatic from "@fastify/static";
+import path from "path";
 import { tenantHandler } from "./core/middlewares/tenantHandler";
 import { db } from "./core/db";
 import { sql } from "drizzle-orm";
@@ -13,6 +16,7 @@ import { usersRoutes } from "./modules/users";
 import { storesRoutes } from "./modules/stores";
 import { settingsRoutes } from "./modules/settings";
 import { auditRoutes } from "./modules/audit";
+import { uploadsRoutes } from "./modules/uploads";
 import { registerBackupSchedules } from "./core/backup/scheduler";
 
 export function buildServer(): FastifyInstance {
@@ -40,6 +44,22 @@ export function buildServer(): FastifyInstance {
   // Register JWT
   app.register(jwt, {
     secret: jwtSecret,
+  });
+
+  // Multipart (issue/repair photo uploads) — matches nginx's existing
+  // client_max_body_size 20M, comfortably above the 8MB per-file cap
+  // uploads.controller.ts enforces on top of this.
+  app.register(multipart, {
+    limits: { fileSize: 8 * 1024 * 1024, files: 1 },
+  });
+
+  // Serves uploaded photos back out at /api/v1/uploads/* — same prefix the
+  // rest of the API lives under, so nginx's existing `/api/` proxy block
+  // reaches these files with no new nginx config needed.
+  app.register(fastifyStatic, {
+    root: path.join(__dirname, "../uploads"),
+    prefix: "/api/v1/uploads/",
+    decorateReply: false,
   });
 
   // Decorate with authenticateTenant hook
@@ -83,6 +103,7 @@ export function buildServer(): FastifyInstance {
   app.register(usersRoutes, { prefix: "/api/v1/users" });
   app.register(settingsRoutes, { prefix: "/api/v1/settings" });
   app.register(auditRoutes, { prefix: "/api/v1/audit-logs" });
+  app.register(uploadsRoutes, { prefix: "/api/v1/uploads" });
 
   return app;
 }

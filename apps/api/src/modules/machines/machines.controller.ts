@@ -1,8 +1,8 @@
 import { FastifyReply, FastifyRequest } from "fastify";
 import { eq, and, or, desc, count, sum, isNull } from "drizzle-orm";
 import bcrypt from "bcryptjs";
-import { MachineCreateSchema, MachineDeleteSchema } from "@vending/validation";
-import { db, machines, users, tenants, adminAuditLogs, cashLogs } from "../../core/db";
+import { MachineCreateSchema, MachineDeleteSchema, MachineUpdateSchema, ResolveIssueSchema } from "@vending/validation";
+import { db, machines, users, tenants, adminAuditLogs, cashLogs, machineIssueLogs } from "../../core/db";
 import { computeVirtualCashBalances, computeVirtualCashBalanceForMachine } from "./virtualCashBalance.service";
 import { isRootSuperAdminEmail } from "../../core/rootAdmin";
 
@@ -475,6 +475,242 @@ export async function deleteMachineHandler(
       statusCode: 500,
       error: "Internal Server Error",
       message: error.message || "Failed to delete machine",
+    });
+  }
+}
+
+/**
+ * In-place edit of an existing machine — currently just Key Number (Task 3's
+ * inline pencil-edit on the machine detail page). Not admin-gated: any
+ * authenticated tenant user can correct a key number on-site, the same as
+ * they can already report a cash collection.
+ */
+export async function updateMachineHandler(
+  request: FastifyRequest<{ Params: { id: string }; Body: unknown }>,
+  reply: FastifyReply
+): Promise<void> {
+  const tenantId = request.tenantId;
+  const { id } = request.params;
+
+  const parseResult = MachineUpdateSchema.safeParse(request.body);
+  if (!parseResult.success) {
+    return reply.status(400).send({
+      statusCode: 400,
+      error: "Bad Request",
+      message: "Validation failed",
+      issues: parseResult.error.issues,
+    });
+  }
+
+  try {
+    const machine = await db.query.machines.findFirst({
+      where: and(
+        eq(machines.tenantId, tenantId),
+        or(eq(machines.id, id), eq(machines.serialNumber, id), eq(machines.qrCode, id)),
+        isNull(machines.deletedAt)
+      ),
+    });
+
+    if (!machine) {
+      return reply.status(404).send({
+        statusCode: 404,
+        error: "Not Found",
+        message: "Machine not found in your organization",
+      });
+    }
+
+    const { keyNumber } = parseResult.data;
+    const [updated] = await db
+      .update(machines)
+      .set({
+        updatedAt: new Date(),
+        ...(keyNumber !== undefined ? { keyNumber: keyNumber?.trim() || null } : {}),
+      })
+      .where(and(eq(machines.id, machine.id), eq(machines.tenantId, tenantId)))
+      .returning();
+
+    return reply.send({
+      statusCode: 200,
+      data: { id: updated.id, keyNumber: updated.keyNumber },
+    });
+  } catch (error: any) {
+    return reply.status(500).send({
+      statusCode: 500,
+      error: "Internal Server Error",
+      message: error.message || "Failed to update machine",
+    });
+  }
+}
+
+/**
+ * "Mark as Repaired" — clears a machine's attention flag and resolves the
+ * most recent OPEN machine_issue_logs row (optionally with a proof-of-repair
+ * photo + note), rather than just flipping attentionNeeded back to false and
+ * losing the record of what was actually done about it.
+ */
+export async function resolveIssueHandler(
+  request: FastifyRequest<{ Params: { id: string }; Body: unknown }>,
+  reply: FastifyReply
+): Promise<void> {
+  const tenantId = request.tenantId;
+  const agentId = request.userId;
+  const { id } = request.params;
+
+  const parseResult = ResolveIssueSchema.safeParse(request.body);
+  if (!parseResult.success) {
+    return reply.status(400).send({
+      statusCode: 400,
+      error: "Bad Request",
+      message: "Validation failed",
+      issues: parseResult.error.issues,
+    });
+  }
+  const { note, repairPhotoUrl } = parseResult.data;
+
+  try {
+    const machine = await db.query.machines.findFirst({
+      where: and(
+        or(eq(machines.id, id), eq(machines.serialNumber, id), eq(machines.qrCode, id)),
+        eq(machines.tenantId, tenantId),
+        isNull(machines.deletedAt)
+      ),
+    });
+
+    if (!machine) {
+      return reply.status(404).send({
+        statusCode: 404,
+        error: "Not Found",
+        message: "Machine not found in your organization",
+      });
+    }
+
+    if (!machine.attentionNeeded) {
+      return reply.status(400).send({
+        statusCode: 400,
+        error: "Bad Request",
+        message: "This machine has no open issue to resolve",
+      });
+    }
+
+    const result = await db.transaction(async (tx) => {
+      const [updatedMachine] = await tx
+        .update(machines)
+        .set({ attentionNeeded: false, attentionReason: null, updatedAt: new Date() })
+        .where(and(eq(machines.id, machine.id), eq(machines.tenantId, tenantId)))
+        .returning();
+
+      const openIssue = await tx.query.machineIssueLogs.findFirst({
+        where: and(
+          eq(machineIssueLogs.machineId, machine.id),
+          eq(machineIssueLogs.tenantId, tenantId),
+          eq(machineIssueLogs.status, "OPEN")
+        ),
+        orderBy: [desc(machineIssueLogs.createdAt)],
+      });
+
+      if (openIssue) {
+        await tx
+          .update(machineIssueLogs)
+          .set({
+            status: "RESOLVED",
+            resolvedByAgentId: agentId,
+            resolvedNote: note || null,
+            repairPhotoUrl: repairPhotoUrl || null,
+            resolvedAt: new Date(),
+          })
+          .where(eq(machineIssueLogs.id, openIssue.id));
+      } else {
+        // Flag predates this feature (or was set by some other path with no
+        // matching OPEN row) — still record that a repair happened rather
+        // than silently clearing the flag with no audit trail at all.
+        await tx.insert(machineIssueLogs).values({
+          tenantId,
+          machineId: machine.id,
+          reportedByAgentId: agentId,
+          reason: machine.attentionReason || "Unknown (flag predates issue tracking)",
+          status: "RESOLVED",
+          resolvedByAgentId: agentId,
+          resolvedNote: note || null,
+          repairPhotoUrl: repairPhotoUrl || null,
+          resolvedAt: new Date(),
+        });
+      }
+
+      return updatedMachine;
+    });
+
+    return reply.send({
+      statusCode: 200,
+      data: { id: result.id, attentionNeeded: result.attentionNeeded },
+      message: "Issue resolved — machine is back to normal status",
+    });
+  } catch (error: any) {
+    return reply.status(500).send({
+      statusCode: 500,
+      error: "Internal Server Error",
+      message: error.message || "Failed to resolve issue",
+    });
+  }
+}
+
+/**
+ * Chronological issue/repair history for a single machine — reported and
+ * resolved events, most recent first. Powers the machine's Audit tab
+ * alongside its cash collections.
+ */
+export async function getMachineIssuesHandler(
+  request: FastifyRequest<{ Params: { id: string } }>,
+  reply: FastifyReply
+): Promise<void> {
+  const tenantId = request.tenantId;
+  const { id } = request.params;
+
+  try {
+    const machine = await db.query.machines.findFirst({
+      where: and(
+        or(eq(machines.id, id), eq(machines.serialNumber, id), eq(machines.qrCode, id)),
+        eq(machines.tenantId, tenantId)
+      ),
+      columns: { id: true },
+    });
+
+    if (!machine) {
+      return reply.status(404).send({
+        statusCode: 404,
+        error: "Not Found",
+        message: "Machine not found in your organization",
+      });
+    }
+
+    const issues = await db.query.machineIssueLogs.findMany({
+      where: and(eq(machineIssueLogs.machineId, machine.id), eq(machineIssueLogs.tenantId, tenantId)),
+      with: {
+        reportedByAgent: { columns: { id: true, name: true } },
+        resolvedByAgent: { columns: { id: true, name: true } },
+      },
+      orderBy: [desc(machineIssueLogs.createdAt)],
+    });
+
+    return reply.send({
+      statusCode: 200,
+      data: issues.map((i) => ({
+        id: i.id,
+        reason: i.reason,
+        issuePhotoUrl: i.issuePhotoUrl,
+        status: i.status,
+        reportedByAgentName: i.reportedByAgent?.name || "Field Agent",
+        resolvedByAgentName: i.resolvedByAgent?.name || null,
+        resolvedNote: i.resolvedNote,
+        repairPhotoUrl: i.repairPhotoUrl,
+        resolvedAt: i.resolvedAt,
+        createdAt: i.createdAt,
+      })),
+    });
+  } catch (error: any) {
+    return reply.status(500).send({
+      statusCode: 500,
+      error: "Internal Server Error",
+      message: error.message || "Failed to fetch machine issue history",
     });
   }
 }
