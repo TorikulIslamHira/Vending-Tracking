@@ -24,6 +24,7 @@
     "db:wipe": "tsx src/wipe.ts",
     "db:studio": "drizzle-kit studio",
     "db:seed": "tsx src/seed.ts",
+    "db:seed:mock": "tsx src/seedMockData.ts",
     "build": "tsc",
     "typecheck": "tsc --noEmit"
   },

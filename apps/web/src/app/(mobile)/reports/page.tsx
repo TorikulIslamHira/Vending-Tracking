@@ -187,9 +187,14 @@ export default function ReportsPage() {
           </p>
         </div>
 
-        <div className="flex h-10 w-10 items-center justify-center rounded-2xl bg-secondary/15 text-secondary shadow-xs">
-          <BarChart3 className="h-5 w-5" />
-        </div>
+        <Button
+          onClick={handleOpenPreview}
+          disabled={records.length === 0}
+          className="h-10 px-3.5 rounded-2xl bg-zinc-900 text-white dark:bg-zinc-100 dark:text-zinc-900 font-bold text-xs shadow-md active:scale-[0.97] transition-transform flex items-center gap-1.5 shrink-0"
+        >
+          <FileText className="h-4 w-4 text-primary" />
+          <span>PDF Report</span>
+        </Button>
       </div>
 
       {/* Screen 9: Date Range & Searchable Store Filters */}
@@ -579,16 +584,6 @@ export default function ReportsPage() {
           )}
         </div>
       </div>
-
-      {/* Screen 9 Action: Full-width Dark PDF Report Button */}
-      <Button
-        onClick={handleOpenPreview}
-        disabled={records.length === 0}
-        className="w-full h-13 rounded-2xl bg-zinc-900 text-white dark:bg-zinc-100 dark:text-zinc-900 font-bold text-sm shadow-md active:scale-[0.97] transition-transform flex items-center justify-center gap-2 mt-2"
-      >
-        <FileText className="h-4 w-4 text-primary" />
-        <span>PREVIEW & GENERATE PDF REPORT</span>
-      </Button>
 
       {/* Report Preview Modal */}
       <Dialog open={isPreviewOpen} onOpenChange={(open) => !open && handleClosePreview()}>

@@ -10,6 +10,8 @@ import { IMachine } from "@vending/shared-types";
 import { api as apiClient } from "@/lib/api";
 import { useAuthStore } from "@/store/useAuthStore";
 import { useCurrency } from "@/hooks/useTenantSettings";
+import { useResolveIssue, useUpdateMachineKeyNumber, useMachineIssues } from "@/hooks/useMachines";
+import { uploadIssuePhoto, resolveUploadUrl } from "@/lib/uploads";
 import { toast } from "sonner";
 import {
   Card,
@@ -21,6 +23,7 @@ import {
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
+import { Textarea } from "@/components/ui/textarea";
 import {
   Dialog,
   DialogContent,
@@ -40,6 +43,13 @@ import {
   KeyRound,
   Banknote,
   Landmark,
+  Camera,
+  X,
+  Pencil,
+  Check,
+  Wrench,
+  CheckCircle,
+  AlertTriangle,
 } from "lucide-react";
 
 // Quick-action presets for flagging a machine condition issue while collecting
@@ -69,6 +79,24 @@ export default function MachineOperationPage() {
   } | null>(null);
   const [expectedPaymentDate, setExpectedPaymentDate] = useState("");
   const { format: formatMoney, symbol } = useCurrency();
+
+  // Task 1: Issue-report photo upload state
+  const [issuePhotoPreviewUrl, setIssuePhotoPreviewUrl] = useState<string | null>(null);
+  const [uploadedIssuePhotoUrl, setUploadedIssuePhotoUrl] = useState<string | null>(null);
+  const [isUploadingIssuePhoto, setIsUploadingIssuePhoto] = useState(false);
+
+  // Task 2: "Mark as Repaired" modal state
+  const [isResolveModalOpen, setIsResolveModalOpen] = useState(false);
+  const [resolveNote, setResolveNote] = useState("");
+  const [repairPhotoPreviewUrl, setRepairPhotoPreviewUrl] = useState<string | null>(null);
+  const [uploadedRepairPhotoUrl, setUploadedRepairPhotoUrl] = useState<string | null>(null);
+  const [isUploadingRepairPhoto, setIsUploadingRepairPhoto] = useState(false);
+  const resolveIssueMutation = useResolveIssue();
+
+  // Task 3: Editable Key Number state
+  const [isEditingKeyNumber, setIsEditingKeyNumber] = useState(false);
+  const [keyNumberDraft, setKeyNumberDraft] = useState("");
+  const updateKeyNumberMutation = useUpdateMachineKeyNumber();
 
   // 1. Query Machine Data
   const { data: machine, refetch: refetchMachine } = useQuery<IMachine>({
@@ -116,6 +144,60 @@ export default function MachineOperationPage() {
       log.entryType === "CASH_DROP" ||
       log.entryType === "CASH_COLLECT"
   );
+
+  // 3. Query the machine's issue/repair lifecycle (Task 2) and merge it into
+  // the same chronological Audit feed as the cash collections — a reported
+  // issue and its later repair are audit events on this machine too, not
+  // just a background flag.
+  const { data: machineIssues = [] } = useMachineIssues(machine?.id || machineId);
+
+  type AuditEntry =
+    | { kind: "cash"; id: string; timestamp: string; amount: number; note?: string | null }
+    | { kind: "issue-reported"; id: string; timestamp: string; reason: string; photoUrl: string | null; agentName: string }
+    | {
+        kind: "issue-resolved";
+        id: string;
+        timestamp: string;
+        reason: string;
+        note: string | null;
+        photoUrl: string | null;
+        agentName: string;
+      };
+
+  const auditEntries: AuditEntry[] = [
+    ...cashCollectionLogs.map(
+      (log: any): AuditEntry => ({
+        kind: "cash",
+        id: `cash-${log.id}`,
+        timestamp: log.createdAt,
+        amount: Number(log.collectedAmount || 0),
+        note: log.remarks,
+      })
+    ),
+    ...machineIssues.map(
+      (i): AuditEntry => ({
+        kind: "issue-reported",
+        id: `issue-reported-${i.id}`,
+        timestamp: i.createdAt,
+        reason: i.reason,
+        photoUrl: i.issuePhotoUrl,
+        agentName: i.reportedByAgentName,
+      })
+    ),
+    ...machineIssues
+      .filter((i) => i.status === "RESOLVED" && i.resolvedAt)
+      .map(
+        (i): AuditEntry => ({
+          kind: "issue-resolved",
+          id: `issue-resolved-${i.id}`,
+          timestamp: i.resolvedAt as string,
+          reason: i.reason,
+          note: i.resolvedNote,
+          photoUrl: i.repairPhotoUrl,
+          agentName: i.resolvedByAgentName || "Field Agent",
+        })
+      ),
+  ].sort((a, b) => new Date(b.timestamp).getTime() - new Date(a.timestamp).getTime());
 
   // Form: Cash Collection
   const cashForm = useForm<CashCollectionInput>({
@@ -165,6 +247,8 @@ export default function MachineOperationPage() {
       );
       cashForm.reset();
       setSelectedAttentionPreset(null);
+      setIssuePhotoPreviewUrl(null);
+      setUploadedIssuePhotoUrl(null);
 
       // Hand off to the shopkeeper-payment follow-up: a CASH store already
       // got marked PAID by the backend (paid out on the spot), so this popup
@@ -226,7 +310,81 @@ export default function MachineOperationPage() {
       isPartial: false,
       attentionFlag: Boolean(selectedAttentionPreset),
       attentionReason: selectedAttentionPreset || undefined,
+      issuePhotoUrl: selectedAttentionPreset ? uploadedIssuePhotoUrl || undefined : undefined,
     });
+  };
+
+  // Shared upload flow for both the issue-report photo (Cash Collect form)
+  // and the proof-of-repair photo (Mark as Repaired modal) — upload happens
+  // immediately on file select so the eventual submit is instant, not
+  // waiting on a multipart upload at the same moment.
+  const handleIssuePhotoSelect = async (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    e.target.value = "";
+    if (!file) return;
+    setIssuePhotoPreviewUrl(URL.createObjectURL(file));
+    setIsUploadingIssuePhoto(true);
+    try {
+      const url = await uploadIssuePhoto(file);
+      setUploadedIssuePhotoUrl(url);
+    } catch {
+      toast.error("Failed to upload photo");
+      setIssuePhotoPreviewUrl(null);
+    } finally {
+      setIsUploadingIssuePhoto(false);
+    }
+  };
+
+  const handleRemoveIssuePhoto = () => {
+    setIssuePhotoPreviewUrl(null);
+    setUploadedIssuePhotoUrl(null);
+  };
+
+  const handleRepairPhotoSelect = async (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    e.target.value = "";
+    if (!file) return;
+    setRepairPhotoPreviewUrl(URL.createObjectURL(file));
+    setIsUploadingRepairPhoto(true);
+    try {
+      const url = await uploadIssuePhoto(file);
+      setUploadedRepairPhotoUrl(url);
+    } catch {
+      toast.error("Failed to upload photo");
+      setRepairPhotoPreviewUrl(null);
+    } finally {
+      setIsUploadingRepairPhoto(false);
+    }
+  };
+
+  const handleRemoveRepairPhoto = () => {
+    setRepairPhotoPreviewUrl(null);
+    setUploadedRepairPhotoUrl(null);
+  };
+
+  const handleResolveIssue = () => {
+    resolveIssueMutation.mutate(
+      {
+        machineId: machine?.id || machineId,
+        note: resolveNote.trim() || undefined,
+        repairPhotoUrl: uploadedRepairPhotoUrl,
+      },
+      {
+        onSuccess: () => {
+          setIsResolveModalOpen(false);
+          setResolveNote("");
+          setRepairPhotoPreviewUrl(null);
+          setUploadedRepairPhotoUrl(null);
+        },
+      }
+    );
+  };
+
+  const handleSaveKeyNumber = () => {
+    updateKeyNumberMutation.mutate(
+      { machineId: machine?.id || machineId, keyNumber: keyNumberDraft },
+      { onSuccess: () => setIsEditingKeyNumber(false) }
+    );
   };
 
   // Unauthenticated Route Guard (403 Forbidden). Placed after every hook call
@@ -302,18 +460,96 @@ export default function MachineOperationPage() {
       </div>
 
       {/* Prominent Key Number — the single most important thing a field
-          agent needs to find and open the physical coin box. */}
+          agent needs to find and open the physical coin box. Task 3:
+          editable in place via the pencil icon, no separate page/nav away. */}
       <Card className="border-amber-500/40 bg-gradient-to-br from-amber-500/10 via-card to-card shadow-xs">
         <CardContent className="p-4 flex flex-col items-center text-center gap-1">
           <span className="text-[11px] font-bold uppercase tracking-widest text-amber-600 dark:text-amber-400 flex items-center gap-1.5">
             <KeyRound className="h-3.5 w-3.5" />
             <span>Key Number</span>
           </span>
-          <span className="text-4xl font-black font-mono tracking-wide text-amber-600 dark:text-amber-400">
-            {machine?.keyNumber || "—"}
-          </span>
+          {isEditingKeyNumber ? (
+            <div className="flex items-center gap-1.5 w-full max-w-[240px] pt-1">
+              <Input
+                autoFocus
+                value={keyNumberDraft}
+                onChange={(e) => setKeyNumberDraft(e.target.value)}
+                onKeyDown={(e) => {
+                  if (e.key === "Enter") handleSaveKeyNumber();
+                  if (e.key === "Escape") setIsEditingKeyNumber(false);
+                }}
+                className="h-11 text-center text-lg font-black font-mono tracking-wide rounded-xl"
+              />
+              <Button
+                size="icon"
+                className="h-10 w-10 shrink-0 rounded-xl bg-emerald-600 hover:bg-emerald-700 text-white"
+                disabled={updateKeyNumberMutation.isPending}
+                onClick={handleSaveKeyNumber}
+              >
+                {updateKeyNumberMutation.isPending ? (
+                  <Loader2 className="h-4 w-4 animate-spin" />
+                ) : (
+                  <Check className="h-4 w-4" />
+                )}
+              </Button>
+              <Button
+                size="icon"
+                variant="outline"
+                className="h-10 w-10 shrink-0 rounded-xl"
+                onClick={() => setIsEditingKeyNumber(false)}
+              >
+                <X className="h-4 w-4" />
+              </Button>
+            </div>
+          ) : (
+            <div className="flex items-center gap-2">
+              <span className="text-4xl font-black font-mono tracking-wide text-amber-600 dark:text-amber-400">
+                {machine?.keyNumber || "—"}
+              </span>
+              <button
+                type="button"
+                onClick={() => {
+                  setKeyNumberDraft(machine?.keyNumber || "");
+                  setIsEditingKeyNumber(true);
+                }}
+                className="h-7 w-7 rounded-lg bg-amber-500/15 text-amber-600 dark:text-amber-400 flex items-center justify-center hover:bg-amber-500/25 active:scale-95 transition-all shrink-0"
+                title="Edit Key Number"
+              >
+                <Pencil className="h-3.5 w-3.5" />
+              </button>
+            </div>
+          )}
         </CardContent>
       </Card>
+
+      {/* "Mark as Repaired" banner (Task 2) — only shown when the machine is
+          currently flagged. Visible right up front rather than buried in a
+          tab, since resolving it is the most urgent thing to do here. */}
+      {machine?.attentionNeeded && (
+        <Card className="border-rose-500/40 bg-rose-500/5">
+          <CardContent className="p-3.5 flex items-center justify-between gap-3">
+            <div className="flex items-center gap-2 min-w-0">
+              <AlertTriangle className="h-4 w-4 text-rose-600 dark:text-rose-400 shrink-0" />
+              <div className="min-w-0">
+                <p className="text-xs font-bold text-rose-600 dark:text-rose-400 truncate">
+                  Flagged: {machine.attentionReason || "Attention needed"}
+                </p>
+                <p className="text-[10px] text-muted-foreground">
+                  Resolve to return this machine to normal status
+                </p>
+              </div>
+            </div>
+            <Button
+              size="sm"
+              className="h-9 text-xs font-bold rounded-xl shrink-0 bg-emerald-600 hover:bg-emerald-700 text-white"
+              onClick={() => setIsResolveModalOpen(true)}
+            >
+              <Wrench className="h-3.5 w-3.5 mr-1.5" />
+              Mark as Repaired
+            </Button>
+          </CardContent>
+        </Card>
+      )}
 
       {/* Operation Tabs */}
       <Tabs
@@ -393,6 +629,8 @@ export default function MachineOperationPage() {
                             setSelectedAttentionPreset(next);
                             if (next) {
                               cashForm.setValue("remarks", next, { shouldValidate: true });
+                            } else {
+                              handleRemoveIssuePhoto();
                             }
                           }}
                           className={`h-8 px-3 rounded-full text-[11px] font-semibold border transition-colors ${
@@ -407,9 +645,53 @@ export default function MachineOperationPage() {
                     })}
                   </div>
                   {selectedAttentionPreset && (
-                    <p className="text-[10px] text-rose-600 dark:text-rose-400 font-semibold">
-                      Machine will be flagged &quot;Attention Needed&quot; on submit.
-                    </p>
+                    <>
+                      <p className="text-[10px] text-rose-600 dark:text-rose-400 font-semibold">
+                        Machine will be flagged &quot;Attention Needed&quot; on submit.
+                      </p>
+
+                      {/* Task 1: Optional issue photo — only shown once a
+                          preset is selected, uploaded immediately on pick. */}
+                      <div className="space-y-1.5 pt-1">
+                        <label className="text-xs font-semibold text-foreground">
+                          Upload Photo (Optional)
+                        </label>
+                        {issuePhotoPreviewUrl ? (
+                          <div className="relative w-24 h-24 rounded-xl overflow-hidden border border-border/60">
+                            {/* eslint-disable-next-line @next/next/no-img-element */}
+                            <img
+                              src={issuePhotoPreviewUrl}
+                              alt="Issue photo preview"
+                              className="w-full h-full object-cover"
+                            />
+                            {isUploadingIssuePhoto && (
+                              <div className="absolute inset-0 bg-black/50 flex items-center justify-center">
+                                <Loader2 className="h-5 w-5 animate-spin text-white" />
+                              </div>
+                            )}
+                            <button
+                              type="button"
+                              onClick={handleRemoveIssuePhoto}
+                              className="absolute top-1 right-1 h-5 w-5 rounded-full bg-black/60 text-white flex items-center justify-center"
+                            >
+                              <X className="h-3 w-3" />
+                            </button>
+                          </div>
+                        ) : (
+                          <label className="flex items-center justify-center gap-2 h-11 w-fit px-4 rounded-xl border border-dashed border-border/60 text-xs font-semibold text-muted-foreground cursor-pointer hover:border-primary/50 hover:text-foreground transition-colors">
+                            <Camera className="h-4 w-4" />
+                            <span>Upload Photo</span>
+                            <input
+                              type="file"
+                              accept="image/*"
+                              capture="environment"
+                              className="hidden"
+                              onChange={handleIssuePhotoSelect}
+                            />
+                          </label>
+                        )}
+                      </div>
+                    </>
                   )}
                 </div>
 
@@ -442,58 +724,118 @@ export default function MachineOperationPage() {
           </Card>
         </TabsContent>
 
-        {/* TAB 3: AUDIT — chronological cash collection ledger */}
+        {/* TAB 3: AUDIT — chronological cash collections + issue/repair history */}
         <TabsContent value="audit" className="mt-3.5 space-y-3.5 focus-visible:outline-none">
           <Card className="border-border/60">
             <CardHeader className="pb-2 pt-4 px-4">
               <CardTitle className="text-sm font-bold flex items-center gap-2">
                 <ClipboardList className="h-4 w-4 text-secondary" />
-                <span>Cash Collection History</span>
+                <span>Machine History</span>
               </CardTitle>
               <CardDescription className="text-xs">
-                Chronological ledger of cash collected from this machine.
+                Cash collections and reported/repaired issues, most recent first.
               </CardDescription>
             </CardHeader>
             <CardContent className="px-4 pb-4">
-              {cashCollectionLogs.length === 0 ? (
+              {auditEntries.length === 0 ? (
                 <div className="p-6 text-center text-xs text-muted-foreground">
-                  No cash collections recorded for this machine yet.
+                  No activity recorded for this machine yet.
                 </div>
               ) : (
                 <div className="space-y-2.5">
-                  {cashCollectionLogs.map((log: any) => (
-                    <div
-                      key={log.id}
-                      className="rounded-xl border border-border/50 p-3.5 space-y-2.5 bg-card/60 hover:border-border/80 transition-colors shadow-xs"
-                    >
-                      <div className="flex items-center justify-between">
-                        <div className="flex items-center gap-1 font-mono text-[11px] text-muted-foreground">
-                          <Clock className="h-3 w-3 text-muted-foreground/70" />
-                          <span>
-                            {new Date(log.createdAt).toLocaleDateString([], {
-                              month: "short",
-                              day: "numeric",
-                              year: "numeric",
-                            })}{" "}
-                            •{" "}
-                            {new Date(log.createdAt).toLocaleTimeString([], {
-                              hour: "2-digit",
-                              minute: "2-digit",
-                            })}
-                          </span>
-                        </div>
-                        <span className="font-mono font-black text-amber-600 dark:text-amber-400 text-base">
-                          {formatMoney(Number(log.collectedAmount || 0))}
+                  {auditEntries.map((entry) => {
+                    const timestampLabel = (
+                      <div className="flex items-center gap-1 font-mono text-[11px] text-muted-foreground">
+                        <Clock className="h-3 w-3 text-muted-foreground/70" />
+                        <span>
+                          {new Date(entry.timestamp).toLocaleDateString([], {
+                            month: "short",
+                            day: "numeric",
+                            year: "numeric",
+                          })}{" "}
+                          •{" "}
+                          {new Date(entry.timestamp).toLocaleTimeString([], {
+                            hour: "2-digit",
+                            minute: "2-digit",
+                          })}
                         </span>
                       </div>
+                    );
 
-                      {log.remarks && (
-                        <p className="text-xs text-foreground/80 italic bg-muted/40 p-2 rounded-lg border border-border/40">
-                          &ldquo;{log.remarks}&rdquo;
+                    if (entry.kind === "cash") {
+                      return (
+                        <div
+                          key={entry.id}
+                          className="rounded-xl border border-border/50 p-3.5 space-y-2.5 bg-card/60 hover:border-border/80 transition-colors shadow-xs"
+                        >
+                          <div className="flex items-center justify-between">
+                            {timestampLabel}
+                            <span className="font-mono font-black text-amber-600 dark:text-amber-400 text-base">
+                              {formatMoney(entry.amount)}
+                            </span>
+                          </div>
+                          {entry.note && (
+                            <p className="text-xs text-foreground/80 italic bg-muted/40 p-2 rounded-lg border border-border/40">
+                              &ldquo;{entry.note}&rdquo;
+                            </p>
+                          )}
+                        </div>
+                      );
+                    }
+
+                    const isReported = entry.kind === "issue-reported";
+                    const photoUrl = resolveUploadUrl(entry.photoUrl);
+
+                    return (
+                      <div
+                        key={entry.id}
+                        className={`rounded-xl border p-3.5 space-y-2.5 shadow-xs transition-colors ${
+                          isReported
+                            ? "border-rose-500/30 bg-rose-500/5"
+                            : "border-emerald-500/30 bg-emerald-500/5"
+                        }`}
+                      >
+                        <div className="flex items-center justify-between">
+                          <span
+                            className={`inline-flex items-center gap-1 rounded-full px-2.5 py-0.5 text-[10px] font-bold ${
+                              isReported
+                                ? "bg-rose-500/15 text-rose-700 dark:text-rose-400"
+                                : "bg-emerald-500/15 text-emerald-700 dark:text-emerald-400"
+                            }`}
+                          >
+                            {isReported ? (
+                              <AlertTriangle className="h-3 w-3" />
+                            ) : (
+                              <CheckCircle className="h-3 w-3" />
+                            )}
+                            <span>{isReported ? "ISSUE REPORTED" : "REPAIRED"}</span>
+                          </span>
+                          {timestampLabel}
+                        </div>
+
+                        <p className="text-xs font-semibold text-foreground">{entry.reason}</p>
+
+                        {"note" in entry && entry.note && (
+                          <p className="text-xs text-foreground/80 italic bg-muted/40 p-2 rounded-lg border border-border/40">
+                            &ldquo;{entry.note}&rdquo;
+                          </p>
+                        )}
+
+                        {photoUrl && (
+                          // eslint-disable-next-line @next/next/no-img-element
+                          <img
+                            src={photoUrl}
+                            alt={isReported ? "Reported issue photo" : "Proof of repair photo"}
+                            className="w-full max-w-[200px] rounded-lg border border-border/40 object-cover"
+                          />
+                        )}
+
+                        <p className="text-[10px] text-muted-foreground font-medium">
+                          {entry.agentName}
                         </p>
-                      )}
-                    </div>
-                  ))}
+                      </div>
+                    );
+                  })}
                 </div>
               )}
             </CardContent>
@@ -618,6 +960,106 @@ export default function MachineOperationPage() {
               </DialogFooter>
             </>
           )}
+        </DialogContent>
+      </Dialog>
+
+      {/* DIALOG: MARK AS REPAIRED (Task 2) */}
+      <Dialog
+        open={isResolveModalOpen}
+        onOpenChange={(open) => {
+          setIsResolveModalOpen(open);
+          if (!open) {
+            setResolveNote("");
+            setRepairPhotoPreviewUrl(null);
+            setUploadedRepairPhotoUrl(null);
+          }
+        }}
+      >
+        <DialogContent className="max-w-md w-[92vw] rounded-2xl p-6 bg-background border border-border/60 shadow-2xl z-50">
+          <DialogHeader className="text-left pb-1 space-y-1">
+            <DialogTitle className="flex items-center gap-2 text-base font-bold">
+              <Wrench className="h-5 w-5 text-emerald-600 dark:text-emerald-400" />
+              <span>Mark as Repaired</span>
+            </DialogTitle>
+            <DialogDescription className="text-xs text-muted-foreground">
+              Confirms the issue is resolved and returns this machine to normal status. A
+              photo and note are optional but recommended.
+            </DialogDescription>
+          </DialogHeader>
+
+          <div className="py-3 space-y-3">
+            <div className="space-y-1.5">
+              <label className="text-xs font-semibold text-foreground">
+                Proof of Repair Photo (Optional)
+              </label>
+              {repairPhotoPreviewUrl ? (
+                <div className="relative w-24 h-24 rounded-xl overflow-hidden border border-border/60">
+                  {/* eslint-disable-next-line @next/next/no-img-element */}
+                  <img
+                    src={repairPhotoPreviewUrl}
+                    alt="Proof of repair preview"
+                    className="w-full h-full object-cover"
+                  />
+                  {isUploadingRepairPhoto && (
+                    <div className="absolute inset-0 bg-black/50 flex items-center justify-center">
+                      <Loader2 className="h-5 w-5 animate-spin text-white" />
+                    </div>
+                  )}
+                  <button
+                    type="button"
+                    onClick={handleRemoveRepairPhoto}
+                    className="absolute top-1 right-1 h-5 w-5 rounded-full bg-black/60 text-white flex items-center justify-center"
+                  >
+                    <X className="h-3 w-3" />
+                  </button>
+                </div>
+              ) : (
+                <label className="flex items-center justify-center gap-2 h-11 w-fit px-4 rounded-xl border border-dashed border-border/60 text-xs font-semibold text-muted-foreground cursor-pointer hover:border-primary/50 hover:text-foreground transition-colors">
+                  <Camera className="h-4 w-4" />
+                  <span>Upload Photo</span>
+                  <input
+                    type="file"
+                    accept="image/*"
+                    capture="environment"
+                    className="hidden"
+                    onChange={handleRepairPhotoSelect}
+                  />
+                </label>
+              )}
+            </div>
+
+            <div className="space-y-1.5">
+              <label className="text-xs font-semibold text-foreground">Note (Optional)</label>
+              <Textarea
+                value={resolveNote}
+                onChange={(e) => setResolveNote(e.target.value)}
+                placeholder="e.g. Replaced jammed coin mechanism"
+                className="min-h-[70px] text-xs rounded-xl bg-muted/20 border-border/60"
+              />
+            </div>
+          </div>
+
+          <DialogFooter className="flex flex-col sm:flex-row sm:justify-center gap-2">
+            <Button
+              variant="outline"
+              className="w-full h-11 text-xs font-semibold rounded-xl"
+              onClick={() => setIsResolveModalOpen(false)}
+            >
+              Cancel
+            </Button>
+            <Button
+              className="w-full h-11 text-xs font-bold rounded-xl bg-emerald-600 hover:bg-emerald-700 text-white"
+              disabled={resolveIssueMutation.isPending || isUploadingRepairPhoto}
+              onClick={handleResolveIssue}
+            >
+              {resolveIssueMutation.isPending ? (
+                <Loader2 className="h-4 w-4 animate-spin mr-1.5" />
+              ) : (
+                <CheckCircle className="h-4 w-4 mr-1.5" />
+              )}
+              Confirm Repaired
+            </Button>
+          </DialogFooter>
         </DialogContent>
       </Dialog>
 

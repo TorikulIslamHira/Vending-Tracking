@@ -79,10 +79,40 @@ export const CashCollectionSchema = z.object({
   // Locker Broken) to flag the machine for follow-up in the same request.
   attentionFlag: z.boolean().optional(),
   attentionReason: z.string().optional(),
+  // Set only when attentionFlag is true and the agent attached a photo via
+  // POST /uploads/issue-photo beforehand — a path like "/uploads/issues/x.jpg",
+  // not the raw file itself (cash-collection stays a plain JSON endpoint).
+  issuePhotoUrl: z.string().optional().nullable(),
 });
 
 export type CashCollectionInput = z.infer<typeof CashCollectionSchema>;
 export type CashCollectionDto = CashCollectionInput;
+
+/**
+ * ResolveIssueSchema: Validates the "Mark as Repaired" action on a flagged
+ * machine — both fields are optional since a repair can be logged with just
+ * a tap and no proof, but at least one of them is what makes the action
+ * worth recording over just silently clearing the flag.
+ */
+export const ResolveIssueSchema = z.object({
+  note: z.string().optional(),
+  repairPhotoUrl: z.string().optional().nullable(),
+});
+
+export type ResolveIssueInput = z.infer<typeof ResolveIssueSchema>;
+export type ResolveIssueDto = ResolveIssueInput;
+
+/**
+ * MachineUpdateSchema: Validates in-place edits to an existing machine from
+ * its own detail page — currently just the Key Number (Task 3's inline
+ * pencil-edit), kept minimal rather than exposing every creatable field.
+ */
+export const MachineUpdateSchema = z.object({
+  keyNumber: z.string().optional().nullable(),
+});
+
+export type MachineUpdateInput = z.infer<typeof MachineUpdateSchema>;
+export type MachineUpdateDto = MachineUpdateInput;
 
 /**
  * CashLogPaymentUpdateSchema: Validates the shopkeeper-payment follow-up for

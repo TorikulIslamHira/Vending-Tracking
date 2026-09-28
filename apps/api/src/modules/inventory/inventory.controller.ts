@@ -7,7 +7,7 @@ import {
   ReverseEntrySchema,
   CashLogPaymentUpdateSchema,
 } from "@vending/validation";
-import { db, machines, packetConfigs, inventoryLogs, cashLogs, stores } from "../../core/db";
+import { db, machines, packetConfigs, inventoryLogs, cashLogs, stores, machineIssueLogs } from "../../core/db";
 import { computeVirtualCashBalanceForMachine } from "../machines/virtualCashBalance.service";
 
 /**
@@ -240,7 +240,7 @@ export async function cashCollectionHandler(
     });
   }
 
-  const { machineId, collectedAmount, remarks, stockCleared, isPartial, attentionFlag, attentionReason } =
+  const { machineId, collectedAmount, remarks, stockCleared, isPartial, attentionFlag, attentionReason, issuePhotoUrl } =
     parseResult.data;
 
   // Resolve the fuzzy identifier (id, serial, or QR) to a machine row. Read-only,
@@ -394,6 +394,22 @@ export async function cashCollectionHandler(
         })
         .where(and(eq(machines.id, lockedMachine.id), eq(machines.tenantId, tenantId)))
         .returning();
+
+      // The historical lifecycle record behind the flag above — distinct from
+      // machines.attentionNeeded (which only ever holds the *current* state).
+      // This is what "Mark as Repaired" resolves and what the machine's
+      // Audit history reads to show who reported what, with which photo.
+      if (attentionFlag) {
+        await tx.insert(machineIssueLogs).values({
+          tenantId,
+          machineId: lockedMachine.id,
+          reportedByAgentId: agentId,
+          reason: attentionReason || remarks,
+          issuePhotoUrl: issuePhotoUrl || null,
+          cashLogId: insertedCashLog.id,
+          status: "OPEN",
+        });
+      }
 
       // Recompute from the now-updated ledger (same unified formula) rather than
       // trusting a stored column, so the reported post-collection balance is exact.
