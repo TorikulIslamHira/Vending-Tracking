@@ -30,7 +30,7 @@ export const issueStatusEnum = pgEnum("IssueStatus", ["OPEN", "RESOLVED"]);
 export const tenants = pgTable("tenants", {
   id: text("id").primaryKey().$defaultFn(() => crypto.randomUUID()),
   name: text("name").notNull(),
-  currency: text("currency").default("USD").notNull(),
+  currency: text("currency").default("EUR").notNull(),
   themeConfig: jsonb("themeConfig"),
   isActive: boolean("isActive").default(true).notNull(),
   createdAt: timestamp("createdAt", { withTimezone: true, mode: "date" }).defaultNow().notNull(),

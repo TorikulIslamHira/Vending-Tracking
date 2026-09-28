@@ -13,8 +13,8 @@ export const CURRENCY_SYMBOLS: Record<string, string> = {
 };
 
 export const CURRENCY_OPTIONS = [
-  { code: "USD", symbol: "$", label: "USD ($)" },
   { code: "EUR", symbol: "€", label: "EUR (€)" },
+  { code: "USD", symbol: "$", label: "USD ($)" },
   { code: "GBP", symbol: "£", label: "GBP (£)" },
   { code: "BDT", symbol: "৳", label: "BDT (৳)" },
   { code: "CAD", symbol: "CA$", label: "CAD ($)" },
@@ -25,8 +25,8 @@ export const CURRENCY_OPTIONS = [
 /**
  * Returns the currency symbol for a given currency code.
  */
-export function getCurrencySymbol(currency: string = "USD"): string {
-  const cleanCode = (currency || "USD").toUpperCase();
+export function getCurrencySymbol(currency: string = "EUR"): string {
+  const cleanCode = (currency || "EUR").toUpperCase();
   if (CURRENCY_SYMBOLS[cleanCode]) {
     return CURRENCY_SYMBOLS[cleanCode];
   }
@@ -49,7 +49,7 @@ export function getCurrencySymbol(currency: string = "USD"): string {
  */
 export function formatCurrency(
   amount: number | string | null | undefined,
-  currency: string = "USD"
+  currency: string = "EUR"
 ): string {
   const numericAmount =
     typeof amount === "number" ? amount : Number(amount || 0);
@@ -59,7 +59,7 @@ export function formatCurrency(
     return `${sym}0.00`;
   }
 
-  const cleanCode = (currency || "USD").toUpperCase();
+  const cleanCode = (currency || "EUR").toUpperCase();
 
   try {
     return new Intl.NumberFormat("en-US", {

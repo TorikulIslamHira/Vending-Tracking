@@ -15,7 +15,7 @@ export interface TenantSettings {
 }
 
 const defaultSettings: TenantSettings = {
-  currency: "USD",
+  currency: "EUR",
   defaultShopCut: 30,
   defaultBizCut: 70,
   lowStockAlerts: true,
@@ -132,7 +132,7 @@ export function useTenantSettings() {
 
 export function useCurrency() {
   const { settings } = useTenantSettings();
-  const currency = settings?.currency || "USD";
+  const currency = settings?.currency || "EUR";
   const symbol = getCurrencySymbol(currency);
 
   const format = (amount: number | string | null | undefined) => {

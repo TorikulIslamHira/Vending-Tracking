@@ -148,7 +148,7 @@ export type ReverseEntryDto = ReverseEntryInput;
 
 export const TenantCreateSchema = z.object({
   name: z.string().min(1, "Tenant name is required"),
-  currency: z.string().default("USD").optional(),
+  currency: z.string().default("EUR").optional(),
   themeConfig: z.record(z.any()).optional().nullable(),
   isActive: z.boolean().default(true),
 });
