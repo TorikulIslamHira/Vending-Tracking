@@ -16,7 +16,9 @@ import {
   ShieldAlert,
   Loader2,
   LogIn,
-  ArrowLeftRight,
+  Store,
+  BarChart3,
+  MoreHorizontal,
 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 
@@ -68,6 +70,41 @@ export default function AgentMobileLayout({
         },
   ];
 
+  // The Machine View / Cash Collection page is a natural endpoint of an
+  // Admin's workflow, not a mid-flow step like Scan or History — an Admin
+  // landing there shouldn't be boxed into the 3-tab restricted nav when
+  // they're done, so it gets the same global Admin nav as every other admin
+  // page instead. Field Agents on the same page keep the restricted nav,
+  // since Dashboard/Stores/Reports are RBAC-blocked for them anyway.
+  const isMachineViewPage = pathname.startsWith("/machine/");
+  const showAdminNav = isAdmin && isMachineViewPage;
+  const adminNavItems = [
+    {
+      label: "Dashboard",
+      href: "/dashboard",
+      icon: LayoutDashboard,
+      active: pathname === "/dashboard",
+    },
+    {
+      label: "Stores",
+      href: "/stores",
+      icon: Store,
+      active: pathname === "/stores",
+    },
+    {
+      label: "Reports",
+      href: "/reports",
+      icon: BarChart3,
+      active: pathname === "/reports",
+    },
+    {
+      label: "More",
+      href: "/settings",
+      icon: MoreHorizontal,
+      active: pathname === "/settings",
+    },
+  ];
+
   return (
     // Native app shell: h-[100dvh] + overflow-hidden here means this outer
     // box is the only thing that ever owns the full viewport height, and
@@ -97,27 +134,6 @@ export default function AgentMobileLayout({
               <span className="text-xs font-bold tracking-tight block leading-tight">
                 {defaultThemeConfig.appName}
               </span>
-              {/* For an Admin, this label doubles as an explicit mode
-                  switcher — a Field Agent never has anywhere else to switch
-                  to (RBAC-blocked from every admin route), so it stays a
-                  plain, non-interactive label for that role. Addresses the
-                  UX audit's "implicit swap between two nav sets with no
-                  visible toggle" finding. */}
-              {mounted && isAdmin ? (
-                <button
-                  type="button"
-                  onClick={() => router.push("/dashboard")}
-                  className="flex items-center gap-1 text-[10px] text-primary font-semibold hover:underline"
-                >
-                  <span>Field Agent Mode</span>
-                  <ArrowLeftRight className="h-2.5 w-2.5" />
-                  <span>Switch to Admin</span>
-                </button>
-              ) : (
-                <span className="text-[10px] text-muted-foreground block font-medium">
-                  Field Agent Mode
-                </span>
-              )}
             </div>
           </div>
 
@@ -151,7 +167,7 @@ export default function AgentMobileLayout({
             occupies real space in the flex column, <main> naturally ends
             right above it instead of sliding underneath it. */}
         <nav className="shrink-0 border-t bg-card px-3 pt-2 pb-[calc(0.5rem+env(safe-area-inset-bottom))] flex items-center justify-around print:hidden">
-          {navItems.map((item) => {
+          {(showAdminNav ? adminNavItems : navItems).map((item) => {
             const Icon = item.icon;
             return (
               <Link
