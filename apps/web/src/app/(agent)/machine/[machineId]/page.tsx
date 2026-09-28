@@ -57,6 +57,11 @@ import {
 // admin follow-up in the same submission (no separate trip needed).
 const ATTENTION_PRESETS = ["Malfunction", "Key Lost", "Locker Broken"] as const;
 
+// Quick-select helpers for the mandatory Note field on a routine, no-issue
+// collection — tapping one fills it instantly instead of typing the same
+// few phrases out every visit.
+const QUICK_NOTE_OPTIONS = ["All Ok", "Routine Collection", "Cleaned"] as const;
+
 export default function MachineOperationPage() {
   const params = useParams();
   const router = useRouter();
@@ -697,6 +702,32 @@ export default function MachineOperationPage() {
 
                 <div className="space-y-1.5">
                   <label className="text-xs font-semibold text-muted-foreground">Note *</label>
+
+                  {/* Quick-select helpers — fills the mandatory note instantly
+                      for a routine, no-issue collection. Small/outlined so
+                      they read as secondary shortcuts, not the main action. */}
+                  <div className="flex flex-wrap gap-1.5 pb-0.5">
+                    {QUICK_NOTE_OPTIONS.map((note) => {
+                      const isActive = cashForm.watch("remarks") === note;
+                      return (
+                        <button
+                          key={note}
+                          type="button"
+                          onClick={() =>
+                            cashForm.setValue("remarks", note, { shouldValidate: true })
+                          }
+                          className={`h-7 px-2.5 rounded-full text-[10.5px] font-medium border transition-colors ${
+                            isActive
+                              ? "bg-primary/15 border-primary/50 text-primary"
+                              : "bg-muted/40 text-muted-foreground border-border/50 hover:border-primary/40 hover:text-foreground"
+                          }`}
+                        >
+                          {note}
+                        </button>
+                      );
+                    })}
+                  </div>
+
                   <Input
                     placeholder="e.g. Bag seal #8812 - clean coin chute"
                     className="h-10 rounded-xl text-xs"
