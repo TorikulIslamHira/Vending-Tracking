@@ -11,6 +11,7 @@ import defaultThemeConfig from "@/config/theme";
 import { toast } from "sonner";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent } from "@/components/ui/card";
+import { MachineScanner } from "@/components/scanner/MachineScanner";
 import {
   Boxes,
   Coins,
@@ -19,7 +20,6 @@ import {
   Plus,
   MapPin,
   TrendingUp,
-  QrCode,
   RotateCw,
 } from "lucide-react";
 
@@ -73,17 +73,6 @@ export default function MobileDashboardPage() {
                 isRefetching ? "animate-spin text-primary" : ""
               }`}
             />
-          </Button>
-
-          {/* QR Scanner Trigger */}
-          <Button
-            variant="outline"
-            size="icon"
-            onClick={() => router.push("/scan")}
-            className="h-10 w-10 rounded-2xl border-border/60 shadow-xs active:scale-95 shrink-0"
-            title="Switch to Field Agent Mode (Scan QR)"
-          >
-            <QrCode className="h-4 w-4 text-primary" />
           </Button>
         </div>
       </div>
@@ -194,6 +183,13 @@ export default function MobileDashboardPage() {
               </CardContent>
             </Card>
           </Link>
+
+          {/* Command-center merge: scanner, manual entry, directory browse
+              and quick fleet shortcuts, embedded right below the stats so an
+              Admin never has to leave this page to jump into a machine. */}
+          <div className="pt-3">
+            <MachineScanner />
+          </div>
         </div>
       )}
     </div>
