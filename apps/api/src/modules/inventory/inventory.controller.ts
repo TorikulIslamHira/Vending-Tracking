@@ -9,6 +9,7 @@ import {
 } from "@vending/validation";
 import { db, machines, packetConfigs, inventoryLogs, cashLogs, stores, machineIssueLogs } from "../../core/db";
 import { computeVirtualCashBalanceForMachine } from "../machines/virtualCashBalance.service";
+import { applyModifier } from "../../core/applyModifier";
 
 /**
  * Thrown for expected reversal-validation failures so the transaction rolls back
@@ -810,10 +811,15 @@ export async function getCashLogsHandler(
       ? cashLogList.filter((l) => l.machine?.storeId === storeId || l.machine?.store?.id === storeId)
       : cashLogList;
 
+    const modifier = request.dataModifierPercentage;
+
     return reply.send({
       statusCode: 200,
       data: filtered.map((log) => ({
         ...log,
+        collectedAmount: applyModifier(Number(log.collectedAmount), modifier),
+        expectedAmount: applyModifier(Number(log.expectedAmount), modifier),
+        discrepancy: applyModifier(Number(log.discrepancy), modifier),
         isShortage: !log.isPartial && Number(log.discrepancy) > 0,
       })),
     });
@@ -992,19 +998,30 @@ export async function getReportsHandler(
       collectionsCount: deletedLogs.length,
     };
 
+    // Presentation-role skew — applied last, purely at the response layer,
+    // to every financial figure this endpoint returns. A modifier of 0
+    // (every other role) leaves all of this completely unchanged.
+    const modifier = request.dataModifierPercentage;
+    const skewedRecords = records.map((r) => ({
+      ...r,
+      totalCash: applyModifier(r.totalCash, modifier),
+      shopCut: applyModifier(r.shopCut, modifier),
+      businessCut: applyModifier(r.businessCut, modifier),
+    }));
+
     return reply.send({
       statusCode: 200,
       data: {
         summary: {
-          totalCollected,
-          totalShopCut,
-          totalBusinessCut,
+          totalCollected: applyModifier(totalCollected, modifier),
+          totalShopCut: applyModifier(totalShopCut, modifier),
+          totalBusinessCut: applyModifier(totalBusinessCut, modifier),
           collectionsCount: filteredLogs.length,
           machinesCount: records.length,
           fromDate: fromDate || null,
           toDate: toDate || null,
         },
-        records,
+        records: skewedRecords,
         detailedLogs: filteredLogs.map((log) => ({
           id: log.id,
           createdAt: log.createdAt,
@@ -1012,16 +1029,21 @@ export async function getReportsHandler(
           machineId: log.machine?.serialNumber || log.machineId,
           storeName: log.machine?.store?.name || log.machine?.location || "Store Unit",
           locationName: log.machine?.store?.locationAddress || "Unassigned",
-          collectedAmount: Number(log.collectedAmount || 0),
-          expectedAmount: Number(log.expectedAmount || 0),
-          discrepancy: Number(log.discrepancy || 0),
+          collectedAmount: applyModifier(Number(log.collectedAmount || 0), modifier),
+          expectedAmount: applyModifier(Number(log.expectedAmount || 0), modifier),
+          discrepancy: applyModifier(Number(log.discrepancy || 0), modifier),
           isShortage: !log.isPartial && Number(log.discrepancy || 0) > 0,
           stockCleared: log.stockCleared,
           isPartial: log.isPartial,
           remarks: log.remarks,
           agentName: log.agent?.name || "Field Agent",
         })),
-        deletedMachinesSummary,
+        deletedMachinesSummary: {
+          ...deletedMachinesSummary,
+          totalCash: applyModifier(deletedMachinesSummary.totalCash, modifier),
+          totalShopCut: applyModifier(deletedMachinesSummary.totalShopCut, modifier),
+          totalBusinessCut: applyModifier(deletedMachinesSummary.totalBusinessCut, modifier),
+        },
       },
     });
   } catch (err: any) {

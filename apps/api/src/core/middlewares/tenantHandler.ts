@@ -22,8 +22,20 @@ declare module "fastify" {
     userId: string;
     userRole: UserRole;
     userPayload?: JWTPayload;
+    // Only ever non-zero for UserRole.PRESENTATION — GET handlers that
+    // return financial figures run them through applyModifier() using this
+    // value (see core/applyModifier.ts). Always 0 for every other role, so
+    // a handler never needs to check the role itself, only this number.
+    dataModifierPercentage: number;
   }
 }
+
+// Presentation accounts are strictly read-only: they exist purely to show a
+// percentage-skewed view of real data for demos, never to touch it. Every
+// mutating HTTP method is blocked here — the one onRequest hook every
+// module's routes already register — rather than scattered per-handler
+// checks, so no new mutating endpoint can ever accidentally skip it.
+const MUTATING_METHODS = new Set(["POST", "PUT", "PATCH", "DELETE"]);
 
 /**
  * Multi-Tenant Middleware / Hook
@@ -49,7 +61,7 @@ export async function tenantHandler(
     // must stop working immediately, not just after it naturally expires.
     const account = await db.query.users.findFirst({
       where: eq(users.id, decoded.userId),
-      columns: { id: true, isActive: true, tenantId: true },
+      columns: { id: true, isActive: true, tenantId: true, dataModifierPercentage: true },
     });
 
     if (!account || account.tenantId !== decoded.tenantId) {
@@ -73,6 +85,18 @@ export async function tenantHandler(
     request.userId = decoded.userId;
     request.userRole = decoded.userRole;
     request.userPayload = decoded;
+    request.dataModifierPercentage = account.dataModifierPercentage
+      ? Number(account.dataModifierPercentage)
+      : 0;
+
+    // WRITE PROTECTION — see MUTATING_METHODS comment above.
+    if (decoded.userRole === UserRole.PRESENTATION && MUTATING_METHODS.has(request.method)) {
+      return reply.status(403).send({
+        statusCode: 403,
+        error: "Forbidden",
+        message: "Presentation accounts are strictly read-only and cannot modify data.",
+      });
+    }
   } catch (err: any) {
     return reply.status(401).send({
       statusCode: 401,

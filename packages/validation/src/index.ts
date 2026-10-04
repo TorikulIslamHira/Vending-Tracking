@@ -173,6 +173,10 @@ export const UserCreateSchema = z.object({
   email: z.string().email("Valid email is required"),
   role: UserRoleSchema.default(UserRole.FIELD_AGENT),
   password: z.string().min(6, "Password must be at least 6 characters"),
+  // Only meaningful for role === "PRESENTATION" — a +/- percentage skew
+  // applied to financial figures at API response time. Ignored for every
+  // other role.
+  dataModifierPercentage: z.number().min(-100).max(1000).optional().nullable(),
 });
 
 export type UserCreateInput = z.infer<typeof UserCreateSchema>;
@@ -189,6 +193,7 @@ export const UserUpdateSchema = z.object({
   email: z.string().email("Valid email is required").optional(),
   role: UserRoleSchema.optional(),
   password: z.string().min(6, "Password must be at least 6 characters").optional(),
+  dataModifierPercentage: z.number().min(-100).max(1000).optional().nullable(),
 });
 
 export type UserUpdateInput = z.infer<typeof UserUpdateSchema>;

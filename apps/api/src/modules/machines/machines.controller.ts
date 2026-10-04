@@ -5,6 +5,7 @@ import { MachineCreateSchema, MachineDeleteSchema, MachineUpdateSchema, ResolveI
 import { db, machines, users, tenants, adminAuditLogs, cashLogs, machineIssueLogs } from "../../core/db";
 import { computeVirtualCashBalances, computeVirtualCashBalanceForMachine } from "./virtualCashBalance.service";
 import { isRootSuperAdminEmail } from "../../core/rootAdmin";
+import { applyModifier } from "../../core/applyModifier";
 
 /**
  * Fetch all machines scoped to the authenticated tenant, optionally filtered by storeId
@@ -31,6 +32,7 @@ export async function getMachinesHandler(
     });
 
     const balances = await computeVirtualCashBalances(db, tenantId, machineList);
+    const modifier = request.dataModifierPercentage;
 
     return reply.send({
       statusCode: 200,
@@ -48,7 +50,7 @@ export async function getMachinesHandler(
         status: m.status,
         qrCode: m.qrCode,
         keyNumber: m.keyNumber || "",
-        virtualCashBalance: balances.get(m.id)?.virtualCashBalance ?? 0,
+        virtualCashBalance: applyModifier(balances.get(m.id)?.virtualCashBalance ?? 0, modifier),
         itemsRemaining: Math.floor(Math.random() * 40) + 60,
         attentionNeeded: m.attentionNeeded,
         attentionReason: m.attentionReason,
@@ -113,6 +115,7 @@ export async function getMachineByIdHandler(
         virtualCashBalance,
       } = await computeVirtualCashBalanceForMachine(db, tenantId, machine);
       const pricePerPlay = Number(machine.pricePerPlay || 1.00) || 1.00;
+      const modifier = request.dataModifierPercentage;
 
       return reply.send({
         statusCode: 200,
@@ -133,10 +136,10 @@ export async function getMachineByIdHandler(
           currentEstimatedStock,
           totalRestockedUnits,
           totalUnitsSold,
-          totalCashCollected,
+          totalCashCollected: applyModifier(totalCashCollected, modifier),
           status: machine.status,
           keyNumber: machine.keyNumber || "",
-          virtualCashBalance,
+          virtualCashBalance: applyModifier(virtualCashBalance, modifier),
           qrCode: machine.qrCode,
           attentionNeeded: machine.attentionNeeded,
           attentionReason: machine.attentionReason,
@@ -325,18 +328,19 @@ export async function getDashboardMetricsHandler(
       (m) => m.status === "ONLINE" && !m.attentionNeeded
     ).length;
     const attentionNeededCount = machinesList.filter((m) => m.attentionNeeded).length;
+    const modifier = request.dataModifierPercentage;
 
     return reply.send({
       statusCode: 200,
       data: {
         totalMachines,
         totalRestocked,
-        totalVirtualCash,
+        totalVirtualCash: applyModifier(totalVirtualCash, modifier),
         shopCutPercent,
         businessCutPercent,
         missedVisitsCount: offlineCount,
         attentionMachines,
-        totalCollection,
+        totalCollection: applyModifier(totalCollection, modifier),
         activeMachinesCount,
         attentionNeededCount,
       },

@@ -26,6 +26,7 @@ export async function getUsersHandler(
       assignedCount: 0,
       isRootAdmin: isRootSuperAdminEmail(u.email),
       canDeleteMachines: isRootSuperAdminEmail(u.email) || u.canDeleteMachines,
+      dataModifierPercentage: u.dataModifierPercentage ? Number(u.dataModifierPercentage) : 0,
     }));
 
     return reply.send({
@@ -57,7 +58,7 @@ export async function createUserHandler(
     });
   }
 
-  const { name, email, role, password } = parseResult.data;
+  const { name, email, role, password, dataModifierPercentage } = parseResult.data;
 
   try {
     const existing = await db.query.users.findFirst({
@@ -82,6 +83,13 @@ export async function createUserHandler(
         email,
         role,
         passwordHash: hashedPassword,
+        // Only meaningful for role === "PRESENTATION"; stored as 0 for every
+        // other role regardless of what was sent, so it can never silently
+        // skew a real operator's data if the field is ever misused.
+        dataModifierPercentage:
+          role === "PRESENTATION" && dataModifierPercentage != null
+            ? String(dataModifierPercentage)
+            : "0",
       })
       .returning();
 
@@ -97,6 +105,9 @@ export async function createUserHandler(
         assignedCount: 0,
         isRootAdmin: isRootSuperAdminEmail(createdUser.email),
         canDeleteMachines: isRootSuperAdminEmail(createdUser.email) || createdUser.canDeleteMachines,
+        dataModifierPercentage: createdUser.dataModifierPercentage
+          ? Number(createdUser.dataModifierPercentage)
+          : 0,
       },
     });
   } catch (err: any) {
@@ -132,7 +143,7 @@ export async function updateUserHandler(
     });
   }
 
-  const { name, email, role, password } = parseResult.data;
+  const { name, email, role, password, dataModifierPercentage } = parseResult.data;
 
   try {
     const targetUser = await db.query.users.findFirst({
@@ -177,6 +188,21 @@ export async function updateUserHandler(
     if (email !== undefined) updateValues.email = email;
     if (role !== undefined) updateValues.role = role;
     if (password) updateValues.passwordHash = await bcrypt.hash(password, 10);
+    // Only meaningful for role === "PRESENTATION" (the new role if one was
+    // sent, otherwise the user's existing role) — forced to 0 for every
+    // other role regardless of what was sent.
+    const effectiveRole = role ?? targetUser.role;
+    if (dataModifierPercentage !== undefined) {
+      updateValues.dataModifierPercentage =
+        effectiveRole === "PRESENTATION" && dataModifierPercentage != null
+          ? String(dataModifierPercentage)
+          : "0";
+    } else if (role !== undefined && role !== "PRESENTATION") {
+      // Role changed away from PRESENTATION without touching the percentage
+      // field explicitly — clear it defensively so no stale skew value is
+      // ever left sitting on a now-real operator account.
+      updateValues.dataModifierPercentage = "0";
+    }
 
     const [updatedUser] = await db
       .update(users)
@@ -198,6 +224,9 @@ export async function updateUserHandler(
         assignedCount: 0,
         isRootAdmin: isRootSuperAdminEmail(updatedUser.email),
         canDeleteMachines: isRootSuperAdminEmail(updatedUser.email) || updatedUser.canDeleteMachines,
+        dataModifierPercentage: updatedUser.dataModifierPercentage
+          ? Number(updatedUser.dataModifierPercentage)
+          : 0,
       },
     });
   } catch (err: any) {

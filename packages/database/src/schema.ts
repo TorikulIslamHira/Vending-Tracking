@@ -15,7 +15,12 @@ import { relations, type InferSelectModel, type InferInsertModel } from "drizzle
 // ==============================================================================
 // 1. Enums (matching exact PostgreSQL enum types)
 // ==============================================================================
-export const userRoleEnum = pgEnum("UserRole", ["ADMIN", "FIELD_AGENT"]);
+// PRESENTATION: a strictly read-only role for demo/investor-facing logins —
+// sees the exact same UI and historical data as an Admin, but every
+// financial figure is skewed by `users.dataModifierPercentage` at the API
+// response layer (see lib/applyModifier.ts), never touching the stored
+// values. Every mutating endpoint must reject this role outright.
+export const userRoleEnum = pgEnum("UserRole", ["ADMIN", "FIELD_AGENT", "PRESENTATION"]);
 export const machineStatusEnum = pgEnum("MachineStatus", ["ONLINE", "OFFLINE"]);
 export const entryTypeEnum = pgEnum("EntryType", ["STANDARD", "MANUAL", "REVERSE"]);
 export const paymentModeEnum = pgEnum("PaymentMode", ["CASH", "BANK"]);
@@ -55,6 +60,11 @@ export const users = pgTable(
     // power regardless of its stored value — only non-root ADMIN users need
     // it explicitly granted. Defaults false: nobody starts with this power.
     canDeleteMachines: boolean("canDeleteMachines").default(false).notNull(),
+    // Only meaningful for role === "PRESENTATION" — a +/- percentage skew
+    // applied to financial figures at API response time (see
+    // lib/applyModifier.ts). Nullable/default 0 so every existing ADMIN/
+    // FIELD_AGENT row is completely unaffected.
+    dataModifierPercentage: numeric("dataModifierPercentage", { precision: 6, scale: 2 }).default("0"),
     createdAt: timestamp("createdAt", { withTimezone: true, mode: "date" }).defaultNow().notNull(),
     updatedAt: timestamp("updatedAt", { withTimezone: true, mode: "date" }).defaultNow().notNull().$onUpdate(() => new Date()),
   },

@@ -4,6 +4,11 @@
 export const UserRole = {
   ADMIN: "ADMIN",
   FIELD_AGENT: "FIELD_AGENT",
+  // Strictly read-only, demo/investor-facing login — sees Admin's exact UI
+  // and historical data, but every financial figure is skewed by
+  // dataModifierPercentage at the API response layer. Never a real operator
+  // account; every mutating endpoint must reject this role outright.
+  PRESENTATION: "PRESENTATION",
 } as const;
 export type UserRole = (typeof UserRole)[keyof typeof UserRole];
 
@@ -55,6 +60,7 @@ export interface IUser {
   passwordHash?: string;
   isActive: boolean;
   canDeleteMachines: boolean;
+  dataModifierPercentage?: number | string | null;
   createdAt: Date | string;
   updatedAt?: Date | string;
 }
