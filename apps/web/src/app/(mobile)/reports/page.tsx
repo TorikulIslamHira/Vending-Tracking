@@ -15,6 +15,12 @@ import {
   DialogFooter,
 } from "@/components/ui/dialog";
 import {
+  DropdownMenu,
+  DropdownMenuContent,
+  DropdownMenuItem,
+  DropdownMenuTrigger,
+} from "@/components/ui/dropdown-menu";
+import {
   BarChart3,
   Calendar,
   Filter,
@@ -22,6 +28,8 @@ import {
   TrendingUp,
   Percent,
   FileText,
+  FileSpreadsheet,
+  ClipboardList,
   Download,
   Layers,
   MapPin,
@@ -189,6 +197,114 @@ export default function ReportsPage() {
     }
   };
 
+  // CSV field escaping per RFC 4180: wrap in quotes whenever the value
+  // contains a comma, quote, or newline, doubling any quotes inside it.
+  const csvField = (value: string | number): string => {
+    const str = String(value);
+    if (/[",\n]/.test(str)) {
+      return `"${str.replace(/"/g, '""')}"`;
+    }
+    return str;
+  };
+
+  // Raw data export — the Machine Payout Breakdown's own records, already
+  // in hand from the same report query, so this needs no new API call.
+  const handleExportCsv = () => {
+    if (records.length === 0) {
+      toast.error("No data to include in the export for this period.");
+      return;
+    }
+
+    const headers = [
+      "Machine ID",
+      "Store",
+      "Location",
+      "Date",
+      "Split Ratio",
+      "Total Cash",
+      "Commission",
+      "Profit",
+      "Collections Count",
+    ];
+    const rows = records.map((rec) => [
+      csvField(rec.machineId),
+      csvField(rec.storeName),
+      csvField(rec.locationName),
+      csvField(rec.date),
+      csvField(rec.splitRatio),
+      csvField(rec.totalCash),
+      csvField(rec.shopCut),
+      csvField(rec.businessCut),
+      csvField(rec.collectionsCount),
+    ]);
+    // Leading BOM so Excel (incl. on Windows) detects UTF-8 instead of
+    // mangling currency symbols in store/location names.
+    const csvContent = "﻿" + [headers.join(","), ...rows.map((r) => r.join(","))].join("\r\n");
+
+    const blob = new Blob([csvContent], { type: "text/csv;charset=utf-8;" });
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement("a");
+    a.href = url;
+    const filterSuffix = selectedStore
+      ? `_${selectedStore.name.replace(/\s+/g, "_")}`
+      : "_all_stores";
+    a.download = `reconciliation_data${filterSuffix}_${fromDate}_to_${toDate}.csv`;
+    a.click();
+    URL.revokeObjectURL(url);
+    toast.success("CSV data exported!");
+  };
+
+  const [isDownloadingAuditPdf, setIsDownloadingAuditPdf] = useState(false);
+
+  // Detailed, per-machine audit trail of every individual cash-collection
+  // entry in the period — reuses the same detailedLogs already fetched for
+  // the "Individual Collections" view, just grouped and laid out as its own
+  // PDF rather than the aggregated payout summary.
+  const handleExportMachineAuditPdf = async () => {
+    if (detailedLogs.length === 0) {
+      toast.error("No audit log activity to include for this period.");
+      return;
+    }
+
+    setIsDownloadingAuditPdf(true);
+    try {
+      const { pdf } = await import("@react-pdf/renderer");
+      const { MachineAuditPdfDocument } = await import(
+        "@/components/reports/MachineAuditPdfDocument"
+      );
+
+      const logoSrc =
+        typeof window !== "undefined" ? `${window.location.origin}/logo.png` : "/logo.png";
+
+      const blob = await pdf(
+        <MachineAuditPdfDocument
+          logoSrc={logoSrc}
+          storeLabel={selectedStore ? selectedStore.name : "All Active Stores"}
+          fromDate={fromDate}
+          toDate={toDate}
+          detailedLogs={detailedLogs}
+          formatMoney={formatMoney}
+          generatedAt={new Date().toLocaleString()}
+        />
+      ).toBlob();
+
+      const url = URL.createObjectURL(blob);
+      const a = document.createElement("a");
+      a.href = url;
+      const filterSuffix = selectedStore
+        ? `_${selectedStore.name.replace(/\s+/g, "_")}`
+        : "_all_stores";
+      a.download = `machine_audit_logs${filterSuffix}_${fromDate}_to_${toDate}.pdf`;
+      a.click();
+      URL.revokeObjectURL(url);
+      toast.success("Machine audit log PDF downloaded!");
+    } catch {
+      toast.error("Failed to generate machine audit log PDF");
+    } finally {
+      setIsDownloadingAuditPdf(false);
+    }
+  };
+
   return (
     <div className="w-full px-4 py-4 space-y-4">
       {/* Top Header — sticky against the scrollable <main>, not the page */}
@@ -202,14 +318,62 @@ export default function ReportsPage() {
           </p>
         </div>
 
-        <Button
-          onClick={handleOpenPreview}
-          disabled={records.length === 0}
-          className="h-10 px-3.5 rounded-2xl bg-zinc-900 text-white dark:bg-zinc-100 dark:text-zinc-900 font-bold text-xs shadow-md active:scale-[0.97] transition-transform flex items-center gap-1.5 shrink-0"
-        >
-          <FileText className="h-4 w-4 text-primary" />
-          <span>PDF Report</span>
-        </Button>
+        <DropdownMenu>
+          <DropdownMenuTrigger asChild>
+            <Button
+              className="h-10 px-3.5 rounded-2xl bg-zinc-900 text-white dark:bg-zinc-100 dark:text-zinc-900 font-bold text-xs shadow-md active:scale-[0.97] transition-transform flex items-center gap-1.5 shrink-0"
+            >
+              <Download className="h-4 w-4 text-primary" />
+              <span>Export Report</span>
+              <ChevronDown className="h-3.5 w-3.5" />
+            </Button>
+          </DropdownMenuTrigger>
+          <DropdownMenuContent align="end" className="w-64">
+            <DropdownMenuItem
+              onClick={handleOpenPreview}
+              disabled={records.length === 0}
+              className="gap-2.5 py-2.5"
+            >
+              <FileText className="h-4 w-4 text-primary" />
+              <div className="flex flex-col">
+                <span className="text-xs font-semibold">Full Summary (PDF)</span>
+                <span className="text-[10px] text-muted-foreground">
+                  Preview, then download the payout breakdown
+                </span>
+              </div>
+            </DropdownMenuItem>
+            <DropdownMenuItem
+              onClick={handleExportCsv}
+              disabled={records.length === 0}
+              className="gap-2.5 py-2.5"
+            >
+              <FileSpreadsheet className="h-4 w-4 text-emerald-600 dark:text-emerald-400" />
+              <div className="flex flex-col">
+                <span className="text-xs font-semibold">Raw Data Export (CSV)</span>
+                <span className="text-[10px] text-muted-foreground">
+                  Financial data, suitable for Excel
+                </span>
+              </div>
+            </DropdownMenuItem>
+            <DropdownMenuItem
+              onClick={handleExportMachineAuditPdf}
+              disabled={detailedLogs.length === 0 || isDownloadingAuditPdf}
+              className="gap-2.5 py-2.5"
+            >
+              {isDownloadingAuditPdf ? (
+                <Loader2 className="h-4 w-4 text-secondary animate-spin" />
+              ) : (
+                <ClipboardList className="h-4 w-4 text-secondary" />
+              )}
+              <div className="flex flex-col">
+                <span className="text-xs font-semibold">Machine Audit Logs (PDF)</span>
+                <span className="text-[10px] text-muted-foreground">
+                  Every collection entry, grouped per machine
+                </span>
+              </div>
+            </DropdownMenuItem>
+          </DropdownMenuContent>
+        </DropdownMenu>
       </div>
 
       {/* Screen 9: Date Range & Searchable Store Filters */}
