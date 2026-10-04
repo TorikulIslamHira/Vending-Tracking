@@ -29,6 +29,9 @@ export interface StoreItem {
   locationAddress?: string | null;
   paymentMode?: "CASH" | "BANK";
   qrCode?: string | null;
+  ownerName?: string | null;
+  ownerPhone?: string | null;
+  ownerEmail?: string | null;
   machineCount: number;
   machines?: StoreMachineItem[];
   createdAt?: string;
@@ -69,6 +72,9 @@ export function useAllStores() {
             locationAddress: st.locationAddress ?? null,
             paymentMode: st.paymentMode || "CASH",
             qrCode: st.qrCode ?? null,
+            ownerName: st.ownerName ?? null,
+            ownerPhone: st.ownerPhone ?? null,
+            ownerEmail: st.ownerEmail ?? null,
             machineCount: Number(st.machineCount ?? 0),
             machines: Array.isArray(st.machines)
               ? st.machines.map((m: any) => ({
@@ -141,12 +147,15 @@ export function useUpdateStore() {
   return useMutation({
     mutationFn: async (storeData: {
       id: string;
-      name: string;
+      name?: string;
       category?: string;
-      shopCutPercent: number;
+      shopCutPercent?: number;
       eircode?: string;
       locationAddress?: string;
       paymentMode?: "CASH" | "BANK";
+      ownerName?: string | null;
+      ownerPhone?: string | null;
+      ownerEmail?: string | null;
     }) => {
       const response = await api.put(`/stores/${storeData.id}`, {
         name: storeData.name,
@@ -155,6 +164,9 @@ export function useUpdateStore() {
         eircode: storeData.eircode,
         locationAddress: storeData.locationAddress,
         paymentMode: storeData.paymentMode,
+        ownerName: storeData.ownerName,
+        ownerPhone: storeData.ownerPhone,
+        ownerEmail: storeData.ownerEmail,
       });
       return response.data?.data;
     },

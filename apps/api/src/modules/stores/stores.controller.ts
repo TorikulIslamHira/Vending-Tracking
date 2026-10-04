@@ -38,6 +38,9 @@ export async function getAllStoresHandler(
       eircode: st.eircode,
       paymentMode: st.paymentMode,
       qrCode: st.qrCode,
+      ownerName: st.ownerName,
+      ownerPhone: st.ownerPhone,
+      ownerEmail: st.ownerEmail,
       machineCount: st.machines?.length || 0,
       machines: (st.machines || []).map((m) => ({
         id: m.id,
@@ -114,6 +117,9 @@ export async function getStoreByIdHandler(
         eircode: store.eircode,
         paymentMode: store.paymentMode,
         qrCode: store.qrCode,
+        ownerName: store.ownerName,
+        ownerPhone: store.ownerPhone,
+        ownerEmail: store.ownerEmail,
         machineCount: store.machines?.length || 0,
         createdAt: store.createdAt,
       },
@@ -151,8 +157,18 @@ export async function createStoreHandler(
     });
   }
 
-  const { name, category, shopCutPercent, eircode, locationAddress, paymentMode, qrCode } =
-    parseResult.data;
+  const {
+    name,
+    category,
+    shopCutPercent,
+    eircode,
+    locationAddress,
+    paymentMode,
+    qrCode,
+    ownerName,
+    ownerPhone,
+    ownerEmail,
+  } = parseResult.data;
 
   try {
     // qrCode has no DB-level unique constraint (see schema.ts comment), so
@@ -186,6 +202,9 @@ export async function createStoreHandler(
         locationAddress: locationAddress?.trim() || null,
         paymentMode,
         qrCode: qrCode || null,
+        ownerName: ownerName?.trim() || null,
+        ownerPhone: ownerPhone?.trim() || null,
+        ownerEmail: ownerEmail?.trim() || null,
       })
       .returning();
 
@@ -202,6 +221,9 @@ export async function createStoreHandler(
         eircode: store.eircode,
         paymentMode: store.paymentMode,
         qrCode: store.qrCode,
+        ownerName: store.ownerName,
+        ownerPhone: store.ownerPhone,
+        ownerEmail: store.ownerEmail,
         machineCount: 0,
         createdAt: store.createdAt,
       },
@@ -243,8 +265,18 @@ export async function updateStoreHandler(
     });
   }
 
-  const { name, category, shopCutPercent, eircode, locationAddress, paymentMode, qrCode } =
-    parseResult.data;
+  const {
+    name,
+    category,
+    shopCutPercent,
+    eircode,
+    locationAddress,
+    paymentMode,
+    qrCode,
+    ownerName,
+    ownerPhone,
+    ownerEmail,
+  } = parseResult.data;
 
   try {
     const existing = await db.query.stores.findFirst({
@@ -296,6 +328,15 @@ export async function updateStoreHandler(
     if (qrCode !== undefined) {
       dataToUpdate.qrCode = qrCode || null;
     }
+    if (ownerName !== undefined) {
+      dataToUpdate.ownerName = ownerName?.trim() || null;
+    }
+    if (ownerPhone !== undefined) {
+      dataToUpdate.ownerPhone = ownerPhone?.trim() || null;
+    }
+    if (ownerEmail !== undefined) {
+      dataToUpdate.ownerEmail = ownerEmail?.trim() || null;
+    }
 
     const [updated] = await db
       .update(stores)
@@ -316,6 +357,9 @@ export async function updateStoreHandler(
         eircode: updated.eircode,
         paymentMode: updated.paymentMode,
         qrCode: updated.qrCode,
+        ownerName: updated.ownerName,
+        ownerPhone: updated.ownerPhone,
+        ownerEmail: updated.ownerEmail,
       },
     });
   } catch (error: any) {

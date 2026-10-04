@@ -83,6 +83,12 @@ export const stores = pgTable(
     locationAddress: text("locationAddress"),
     paymentMode: paymentModeEnum("paymentMode").default("CASH").notNull(),
     qrCode: text("qrCode"),
+    // Store Owner Information (CRM-lite) — all three nullable so existing
+    // store rows are unaffected; populated after the fact via the
+    // dedicated /stores/owners management page, not required at creation.
+    ownerName: text("ownerName"),
+    ownerPhone: text("ownerPhone"),
+    ownerEmail: text("ownerEmail"),
     createdAt: timestamp("createdAt", { withTimezone: true, mode: "date" }).defaultNow().notNull(),
     updatedAt: timestamp("updatedAt", { withTimezone: true, mode: "date" }).defaultNow().notNull().$onUpdate(() => new Date()),
   },

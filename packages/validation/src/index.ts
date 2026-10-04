@@ -213,6 +213,11 @@ export const StoreCreateSchema = z.object({
   locationAddress: z.string().optional().nullable(),
   paymentMode: PaymentModeSchema.default(PaymentMode.CASH).optional(),
   qrCode: z.string().optional().nullable(),
+  // Store Owner Information (CRM-lite) — optional at creation, usually
+  // filled in later via the dedicated /stores/owners management page.
+  ownerName: z.string().optional().nullable(),
+  ownerPhone: z.string().optional().nullable(),
+  ownerEmail: z.string().optional().nullable(),
 });
 
 export type StoreCreateInput = z.infer<typeof StoreCreateSchema>;
@@ -226,6 +231,9 @@ export const StoreUpdateSchema = z.object({
   locationAddress: z.string().optional().nullable(),
   paymentMode: PaymentModeSchema.optional(),
   qrCode: z.string().optional().nullable(),
+  ownerName: z.string().optional().nullable(),
+  ownerPhone: z.string().optional().nullable(),
+  ownerEmail: z.string().optional().nullable(),
 });
 
 export type StoreUpdateInput = z.infer<typeof StoreUpdateSchema>;
