@@ -2,6 +2,7 @@
 
 import React, { useState } from "react";
 import { useRouter } from "next/navigation";
+import { toast } from "sonner";
 import { useAllStores, useUpdateStore, StoreItem } from "@/hooks/useStores";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -23,6 +24,7 @@ import {
   Pencil,
   Loader2,
   Store,
+  Download,
 } from "lucide-react";
 
 export default function StoreOwnersPage() {
@@ -34,6 +36,7 @@ export default function StoreOwnersPage() {
   const [ownerName, setOwnerName] = useState("");
   const [ownerPhone, setOwnerPhone] = useState("");
   const [ownerEmail, setOwnerEmail] = useState("");
+  const [isDownloadingPdf, setIsDownloadingPdf] = useState(false);
 
   // Same "go back to wherever I came from" logic used across the app's other
   // back buttons — falls back to Settings (where this page is only ever
@@ -66,6 +69,44 @@ export default function StoreOwnersPage() {
     setEditingStore(null);
   };
 
+  const handleExportPdf = async () => {
+    if (stores.length === 0) {
+      toast.error("No stores to include in the export.");
+      return;
+    }
+
+    setIsDownloadingPdf(true);
+    try {
+      const { pdf } = await import("@react-pdf/renderer");
+      const { StoreOwnersPdfDocument } = await import(
+        "@/components/reports/StoreOwnersPdfDocument"
+      );
+
+      const logoSrc =
+        typeof window !== "undefined" ? `${window.location.origin}/logo.png` : "/logo.png";
+
+      const blob = await pdf(
+        <StoreOwnersPdfDocument
+          logoSrc={logoSrc}
+          stores={stores}
+          generatedAt={new Date().toLocaleString()}
+        />
+      ).toBlob();
+
+      const url = URL.createObjectURL(blob);
+      const a = document.createElement("a");
+      a.href = url;
+      a.download = `store_owner_information_${new Date().toISOString().split("T")[0]}.pdf`;
+      a.click();
+      URL.revokeObjectURL(url);
+      toast.success("Store owner PDF downloaded!");
+    } catch {
+      toast.error("Failed to generate store owner PDF");
+    } finally {
+      setIsDownloadingPdf(false);
+    }
+  };
+
   return (
     <div className="w-full px-4 py-4 space-y-4 font-sans">
       {/* Header */}
@@ -87,6 +128,18 @@ export default function StoreOwnersPage() {
             Contact details for every registered store, for auditing & communication
           </p>
         </div>
+        <Button
+          onClick={handleExportPdf}
+          disabled={isDownloadingPdf || stores.length === 0}
+          className="h-10 px-3 rounded-2xl bg-zinc-900 text-white dark:bg-zinc-100 dark:text-zinc-900 font-bold text-xs shadow-md active:scale-[0.97] transition-transform flex items-center gap-1.5 shrink-0"
+        >
+          {isDownloadingPdf ? (
+            <Loader2 className="h-4 w-4 animate-spin" />
+          ) : (
+            <Download className="h-4 w-4 text-primary" />
+          )}
+          <span>Export PDF</span>
+        </Button>
       </div>
 
       {/* Store List */}
