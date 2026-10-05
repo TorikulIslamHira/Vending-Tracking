@@ -34,6 +34,7 @@ import {
   UserX,
   Lock,
   ShieldCheck,
+  Eye,
 } from "lucide-react";
 
 export default function UserManagementPage() {
@@ -58,8 +59,13 @@ export default function UserManagementPage() {
   // Form State
   const [userName, setUserName] = useState("");
   const [userEmail, setUserEmail] = useState("");
-  const [userRole, setUserRole] = useState<"ADMIN" | "FIELD_AGENT">("FIELD_AGENT");
+  const [userRole, setUserRole] = useState<"ADMIN" | "FIELD_AGENT" | "PRESENTATION">(
+    "FIELD_AGENT"
+  );
   const [userPassword, setUserPassword] = useState("");
+  // String (not number) so the field can hold an in-progress "-" or an empty
+  // box while typing a negative value, without fighting the input's cursor.
+  const [dataModifierPercentage, setDataModifierPercentage] = useState("0");
 
   const handleOpenAdd = () => {
     setEditingUserId(null);
@@ -67,6 +73,7 @@ export default function UserManagementPage() {
     setUserEmail("");
     setUserRole("FIELD_AGENT");
     setUserPassword("");
+    setDataModifierPercentage("0");
     setIsAddDrawerOpen(true);
   };
 
@@ -76,6 +83,7 @@ export default function UserManagementPage() {
     setUserEmail(u.email);
     setUserRole(u.role);
     setUserPassword("");
+    setDataModifierPercentage(String(u.dataModifierPercentage ?? 0));
     setIsAddDrawerOpen(true);
   };
 
@@ -92,6 +100,13 @@ export default function UserManagementPage() {
       return;
     }
 
+    const isPresentation = userRole === "PRESENTATION";
+    const parsedPercentage = Number(dataModifierPercentage);
+    if (isPresentation && (dataModifierPercentage.trim() === "" || Number.isNaN(parsedPercentage))) {
+      toast.error("Enter a valid data modifier percentage (e.g. 25 or -10)");
+      return;
+    }
+
     if (editingUserId) {
       if (userPassword && userPassword.length < 6) {
         toast.error("New password must be at least 6 characters");
@@ -105,6 +120,7 @@ export default function UserManagementPage() {
           email: userEmail.trim(),
           role: userRole,
           password: userPassword.trim() || undefined,
+          dataModifierPercentage: isPresentation ? parsedPercentage : 0,
         },
         {
           onSuccess: () => {
@@ -126,6 +142,7 @@ export default function UserManagementPage() {
         email: userEmail.trim(),
         role: userRole,
         password: userPassword,
+        dataModifierPercentage: isPresentation ? parsedPercentage : 0,
       },
       {
         onSuccess: () => {
@@ -180,8 +197,13 @@ export default function UserManagementPage() {
         ) : (
           users.map((user) => {
             const isAdmin = user.role === "ADMIN";
+            const isPresentation = user.role === "PRESENTATION";
             const isInactive = user.status === "INACTIVE";
-            const roleLabel = isAdmin ? "Admin" : "Field Agent";
+            const roleLabel = isAdmin
+              ? "Admin"
+              : isPresentation
+              ? "Presentation Viewer"
+              : "Field Agent";
 
             return (
               <Card
@@ -197,6 +219,8 @@ export default function UserManagementPage() {
                       className={`h-11 w-11 rounded-2xl flex items-center justify-center font-black text-sm shrink-0 shadow-xs ${
                         isAdmin
                           ? "bg-primary/20 text-foreground"
+                          : isPresentation
+                          ? "bg-violet-500/15 text-violet-600 dark:text-violet-400"
                           : "bg-secondary/15 text-secondary"
                       }`}
                     >
@@ -215,11 +239,19 @@ export default function UserManagementPage() {
                           className={`text-[9px] font-black uppercase tracking-wider px-2 py-0.5 rounded-full ${
                             isAdmin
                               ? "bg-primary/20 text-foreground"
+                              : isPresentation
+                              ? "bg-violet-500/15 text-violet-600 dark:text-violet-400"
                               : "bg-blue-500/15 text-blue-600 dark:text-blue-400"
                           }`}
                         >
                           {roleLabel}
                         </span>
+                        {isPresentation && (
+                          <span className="text-[9px] font-black font-mono px-2 py-0.5 rounded-full bg-muted/60 text-muted-foreground">
+                            {(user.dataModifierPercentage ?? 0) > 0 ? "+" : ""}
+                            {user.dataModifierPercentage ?? 0}%
+                          </span>
+                        )}
                       </div>
                       <p className="text-[11px] text-muted-foreground truncate">
                         {user.email}
@@ -334,13 +366,38 @@ export default function UserManagementPage() {
               </label>
               <select
                 value={userRole}
-                onChange={(e) => setUserRole(e.target.value as "ADMIN" | "FIELD_AGENT")}
+                onChange={(e) =>
+                  setUserRole(e.target.value as "ADMIN" | "FIELD_AGENT" | "PRESENTATION")
+                }
                 className="w-full h-11 rounded-xl bg-muted/40 border-border/60 text-base md:text-xs font-medium px-3 text-foreground focus:outline-hidden focus:ring-2 focus:ring-primary shadow-xs"
               >
                 <option value="FIELD_AGENT">Field Agent (Restocker)</option>
                 <option value="ADMIN">Admin (Store Manager)</option>
+                <option value="PRESENTATION">Presentation Viewer (Read-Only Demo)</option>
               </select>
             </div>
+
+            {userRole === "PRESENTATION" && (
+              <div className="space-y-1.5">
+                <label className="text-xs font-semibold text-foreground flex items-center gap-1.5">
+                  <Eye className="h-3.5 w-3.5 text-violet-600 dark:text-violet-400" />
+                  <span>Data Modifier Percentage (%)</span>
+                </label>
+                <Input
+                  type="number"
+                  step="0.01"
+                  placeholder="e.g. 25 or -10"
+                  value={dataModifierPercentage}
+                  onChange={(e) => setDataModifierPercentage(e.target.value)}
+                  className="h-11 rounded-xl bg-muted/40 border-border/60 text-xs focus-visible:ring-primary shadow-xs font-mono"
+                />
+                <p className="text-[11px] text-muted-foreground">
+                  Every financial figure this account sees is skewed by this percentage
+                  (positive inflates, negative deflates). Real data is never changed — this
+                  account is also strictly read-only.
+                </p>
+              </div>
+            )}
 
             <div className="space-y-1.5">
               <label className="text-xs font-semibold text-foreground">
