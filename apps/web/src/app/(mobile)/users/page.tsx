@@ -45,6 +45,10 @@ export default function UserManagementPage() {
   const toggleUserStatusMutation = useToggleUserStatus();
   const toggleDeletePermissionMutation = useToggleDeletePermission();
   const currentUser = useAuthStore((s) => s.user);
+  // Named distinctly from the per-row "isPresentation" used below (which
+  // describes a *listed* account's role) — this describes the person
+  // currently viewing this page, used to hide mutation controls for them.
+  const viewerIsPresentation = currentUser?.role === "PRESENTATION";
 
   const currentUserIsRoot =
     users.find((u) => u.id === currentUser?.id)?.isRootAdmin ?? false;
@@ -164,13 +168,15 @@ export default function UserManagementPage() {
           <span>More & Settings</span>
         </button>
 
-        <Button
-          onClick={handleOpenAdd}
-          className="h-9 px-3 rounded-2xl font-bold gap-1 shadow-xs shadow-primary/30 active:scale-95"
-        >
-          <Plus className="h-3.5 w-3.5" />
-          <span>+ Add User</span>
-        </Button>
+        {!viewerIsPresentation && (
+          <Button
+            onClick={handleOpenAdd}
+            className="h-9 px-3 rounded-2xl font-bold gap-1 shadow-xs shadow-primary/30 active:scale-95"
+          >
+            <Plus className="h-3.5 w-3.5" />
+            <span>+ Add User</span>
+          </Button>
+        )}
       </div>
 
       {/* Screen 10: Header */}
@@ -260,40 +266,42 @@ export default function UserManagementPage() {
                   </div>
 
                   {/* Actions: Edit & Deactivate */}
-                  <div className="flex items-center gap-1 shrink-0">
-                    <button
-                      type="button"
-                      onClick={() => handleOpenEdit(user)}
-                      className="h-8 w-8 rounded-xl bg-muted/50 hover:bg-muted text-muted-foreground hover:text-foreground flex items-center justify-center transition-colors"
-                      title="Edit User"
-                    >
-                      <Edit2 className="h-3.5 w-3.5" />
-                    </button>
-                    {user.isRootAdmin ? (
-                      <div
-                        className="h-8 w-8 rounded-xl flex items-center justify-center bg-muted/40 text-muted-foreground/50 cursor-not-allowed"
-                        title="Root Super Admin — protected, cannot be deactivated"
-                      >
-                        <Lock className="h-3.5 w-3.5" />
-                      </div>
-                    ) : (
+                  {!viewerIsPresentation && (
+                    <div className="flex items-center gap-1 shrink-0">
                       <button
                         type="button"
-                        onClick={() => handleToggleDeactivate(user.id)}
-                        className={`h-8 w-8 rounded-xl flex items-center justify-center transition-colors ${
-                          isInactive
-                            ? "bg-emerald-500/10 text-emerald-600 hover:bg-emerald-500/20"
-                            : "bg-rose-500/10 text-rose-600 hover:bg-rose-500/20"
-                        }`}
-                        title={isInactive ? "Activate User" : "Deactivate User"}
+                        onClick={() => handleOpenEdit(user)}
+                        className="h-8 w-8 rounded-xl bg-muted/50 hover:bg-muted text-muted-foreground hover:text-foreground flex items-center justify-center transition-colors"
+                        title="Edit User"
                       >
-                        <UserX className="h-3.5 w-3.5" />
+                        <Edit2 className="h-3.5 w-3.5" />
                       </button>
-                    )}
-                  </div>
+                      {user.isRootAdmin ? (
+                        <div
+                          className="h-8 w-8 rounded-xl flex items-center justify-center bg-muted/40 text-muted-foreground/50 cursor-not-allowed"
+                          title="Root Super Admin — protected, cannot be deactivated"
+                        >
+                          <Lock className="h-3.5 w-3.5" />
+                        </div>
+                      ) : (
+                        <button
+                          type="button"
+                          onClick={() => handleToggleDeactivate(user.id)}
+                          className={`h-8 w-8 rounded-xl flex items-center justify-center transition-colors ${
+                            isInactive
+                              ? "bg-emerald-500/10 text-emerald-600 hover:bg-emerald-500/20"
+                              : "bg-rose-500/10 text-rose-600 hover:bg-rose-500/20"
+                          }`}
+                          title={isInactive ? "Activate User" : "Deactivate User"}
+                        >
+                          <UserX className="h-3.5 w-3.5" />
+                        </button>
+                      )}
+                    </div>
+                  )}
                   </div>
 
-                  {currentUserIsRoot && isAdmin && !user.isRootAdmin && (
+                  {currentUserIsRoot && isAdmin && !user.isRootAdmin && !viewerIsPresentation && (
                     <div className="flex items-center justify-between gap-3 pt-3 border-t border-border/40">
                       <div className="flex items-center gap-1.5 min-w-0">
                         <ShieldCheck className="h-3.5 w-3.5 text-muted-foreground shrink-0" />

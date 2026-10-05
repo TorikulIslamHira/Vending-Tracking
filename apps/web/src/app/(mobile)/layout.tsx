@@ -71,11 +71,21 @@ export default function MobileLayout({
   // them to their actual home instead of leaving the full admin nav/data
   // visible (this is the client-side half; middleware.ts also blocks these
   // paths at the edge so a direct navigation never even renders this far).
+  // PRESENTATION gets a narrower carve-out: it's a read-only demo role
+  // scoped to exactly /reports (with percentage-skewed figures) — not
+  // admin-equivalent, so every other page in this layout (Dashboard,
+  // Stores, Machines, Settings, ...) bounces it back to /reports instead.
   React.useEffect(() => {
-    if (mounted && !isAuthPage && isAuthenticated && user && user.role !== "ADMIN") {
-      router.replace("/scan");
+    if (!mounted || isAuthPage || !isAuthenticated || !user) return;
+    if (user.role === "ADMIN") return;
+    if (user.role === "PRESENTATION") {
+      if (pathname !== "/reports" && !pathname.startsWith("/reports/")) {
+        router.replace("/reports");
+      }
+      return;
     }
-  }, [mounted, isAuthPage, isAuthenticated, user, router]);
+    router.replace("/scan");
+  }, [mounted, isAuthPage, isAuthenticated, user, pathname, router]);
 
   // Which routes belong under each bottom-tab, kept as one explicit source
   // of truth (rather than duplicated ad-hoc conditions) so a route can't
@@ -100,8 +110,12 @@ export default function MobileLayout({
 
   const bottomNavRoutes = Object.values(TAB_ROUTE_GROUPS).flat();
 
+  // PRESENTATION has exactly one reachable page — a nav bar offering
+  // Dashboard/Stores/More destinations it can't actually visit would just
+  // be a row of dead ends, so it's hidden outright rather than filtered.
   const showBottomNav =
     !isAuthPage &&
+    user?.role !== "PRESENTATION" &&
     bottomNavRoutes.some((route) => pathname === route || pathname.startsWith(`${route}/`));
 
   // Active tab determination — a route matches a tab if it's an exact

@@ -36,6 +36,17 @@ export default function AgentMobileLayout({
     setMounted(true);
   }, []);
 
+  // PRESENTATION never reaches this layout at all — it's a read-only demo
+  // role scoped to exactly /reports, not a Field-Agent-equivalent one.
+  // Bounced out immediately, same as this layout's unauthenticated handling
+  // elsewhere; middleware.ts also blocks these paths at the edge so a
+  // direct navigation never even renders this far.
+  useEffect(() => {
+    if (mounted && user?.role === "PRESENTATION") {
+      router.replace("/reports");
+    }
+  }, [mounted, user, router]);
+
   // The third tab depends on role: an Admin using the scan/history flow
   // still needs a way back to their dashboard, but a Field Agent has no
   // legitimate reason to see (or reach) admin-only pages — RBAC UI fix,

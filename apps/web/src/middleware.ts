@@ -55,7 +55,14 @@ export function middleware(request: NextRequest) {
   // Routing hint only, never an authorization check — see the comment on
   // where this cookie is set (useAuthStore.setAuth) for why that's safe.
   const role = request.cookies.get("user-role")?.value;
-  const homePath = role === "ADMIN" ? "/dashboard" : "/scan";
+  // PRESENTATION is a read-only demo role scoped to exactly one page —
+  // /reports, with its percentage-skewed figures — and nothing else. It is
+  // NOT admin-equivalent: no Dashboard, no Stores, no Machines, no Settings,
+  // no Field-Agent pages either. Its lack of write capability is enforced
+  // server-side regardless (tenantHandler.ts blocks every mutating request
+  // for this role with 403); this file is only about which pages render.
+  const isPresentation = role === "PRESENTATION";
+  const homePath = role === "ADMIN" ? "/dashboard" : isPresentation ? "/reports" : "/scan";
 
   // 3. Check public auth pages
   const isAuthPage = pathname === "/login" || pathname === "/forgot-password";
@@ -77,16 +84,25 @@ export function middleware(request: NextRequest) {
     return NextResponse.redirect(loginUrl);
   }
 
-  // 6. RBAC: a non-Admin hitting an admin-only page is redirected to their
-  // designated home instead of ever seeing it, regardless of how they got
-  // there (typed URL, bookmark, stale link).
-  if (
-    token &&
-    role &&
-    role !== "ADMIN" &&
-    ADMIN_ONLY_PREFIXES.some((prefix) => pathname === prefix || pathname.startsWith(`${prefix}/`))
-  ) {
-    return NextResponse.redirect(new URL("/scan", request.url));
+  // 6. RBAC
+  if (token && role) {
+    if (isPresentation) {
+      // Strictly scoped to /reports — everything else (Dashboard, Stores,
+      // Machines, Settings, and every Field-Agent page) redirects straight
+      // back, regardless of how they got there (typed URL, bookmark, stale
+      // link, even /login or /).
+      const isReportsPath = pathname === "/reports" || pathname.startsWith("/reports/");
+      if (!isReportsPath) {
+        return NextResponse.redirect(new URL("/reports", request.url));
+      }
+    } else if (
+      // A non-Admin (Field Agent) hitting an admin-only page is redirected
+      // to their designated home instead of ever seeing it.
+      role !== "ADMIN" &&
+      ADMIN_ONLY_PREFIXES.some((prefix) => pathname === prefix || pathname.startsWith(`${prefix}/`))
+    ) {
+      return NextResponse.redirect(new URL("/scan", request.url));
+    }
   }
 
   return NextResponse.next();

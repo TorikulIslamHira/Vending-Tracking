@@ -68,6 +68,10 @@ export default function MachineOperationPage() {
   const machineId = params.machineId as string;
   const queryClient = useQueryClient();
   const { user, token, isAuthenticated } = useAuthStore();
+  // PRESENTATION is read-only at the API layer (403 on every write) — these
+  // UI guards just keep it from ever showing a button that's guaranteed to
+  // fail, not a security boundary of their own.
+  const isPresentation = user?.role === "PRESENTATION";
   const [hasCheckedAuth, setHasCheckedAuth] = useState(false);
 
   useEffect(() => {
@@ -526,17 +530,19 @@ export default function MachineOperationPage() {
               <span className="text-4xl font-black font-mono tracking-wide text-amber-600 dark:text-amber-400">
                 {machine?.keyNumber || "—"}
               </span>
-              <button
-                type="button"
-                onClick={() => {
-                  setKeyNumberDraft(machine?.keyNumber || "");
-                  setIsEditingKeyNumber(true);
-                }}
-                className="h-7 w-7 rounded-lg bg-amber-500/15 text-amber-600 dark:text-amber-400 flex items-center justify-center hover:bg-amber-500/25 active:scale-95 transition-all shrink-0"
-                title="Edit Key Number"
-              >
-                <Pencil className="h-3.5 w-3.5" />
-              </button>
+              {!isPresentation && (
+                <button
+                  type="button"
+                  onClick={() => {
+                    setKeyNumberDraft(machine?.keyNumber || "");
+                    setIsEditingKeyNumber(true);
+                  }}
+                  className="h-7 w-7 rounded-lg bg-amber-500/15 text-amber-600 dark:text-amber-400 flex items-center justify-center hover:bg-amber-500/25 active:scale-95 transition-all shrink-0"
+                  title="Edit Key Number"
+                >
+                  <Pencil className="h-3.5 w-3.5" />
+                </button>
+              )}
             </div>
           )}
         </CardContent>
@@ -559,14 +565,16 @@ export default function MachineOperationPage() {
                 </p>
               </div>
             </div>
-            <Button
-              size="sm"
-              className="h-9 text-xs font-bold rounded-xl shrink-0 bg-emerald-600 hover:bg-emerald-700 text-white"
-              onClick={() => setIsResolveModalOpen(true)}
-            >
-              <Wrench className="h-3.5 w-3.5 mr-1.5" />
-              Mark as Repaired
-            </Button>
+            {!isPresentation && (
+              <Button
+                size="sm"
+                className="h-9 text-xs font-bold rounded-xl shrink-0 bg-emerald-600 hover:bg-emerald-700 text-white"
+                onClick={() => setIsResolveModalOpen(true)}
+              >
+                <Wrench className="h-3.5 w-3.5 mr-1.5" />
+                Mark as Repaired
+              </Button>
+            )}
           </CardContent>
         </Card>
       )}
@@ -758,12 +766,13 @@ export default function MachineOperationPage() {
                 <Button
                   type="submit"
                   className="w-full h-12 text-sm font-bold shadow-md shadow-primary/20 rounded-xl"
-                  disabled={cashMutation.isPending}
+                  disabled={cashMutation.isPending || isPresentation}
+                  title={isPresentation ? "Presentation accounts are read-only" : undefined}
                 >
                   {cashMutation.isPending && (
                     <Loader2 className="mr-2 h-4 w-4 animate-spin" />
                   )}
-                  Pay Now
+                  {isPresentation ? "Read-Only (Presentation)" : "Pay Now"}
                 </Button>
               </form>
             </CardContent>

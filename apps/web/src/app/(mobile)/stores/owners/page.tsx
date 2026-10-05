@@ -4,6 +4,7 @@ import React, { useState } from "react";
 import { useRouter } from "next/navigation";
 import { toast } from "sonner";
 import { useAllStores, useUpdateStore, StoreItem } from "@/hooks/useStores";
+import { useAuthStore } from "@/store/useAuthStore";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Card, CardContent } from "@/components/ui/card";
@@ -31,6 +32,7 @@ export default function StoreOwnersPage() {
   const router = useRouter();
   const { data: stores = [], isLoading } = useAllStores();
   const updateStoreMutation = useUpdateStore();
+  const isPresentation = useAuthStore((s) => s.user?.role === "PRESENTATION");
 
   const [editingStore, setEditingStore] = useState<StoreItem | null>(null);
   const [ownerName, setOwnerName] = useState("");
@@ -179,15 +181,17 @@ export default function StoreOwnersPage() {
                         {store.locationAddress ? ` • ${store.locationAddress}` : ""}
                       </p>
                     </div>
-                    <Button
-                      variant="outline"
-                      size="sm"
-                      onClick={() => handleOpenEdit(store)}
-                      className="h-8 px-2.5 rounded-xl text-[11px] font-semibold gap-1 shrink-0"
-                    >
-                      <Pencil className="h-3 w-3" />
-                      <span>Edit</span>
-                    </Button>
+                    {!isPresentation && (
+                      <Button
+                        variant="outline"
+                        size="sm"
+                        onClick={() => handleOpenEdit(store)}
+                        className="h-8 px-2.5 rounded-xl text-[11px] font-semibold gap-1 shrink-0"
+                      >
+                        <Pencil className="h-3 w-3" />
+                        <span>Edit</span>
+                      </Button>
+                    )}
                   </div>
 
                   {hasOwnerInfo ? (

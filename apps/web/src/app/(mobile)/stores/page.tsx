@@ -10,6 +10,7 @@ import {
   useDeleteStore,
   StoreItem,
 } from "@/hooks/useStores";
+import { useAuthStore } from "@/store/useAuthStore";
 import { geocodeEircodeOSM } from "@/lib/nominatim";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -53,6 +54,9 @@ export default function StoresPage() {
   const createStoreMutation = useCreateStore();
   const updateStoreMutation = useUpdateStore();
   const deleteStoreMutation = useDeleteStore();
+  // Read-only at the API layer (403 on every write) — this just keeps the
+  // UI from offering buttons guaranteed to fail.
+  const isPresentation = useAuthStore((s) => s.user?.role === "PRESENTATION");
 
   const [searchTerm, setSearchTerm] = useState("");
   const [isDrawerOpen, setIsDrawerOpen] = useState(false);
@@ -202,13 +206,15 @@ export default function StoresPage() {
           <p className="text-xs text-muted-foreground">{stores.length} Stores Configured</p>
         </div>
 
-        <Button
-          onClick={handleOpenAdd}
-          className="h-10 px-3.5 rounded-2xl font-bold gap-1.5 shadow-sm shadow-primary/30 active:scale-95 transition-transform"
-        >
-          <Plus className="h-4 w-4" />
-          <span>+ Add Store</span>
-        </Button>
+        {!isPresentation && (
+          <Button
+            onClick={handleOpenAdd}
+            className="h-10 px-3.5 rounded-2xl font-bold gap-1.5 shadow-sm shadow-primary/30 active:scale-95 transition-transform"
+          >
+            <Plus className="h-4 w-4" />
+            <span>+ Add Store</span>
+          </Button>
+        )}
       </div>
 
       {/* Search Bar */}
@@ -270,22 +276,26 @@ export default function StoresPage() {
                 </div>
 
                 <div className="flex items-center gap-1.5 shrink-0">
-                  <button
-                    type="button"
-                    onClick={(e) => handleOpenEdit(store, e)}
-                    className="h-8 w-8 rounded-xl bg-muted/50 hover:bg-muted text-muted-foreground hover:text-foreground flex items-center justify-center transition-colors"
-                    title="Edit Store"
-                  >
-                    <Edit3 className="h-3.5 w-3.5" />
-                  </button>
-                  <button
-                    type="button"
-                    onClick={(e) => handleOpenDelete(store, e)}
-                    className="h-8 w-8 rounded-xl bg-rose-500/10 hover:bg-rose-500/20 text-rose-600 dark:text-rose-400 flex items-center justify-center transition-colors"
-                    title="Delete Store"
-                  >
-                    <Trash2 className="h-3.5 w-3.5" />
-                  </button>
+                  {!isPresentation && (
+                    <>
+                      <button
+                        type="button"
+                        onClick={(e) => handleOpenEdit(store, e)}
+                        className="h-8 w-8 rounded-xl bg-muted/50 hover:bg-muted text-muted-foreground hover:text-foreground flex items-center justify-center transition-colors"
+                        title="Edit Store"
+                      >
+                        <Edit3 className="h-3.5 w-3.5" />
+                      </button>
+                      <button
+                        type="button"
+                        onClick={(e) => handleOpenDelete(store, e)}
+                        className="h-8 w-8 rounded-xl bg-rose-500/10 hover:bg-rose-500/20 text-rose-600 dark:text-rose-400 flex items-center justify-center transition-colors"
+                        title="Delete Store"
+                      >
+                        <Trash2 className="h-3.5 w-3.5" />
+                      </button>
+                    </>
+                  )}
                   <div className="h-8 w-8 rounded-xl flex items-center justify-center text-muted-foreground">
                     <ChevronRight className="h-4 w-4" />
                   </div>
