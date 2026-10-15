@@ -43,29 +43,33 @@ async function main() {
 
   console.log(`✅ Tenant Provisioned: ${tenant.name} (${tenant.id})`);
 
-  // 2. Hash Password and Provision Super Admin
+  // 2. Provision Super Admin
   const saltRounds = 10;
-  const hashedPassword = await bcrypt.hash(rawPassword, saltRounds);
 
   const existingAdmin = await db.query.users.findFirst({
     where: eq(users.email, adminEmail),
   });
 
   if (existingAdmin) {
+    // Deliberately does NOT touch passwordHash. SUPER_ADMIN_PASSWORD only
+    // ever sets the password at first creation, below — once the account
+    // exists, its password belongs to whoever last set it (that initial
+    // env value, or a later change through the Edit User UI), and must
+    // never be silently reverted by a routine deploy re-running this
+    // script. Role/tenant/active-status still get resynced on every run
+    // as a recovery path if any of those ever drift or get deactivated.
     await db
       .update(users)
       .set({
         name: "Super Admin",
         role: "ADMIN",
-        passwordHash: hashedPassword,
         tenantId: tenant.id,
-        // Re-running the seed also reactivates the account, so rotating
-        // SUPER_ADMIN_PASSWORD doubles as a recovery path if it was deactivated.
         isActive: true,
       })
       .where(eq(users.id, existingAdmin.id));
-    console.log(`✅ Super Admin Password & Tenant Updated for: ${adminEmail}`);
+    console.log(`✅ Super Admin Tenant/Role Synced for: ${adminEmail} (existing password left untouched)`);
   } else {
+    const hashedPassword = await bcrypt.hash(rawPassword, saltRounds);
     await db.insert(users).values({
       tenantId: tenant.id,
       name: "Super Admin",
@@ -76,7 +80,6 @@ async function main() {
     console.log(`✅ Super Admin Provisioned: Super Admin <${adminEmail}> (Role: ADMIN)`);
   }
 
-  console.log(`🔒 Super Admin credentials applied for: ${adminEmail} (password not logged)`);
   console.log("✨ Zero demo machines, packets, or logs seeded. Database is pristine clean.");
   process.exit(0);
 }
