@@ -51,7 +51,7 @@ services:
       GDRIVE_BACKUP_FOLDER_ID: ${GDRIVE_BACKUP_FOLDER_ID:-}
       GDRIVE_BACKUP_FOLDER_ID_CSV: ${GDRIVE_BACKUP_FOLDER_ID_CSV:-}
     ports:
-      - "3001:3001"
+      - "127.0.0.1:3001:3001"
     depends_on:
       db:
         condition: service_healthy
@@ -75,7 +75,10 @@ services:
       PORT: 3000
       NODE_ENV: production
     ports:
-      - "3000:3000"
+      - "127.0.0.1:3000:3000"
+    # VPS has 2 cores / ~1GB RAM — cap web so it can't starve api/db under load.
+    cpus: "1.0"
+    mem_limit: 400m
     depends_on:
       api:
         condition: service_healthy
