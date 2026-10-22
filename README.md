@@ -45,9 +45,12 @@ Beyond the initial Super Admin, every other user is created through the in-app a
 pnpm install
 
 # Start Postgres (and optionally the full stack) via Docker
-docker compose up -d db          # Postgres only, for local `pnpm dev`
+docker compose -f docker-compose.yml up -d db          # Postgres only, for local `pnpm dev`
 # — or —
-docker compose up -d --build     # Full stack: db, api, web, nginx
+docker compose -f docker-compose.yml -f docker-compose.dev.yml up -d --build
+                                  # Full stack: db, api, web, nginx — api/web build from
+                                  # source locally (docker-compose.dev.yml) instead of
+                                  # pulling the GHCR image docker-compose.yml points at
 
 # Apply the schema to the database
 pnpm --filter @vending/database run db:push

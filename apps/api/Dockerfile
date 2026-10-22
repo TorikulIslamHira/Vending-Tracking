@@ -65,6 +65,15 @@ RUN apk add --no-cache postgresql-client
 # Copy the pruned install + built code, owned by the non-root `node` user
 # that ships in the base image (uid/gid 1000), and run as that user.
 COPY --from=builder --chown=node:node /app /app
+
+# Pre-create the uploads dir, owned by `node`, before the `uploads_data`
+# named volume (docker-compose.yml) ever mounts over it. Docker seeds a
+# fresh named volume from whatever already exists at its mount point in the
+# image on first mount — including ownership — so without this the mount
+# point would be created as root:root instead, and the non-root `node` user
+# below would get EACCES on every upload.
+RUN mkdir -p /app/apps/api/uploads/issues && chown -R node:node /app/apps/api/uploads
+
 USER node
 WORKDIR /app/apps/api
 

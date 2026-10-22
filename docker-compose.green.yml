@@ -1,8 +1,15 @@
 # Blue-Green deployment override — used ALONGSIDE docker-compose.yml, never
 # alone, and only for the `api`/`web` services:
 #
+#   export IMAGE_TAG=sha-xxxxxxx   # the tag to swap to — see ~/deploy-state/previous_tag
 #   docker compose -p vending-green -f docker-compose.yml -f docker-compose.green.yml \
-#     up -d --no-deps --build api web
+#     pull api web
+#   docker compose -p vending-green -f docker-compose.yml -f docker-compose.green.yml \
+#     up -d --no-deps --wait api web
+#
+# `--build` is gone: docker-compose.yml's api/web are `image:` references
+# pulled from GHCR now, not local builds — `pull` fetches the tag, `--wait`
+# blocks on the same healthchecks deploy.sh's own rollout waits on.
 #
 # Why a separate Compose *project* (-p vending-green) rather than just this
 # override file on its own: it gives the "green" api/web containers their own
@@ -19,10 +26,10 @@
 #      name over the Docker network, never through a host-published port, so
 #      green doesn't need one published (and doing so would collide with
 #      blue's already-published 3000/3001 anyway).
-# Everything else (environment, image build context, depends_on) is inherited
-# unchanged from docker-compose.yml — that's the whole point of an override
-# file instead of hand-written `docker run` commands: zero duplicated config
-# to drift out of sync.
+# Everything else (environment, image reference, healthcheck, depends_on) is
+# inherited unchanged from docker-compose.yml — that's the whole point of an
+# override file instead of hand-written `docker run` commands: zero
+# duplicated config to drift out of sync.
 #
 # The `vending-network` below is declared external and pinned to the exact
 # network name the default project already created, so green's containers
@@ -31,6 +38,10 @@
 # container name. Confirm the real name on your VPS with `docker network ls`
 # if your project directory isn't named exactly "Vending-Tracking" (Compose
 # derives the network name from the project directory by default).
+#
+# `uploads_data` below is pinned the same way and for the same reason: green's
+# api container must see the exact same issue/repair photos blue's does, not
+# a fresh project-scoped volume of its own.
 
 services:
   api:
@@ -43,6 +54,11 @@ services:
   web:
     container_name: vending-web-green
     ports: !reset []
+
+volumes:
+  uploads_data:
+    external: true
+    name: vending-tracking_uploads_data
 
 networks:
   vending-network:

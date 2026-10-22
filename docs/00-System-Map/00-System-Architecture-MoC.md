@@ -41,6 +41,7 @@ Overview of the Multi-Tenant Vending Machine SaaS platform monorepo structure, c
 ### 📋 Operations & Tracking
 - [[current-task|📌 Current Active Task]] (`03-Active-Tasks/`)
 - [[final-qa-report|🛡️ Final End-to-End QA & Status Report]] (`03-Active-Tasks/`)
+- [[deploy-runbook|🚀 GHCR Deploy Runbook]] (`03-Active-Tasks/`)
 - [[2026-08-24-logs|📝 AI Changelogs (2026-08-24)]] (`04-AI-Changelogs/`)
 - [[2026-08-25-logs|📝 AI Changelogs (2026-08-25)]] (`04-AI-Changelogs/`)
 - [[2026-08-26-logs|📝 AI Changelogs (2026-08-26)]] (`04-AI-Changelogs/`)

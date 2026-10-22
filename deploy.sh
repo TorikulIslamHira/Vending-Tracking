@@ -1,16 +1,32 @@
 #!/bin/bash
 set -e
 
-# Detect docker permission and configure compose command
+# Detect docker permission and configure compose command.
+#
+# Always pin -f docker-compose.yml explicitly rather than let Compose fall
+# back to its own default file-discovery (which auto-loads a
+# docker-compose.override.yml from the CWD if one happens to exist, with
+# zero signal that it did). docker-compose.dev.yml restores `build:` for
+# local dev and is gitignored-from-production-mind-wise only by
+# convention, not enforcement — without an explicit -f here, if that file
+# (or any future docker-compose.override.yml) ever ends up in this
+# directory on the VPS, every command below would silently start
+# rebuilding images from source instead of pulling from GHCR, with no
+# error and no log line calling it out. There is no actual "build as a
+# fallback if the pull fails" behavior anywhere in this script — the only
+# thing that ever resembled one was that implicit auto-load, which isn't
+# safe to depend on (a reset to a ref that doesn't have the override file
+# makes it vanish out from under you) and isn't made safe by trying to
+# preserve it — it's removed here instead, for good.
 if docker ps >/dev/null 2>&1; then
   DOCKER_CMD="docker"
-  COMPOSE_CMD="docker compose"
+  COMPOSE_CMD="docker compose -f docker-compose.yml"
 elif sudo -n docker ps >/dev/null 2>&1 || sudo docker ps >/dev/null 2>&1; then
   DOCKER_CMD="sudo docker"
-  COMPOSE_CMD="sudo docker compose"
+  COMPOSE_CMD="sudo docker compose -f docker-compose.yml"
 else
   DOCKER_CMD="docker"
-  COMPOSE_CMD="docker compose"
+  COMPOSE_CMD="docker compose -f docker-compose.yml"
 fi
 
 # Ensure at least 2GB of swap space exists on the VPS to prevent Docker OOM crashes
@@ -33,7 +49,7 @@ echo "=========================================="
 echo "🚀 Bee Novelty Vending Deployment Script"
 echo "=========================================="
 
-echo "🔍 0/5 Verifying required environment configuration..."
+echo "🔍 0/4 Verifying required environment configuration..."
 if [ ! -f .env ]; then
   echo "❌ No .env file found in $(pwd)."
   echo "   Copy .env.production.example to .env and fill in real values, or"
@@ -64,7 +80,19 @@ if [ -n "$MISSING_VARS" ]; then
   exit 1
 fi
 
-echo "📥 1/5 Synchronizing latest changes from GitHub..."
+# GHCR_TOKEN/GHCR_ACTOR are only set when deploy.yml invokes this script —
+# they're the deploy job's own short-lived GITHUB_TOKEN, passed over SSH the
+# same way GH_PAT already is. A manual run on the VPS with no GHCR_TOKEN set
+# just skips the login and relies on whatever session docker already has.
+if [ -n "${GHCR_TOKEN:-}" ]; then
+  echo "🔑 Logging in to ghcr.io..."
+  echo "$GHCR_TOKEN" | $DOCKER_CMD login ghcr.io -u "${GHCR_ACTOR:-x-access-token}" --password-stdin
+  # Always log back out, however this script exits — a lingering ghcr.io
+  # session on a shared VPS user outlives the ephemeral token's job.
+  trap '$DOCKER_CMD logout ghcr.io >/dev/null 2>&1 || true' EXIT
+fi
+
+echo "📥 1/4 Synchronizing latest changes from GitHub..."
 # This repo is private. When run via the CI/CD workflow, GIT_AUTH_HEADER is
 # already exported into this process's environment (built from the GH_PAT
 # repository secret) — reuse it here rather than embedding a token in the
@@ -78,52 +106,160 @@ else
 fi
 git reset --hard origin/main
 
-echo "🛑 2/5 Stopping existing containers to free server RAM..."
-$COMPOSE_CMD down --remove-orphans || true
-
-echo "🧹 Freeing disk space before the build (prevents ENOSPC mid-build)..."
-# `docker system prune -af --volumes` is deliberately NOT used: --volumes
-# removes every volume Docker considers unused, and right after the `down`
-# above, the named postgres_data volume (docker-compose.yml) briefly has no
-# attached container — exactly the state --volumes would delete it in. That
-# risk isn't worth it for build-cache cleanup, so this only ever touches
-# images and the builder cache, never volumes.
-#
-# Also deliberately plain `-f` (dangling only), NOT `-af` (all unused): right
-# after `down` above, every image — including nginx:alpine, postgres:16-alpine,
-# and last deploy's own app images — briefly has zero running containers, so
-# `-a` would consider all of them "unused" and delete them too. That was
-# happening every single deploy, forcing a full re-pull of nginx/postgres and
-# a full rebuild of the app images from scratch each time, for no actual disk
-# benefit (leftover untagged layers from a rebuild are already dangling, so
-# plain -f still cleans those up).
+# No images are built on the VPS any more (see .github/workflows/deploy.yml's
+# `build` job) — api/web are pre-built on GitHub's runners and pushed to
+# GHCR, so this step is now a pull-and-roll instead of a 20-30 minute
+# on-VPS build. `image prune -f` only removes dangling (untagged) layers —
+# every sha-tagged image stays cached locally under its own tag, which is
+# exactly what makes the rollback below fast.
 $DOCKER_CMD image prune -f || true
 
-# The builder cache (BuildKit's cache mounts, e.g. the pnpm store — see the
-# Dockerfiles) is usually worth keeping: wiping it on every deploy would
-# force a full dependency re-download from the registry each time. Only
-# clear it when disk space is actually tight, so the common case still gets
-# fast incremental builds and ENOSPC still can't happen when it matters.
-AVAILABLE_GB=$(df --output=avail -B1G / 2>/dev/null | tail -n1 | tr -d ' ')
-if [ -n "$AVAILABLE_GB" ] && [ "$AVAILABLE_GB" -lt 5 ]; then
-  echo "⚠️  Only ${AVAILABLE_GB}GB free on / — also clearing the Docker build cache..."
-  $DOCKER_CMD builder prune -af || true
+DEPLOY_STATE_DIR="$HOME/deploy-state"
+mkdir -p "$DEPLOY_STATE_DIR"
+PREVIOUS_TAG_FILE="$DEPLOY_STATE_DIR/previous_tag"
+
+# Only ever trust a candidate rollback tag that actually looks like a
+# tag: no slashes, no "@sha256:..." digest, no empty string. Exported so
+# the same definition is sourceable in isolation for testing.
+TAG_REGEX='^[A-Za-z0-9_.-]{1,128}$'
+is_valid_tag() {
+  [[ "$1" =~ $TAG_REGEX ]]
+}
+
+# The tag that was running *before* this deploy — what a failed health
+# check below rolls back to.
+#
+# The VPS can currently be running a LOCALLY BUILT image from the old
+# pre-GHCR flow — Compose names those after the project/service with no
+# registry and often no explicit tag at all (e.g. "vending-tracking-api"
+# or "vending-tracking-api:latest"), not a ghcr.io reference. On the very
+# first GHCR deploy, naively taking whatever's after the last ":" in that
+# string either returns the whole un-tagged image name (no ":" to split
+# on at all) or "latest" — either way, writing that into previous_tag
+# would make a future rollback try to `docker compose pull` a tag that
+# was never pushed to GHCR and doesn't exist there.
+#
+# So a candidate is only ever accepted as LAST_GOOD_TAG if it's an exact
+# match for OUR GHCR repo: "ghcr.io/<owner>/vending-api:<tag>", built from
+# the same $IMAGE_OWNER deploy.yml already passes in (same default as
+# docker-compose.yml's own `${IMAGE_OWNER:-torikulislamhira}`). This
+# single prefix+regex check rejects every bad case without needing a
+# separate "is it a digest" branch: a locally-built image never starts
+# with "ghcr.io/" at all; a digest reference
+# ("ghcr.io/.../vending-api@sha256:...") has "@" immediately after the
+# image name where the prefix below requires a literal ":", so the prefix
+# match itself already fails; and even a combined tag+digest reference
+# ("...vending-api:tag@sha256:...") would still get caught by
+# is_valid_tag's character class, which has no "@" in it.
+GHCR_OWNER="${IMAGE_OWNER:-torikulislamhira}"
+GHCR_API_PREFIX="ghcr.io/${GHCR_OWNER}/vending-api:"
+
+ROLLBACK_AVAILABLE=true
+LAST_GOOD_TAG=""
+
+if [ -f "$PREVIOUS_TAG_FILE" ]; then
+  RECORDED_TAG=$(cat "$PREVIOUS_TAG_FILE")
+  if is_valid_tag "$RECORDED_TAG"; then
+    LAST_GOOD_TAG="$RECORDED_TAG"
+  else
+    echo "⚠️  $PREVIOUS_TAG_FILE contains '$RECORDED_TAG', which doesn't look like a valid image tag — ignoring it and checking what's actually running instead."
+  fi
 fi
 
-echo "💾 Disk space after cleanup:"
-df -h / 2>/dev/null | tail -n1 || true
+if [ -z "$LAST_GOOD_TAG" ]; then
+  # No usable recorded tag (file missing, or its content failed
+  # validation above) — see if the currently running container is
+  # already one of our real GHCR images.
+  RUNNING_API_IMAGE=$($DOCKER_CMD inspect -f '{{.Config.Image}}' vending-api 2>/dev/null || true)
+  if [[ "$RUNNING_API_IMAGE" == "$GHCR_API_PREFIX"* ]]; then
+    CANDIDATE_TAG="${RUNNING_API_IMAGE#"$GHCR_API_PREFIX"}"
+    if is_valid_tag "$CANDIDATE_TAG"; then
+      LAST_GOOD_TAG="$CANDIDATE_TAG"
+      echo "ℹ️  No usable recorded previous_tag — using the currently running image's tag ('$LAST_GOOD_TAG') as the rollback target."
+    fi
+  fi
+fi
 
-echo "🐳 3/5 Rebuilding and starting Docker containers..."
-export DOCKER_BUILDKIT=1
-export COMPOSE_DOCKER_CLI_BUILD=1
+if [ -z "$LAST_GOOD_TAG" ]; then
+  ROLLBACK_AVAILABLE=false
+  echo "⚠️  No usable previous tag found — no valid previous_tag recorded, and the currently running image isn't one of our GHCR tags (likely still on the old locally-built flow, or this is the first-ever deploy on this VPS). Rollback is UNAVAILABLE: if this deploy's health check fails below, it will stop for manual investigation instead of attempting a rollback that has nothing real to fall back to."
+fi
 
-# Build images sequentially to keep RAM footprint low
-$COMPOSE_CMD build --parallel=false
-$COMPOSE_CMD up -d
+export IMAGE_TAG="${IMAGE_TAG:-latest}"
 
-echo "🗄️ 4/5 Synchronizing database schema (Drizzle db push)..."
-# Wait 5 seconds for PostgreSQL container to become ready
-sleep 5
+# --no-deps: never touch db/nginx here, even though they're declared
+# dependencies — they keep running unchanged unless their own config
+# changed. --wait blocks until the new containers report healthy (see the
+# `healthcheck:` blocks in docker-compose.yml), then the curls re-check the
+# same thing through nginx's actual public path — a container's own
+# healthcheck only proves Docker can reach it directly (curl from inside);
+# it says nothing about whether nginx's upstream resolution works.
+#
+# Honest downtime note: this is NOT the zero-downtime blue-green swap
+# docker-compose.green.yml does (a second container built up alongside the
+# first, cut over, then the old one torn down). `up -d --no-deps` on the
+# SAME project stops the old api/web container, removes it, then creates
+# and starts the new one in its place — sequential, not parallel. Expect a
+# genuine ~10-30s gap where nginx gets connection-refused/502 on that
+# service while the new container boots, not true zero-downtime. The
+# blue-green flow in docker-compose.green.yml exists for when that gap
+# actually matters.
+#
+# nginx.conf is a bind mount (docker-compose.yml), not baked into the
+# nginx:alpine image — a commit that changes it lands the new file on disk
+# via the git reset above, but the *running* nginx process keeps the config
+# it already loaded until it's told to reload. `nginx -t` first: never
+# reload a config that doesn't even parse, which would otherwise take the
+# whole site down instead of just failing this deploy. The nginx container
+# itself is never recreated here — reload, not restart/up, and only
+# `up -d --no-deps nginx` (never touching api/web/db) if it's not even
+# running.
+reload_nginx() {
+  if $DOCKER_CMD inspect -f '{{.State.Running}}' vending-nginx 2>/dev/null | grep -q true; then
+    if $DOCKER_CMD exec vending-nginx nginx -t; then
+      $DOCKER_CMD exec vending-nginx nginx -s reload
+    else
+      echo "🛑 nginx -t failed on the new config — NOT reloading (would drop the working one)."
+      return 1
+    fi
+  else
+    echo "⚠️  vending-nginx is not running — starting it (--no-deps, nothing else touched)..."
+    $COMPOSE_CMD up -d --no-deps nginx
+  fi
+}
+
+roll_out() {
+  $COMPOSE_CMD pull web api \
+    && $COMPOSE_CMD up -d --no-deps --wait api web \
+    && reload_nginx \
+    && curl -fsS -o /dev/null http://localhost/login \
+    && curl -fsS -o /dev/null http://localhost/api/v1/health
+}
+
+echo "🐳 2/4 Pulling image tag '$IMAGE_TAG', rolling out api/web, and verifying through nginx..."
+if roll_out; then
+  echo "✅ '$IMAGE_TAG' is healthy and reachable through nginx."
+  echo "$IMAGE_TAG" > "$PREVIOUS_TAG_FILE"
+elif [ "$ROLLBACK_AVAILABLE" = false ]; then
+  echo "🛑 '$IMAGE_TAG' failed its health/nginx check, and there is no known-good tag to roll back to (no valid previous_tag, and nothing currently running is one of our GHCR images). Containers may be left in a broken state — investigate immediately, e.g.:"
+  echo "   $COMPOSE_CMD logs --tail=100 api web"
+  exit 1
+else
+  echo "❌ '$IMAGE_TAG' failed its health/nginx check — rolling back to '$LAST_GOOD_TAG'..."
+  export IMAGE_TAG="$LAST_GOOD_TAG"
+  if roll_out; then
+    echo "⚠️  Rolled back to '$LAST_GOOD_TAG'. The failed deploy still needs investigating."
+  else
+    echo "🛑 Rollback to '$LAST_GOOD_TAG' also failed — manual intervention required."
+  fi
+  exit 1
+fi
+
+echo "🗄️ 3/4 Synchronizing database schema (Drizzle db push)..."
+# No sleep-and-hope wait for Postgres here: the `--wait` above already
+# blocked until api's own /health check passed, and /health runs a real
+# `SELECT 1` against the database — so the DB connection is already proven
+# live by the time this line runs.
 # Invoke drizzle-kit's binary directly rather than through `pnpm run` / `pnpm
 # --filter`: pnpm wraps every `run` with a dependency-status check that tries
 # to reach the npm registry and write to /app, which fails under the api
@@ -144,7 +280,7 @@ else
   exit 1
 fi
 
-echo "🔑 5/5 Provisioning/repairing the Super Admin account..."
+echo "🔑 4/4 Provisioning/repairing the Super Admin account..."
 # Runs the already-compiled dist/seed.js directly (plain `node`, no pnpm/tsx
 # wrapper — same reasoning as the drizzle-kit invocation above). Reads
 # SUPER_ADMIN_EMAIL/SUPER_ADMIN_PASSWORD from the container's own environment

@@ -55,11 +55,17 @@ export function buildServer(): FastifyInstance {
 
   // Serves uploaded photos back out at /api/v1/uploads/* — same prefix the
   // rest of the API lives under, so nginx's existing `/api/` proxy block
-  // reaches these files with no new nginx config needed.
+  // reaches these files with no new nginx config needed. Filenames are
+  // random UUIDs and never rewritten in place, so a year-long immutable
+  // cache is safe — a changed photo gets a new filename, not new bytes at
+  // the old one.
   app.register(fastifyStatic, {
     root: path.join(__dirname, "../uploads"),
     prefix: "/api/v1/uploads/",
     decorateReply: false,
+    cacheControl: true,
+    maxAge: "365d",
+    immutable: true,
   });
 
   // Decorate with authenticateTenant hook

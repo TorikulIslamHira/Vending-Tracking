@@ -1,0 +1,25 @@
+# Local-dev override — named docker-compose.dev.yml (not the Compose-
+# default docker-compose.override.yml) specifically so it's NEVER
+# auto-loaded. Compose only auto-merges a file with that exact default
+# name when no `-f` is given; this name requires an explicit `-f` every
+# time, which is the whole point: production (deploy.sh, scripts/
+# rollback.sh) always pins `-f docker-compose.yml` and nothing else, so
+# this file existing anywhere on the VPS can never silently change what
+# gets deployed. For local dev, run:
+#   docker compose -f docker-compose.yml -f docker-compose.dev.yml up -d --build
+# Restores `build:` so `api`/`web` build from source instead of pulling
+# the GHCR image docker-compose.yml points at.
+services:
+  api:
+    build:
+      context: .
+      dockerfile: apps/api/Dockerfile
+    image: vending-api:local
+
+  web:
+    build:
+      context: .
+      dockerfile: apps/web/Dockerfile
+      args:
+        NEXT_PUBLIC_GOOGLE_MAPS_API_KEY: ${NEXT_PUBLIC_GOOGLE_MAPS_API_KEY:-}
+    image: vending-web:local
