@@ -118,10 +118,33 @@ DEPLOY_STATE_DIR="$HOME/deploy-state"
 mkdir -p "$DEPLOY_STATE_DIR"
 PREVIOUS_TAG_FILE="$DEPLOY_STATE_DIR/previous_tag"
 
-# The tag that was running *before* this deploy — what a failed health check
-# below rolls back to. Defaults to "latest" on a brand-new VPS with no prior
-# recorded deploy.
-LAST_GOOD_TAG=$(cat "$PREVIOUS_TAG_FILE" 2>/dev/null || echo "latest")
+# The tag that was running *before* this deploy — what a failed health
+# check below rolls back to.
+#
+# On the very first GHCR deploy on this VPS, $PREVIOUS_TAG_FILE doesn't
+# exist yet. Defaulting LAST_GOOD_TAG to "latest" here used to silently
+# make rollback a no-op in exactly the case it matters most: if this
+# first deploy IS the first image ever pushed, ":latest" in GHCR points
+# at that same (failing) build, so "rolling back" to it just re-pulls the
+# identical broken image and reports success. Instead: try to recover a
+# real fallback from whatever's actually running right now (e.g. a prior
+# deploy under the old build-on-VPS flow, or a previous GHCR deploy whose
+# state file got lost); if nothing is running at all, be honest that
+# there is nothing to roll back to rather than pretending there is.
+ROLLBACK_AVAILABLE=true
+if [ -f "$PREVIOUS_TAG_FILE" ]; then
+  LAST_GOOD_TAG=$(cat "$PREVIOUS_TAG_FILE")
+else
+  RUNNING_API_IMAGE=$($DOCKER_CMD inspect -f '{{.Config.Image}}' vending-api 2>/dev/null || true)
+  if [ -n "$RUNNING_API_IMAGE" ]; then
+    LAST_GOOD_TAG="${RUNNING_API_IMAGE##*:}"
+    echo "ℹ️  No recorded previous_tag yet — using the currently running image's tag ('$LAST_GOOD_TAG') as the rollback target."
+  else
+    LAST_GOOD_TAG=""
+    ROLLBACK_AVAILABLE=false
+    echo "⚠️  No recorded previous_tag and no running vending-api container — this looks like the first-ever deploy on this VPS. Rollback is UNAVAILABLE: if this deploy's health check fails below, it will stop for manual investigation instead of attempting a rollback that has nothing real to fall back to."
+  fi
+fi
 export IMAGE_TAG="${IMAGE_TAG:-latest}"
 
 # --no-deps: never touch db/nginx here, even though they're declared
@@ -177,6 +200,10 @@ echo "🐳 2/4 Pulling image tag '$IMAGE_TAG', rolling out api/web, and verifyin
 if roll_out; then
   echo "✅ '$IMAGE_TAG' is healthy and reachable through nginx."
   echo "$IMAGE_TAG" > "$PREVIOUS_TAG_FILE"
+elif [ "$ROLLBACK_AVAILABLE" = false ]; then
+  echo "🛑 '$IMAGE_TAG' failed its health/nginx check, and there is no known-good tag to roll back to (first deploy on this VPS). Containers may be left in a broken state — investigate immediately, e.g.:"
+  echo "   $COMPOSE_CMD logs --tail=100 api web"
+  exit 1
 else
   echo "❌ '$IMAGE_TAG' failed its health/nginx check — rolling back to '$LAST_GOOD_TAG'..."
   export IMAGE_TAG="$LAST_GOOD_TAG"
