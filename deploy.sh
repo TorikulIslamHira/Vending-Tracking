@@ -1,16 +1,32 @@
 #!/bin/bash
 set -e
 
-# Detect docker permission and configure compose command
+# Detect docker permission and configure compose command.
+#
+# Always pin -f docker-compose.yml explicitly rather than let Compose fall
+# back to its own default file-discovery (which auto-loads a
+# docker-compose.override.yml from the CWD if one happens to exist, with
+# zero signal that it did). docker-compose.dev.yml restores `build:` for
+# local dev and is gitignored-from-production-mind-wise only by
+# convention, not enforcement — without an explicit -f here, if that file
+# (or any future docker-compose.override.yml) ever ends up in this
+# directory on the VPS, every command below would silently start
+# rebuilding images from source instead of pulling from GHCR, with no
+# error and no log line calling it out. There is no actual "build as a
+# fallback if the pull fails" behavior anywhere in this script — the only
+# thing that ever resembled one was that implicit auto-load, which isn't
+# safe to depend on (a reset to a ref that doesn't have the override file
+# makes it vanish out from under you) and isn't made safe by trying to
+# preserve it — it's removed here instead, for good.
 if docker ps >/dev/null 2>&1; then
   DOCKER_CMD="docker"
-  COMPOSE_CMD="docker compose"
+  COMPOSE_CMD="docker compose -f docker-compose.yml"
 elif sudo -n docker ps >/dev/null 2>&1 || sudo docker ps >/dev/null 2>&1; then
   DOCKER_CMD="sudo docker"
-  COMPOSE_CMD="sudo docker compose"
+  COMPOSE_CMD="sudo docker compose -f docker-compose.yml"
 else
   DOCKER_CMD="docker"
-  COMPOSE_CMD="docker compose"
+  COMPOSE_CMD="docker compose -f docker-compose.yml"
 fi
 
 # Ensure at least 2GB of swap space exists on the VPS to prevent Docker OOM crashes
