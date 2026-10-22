@@ -2,7 +2,8 @@ import { z } from "zod";
 import { UserRole, MachineStatus, EntryType, PaymentMode, ShopPaymentStatus } from "@vending/shared-types";
 
 /**
- * Enums Mapped to Prisma Schemas
+ * Zod schemas wrapping the shared-types enums (themselves mirroring
+ * packages/database/src/schema.ts's pgEnum definitions)
  */
 export const UserRoleSchema = z.nativeEnum(UserRole);
 export const MachineStatusSchema = z.nativeEnum(MachineStatus);

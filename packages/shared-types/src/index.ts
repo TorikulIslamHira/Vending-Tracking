@@ -1,5 +1,6 @@
 /**
- * Core Enums for Vending SaaS (Mapped to Prisma Models)
+ * Core Enums for Vending SaaS (mirrors the pgEnum definitions in
+ * packages/database/src/schema.ts)
  */
 export const UserRole = {
   ADMIN: "ADMIN",
