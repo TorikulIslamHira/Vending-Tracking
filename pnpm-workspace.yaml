@@ -3,6 +3,12 @@ packages:
   - 'packages/*'
 
 allowBuilds:
+  # Auto-installed optional peers of drizzle-orm (see pnpm-lock.yaml), not
+  # a direct dependency of ours — build scripts not needed, keep `false`.
+  # Do NOT remove while drizzle-orm stays on the 0.40.x line.
+  '@prisma/client': false
+  '@prisma/engines': false
   esbuild: true
+  prisma: false
   sharp: true
   unrs-resolver: true
