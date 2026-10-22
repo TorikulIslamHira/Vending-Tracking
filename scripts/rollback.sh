@@ -10,10 +10,27 @@
 # healthy but turned out to be broken in practice.
 set -e
 
+# Same tag shape deploy.sh itself requires before ever trusting a
+# rollback target — rejects anything that isn't a plausible image tag
+# (a full image reference pasted by mistake, a "@sha256:..." digest, a
+# typo with shell metacharacters, etc.) before it ever reaches
+# `docker compose pull/up`.
+TAG_REGEX='^[A-Za-z0-9_.-]{1,128}$'
+is_valid_tag() {
+  [[ "$1" =~ $TAG_REGEX ]]
+}
+
 TAG="$1"
 if [ -z "$TAG" ]; then
   echo "Usage: scripts/rollback.sh <image-tag>"
   echo "  (see ~/deploy-state/previous_tag for the last known-good tag)"
+  exit 1
+fi
+
+if ! is_valid_tag "$TAG"; then
+  echo "🛑 '$TAG' doesn't look like a valid image tag — refusing to roll back to it."
+  echo "   Expected a plain tag like 'sha-abc1234' or 'latest', not a full image"
+  echo "   reference or a @sha256:... digest."
   exit 1
 fi
 

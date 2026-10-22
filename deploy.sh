@@ -118,33 +118,73 @@ DEPLOY_STATE_DIR="$HOME/deploy-state"
 mkdir -p "$DEPLOY_STATE_DIR"
 PREVIOUS_TAG_FILE="$DEPLOY_STATE_DIR/previous_tag"
 
+# Only ever trust a candidate rollback tag that actually looks like a
+# tag: no slashes, no "@sha256:..." digest, no empty string. Exported so
+# the same definition is sourceable in isolation for testing.
+TAG_REGEX='^[A-Za-z0-9_.-]{1,128}$'
+is_valid_tag() {
+  [[ "$1" =~ $TAG_REGEX ]]
+}
+
 # The tag that was running *before* this deploy — what a failed health
 # check below rolls back to.
 #
-# On the very first GHCR deploy on this VPS, $PREVIOUS_TAG_FILE doesn't
-# exist yet. Defaulting LAST_GOOD_TAG to "latest" here used to silently
-# make rollback a no-op in exactly the case it matters most: if this
-# first deploy IS the first image ever pushed, ":latest" in GHCR points
-# at that same (failing) build, so "rolling back" to it just re-pulls the
-# identical broken image and reports success. Instead: try to recover a
-# real fallback from whatever's actually running right now (e.g. a prior
-# deploy under the old build-on-VPS flow, or a previous GHCR deploy whose
-# state file got lost); if nothing is running at all, be honest that
-# there is nothing to roll back to rather than pretending there is.
+# The VPS can currently be running a LOCALLY BUILT image from the old
+# pre-GHCR flow — Compose names those after the project/service with no
+# registry and often no explicit tag at all (e.g. "vending-tracking-api"
+# or "vending-tracking-api:latest"), not a ghcr.io reference. On the very
+# first GHCR deploy, naively taking whatever's after the last ":" in that
+# string either returns the whole un-tagged image name (no ":" to split
+# on at all) or "latest" — either way, writing that into previous_tag
+# would make a future rollback try to `docker compose pull` a tag that
+# was never pushed to GHCR and doesn't exist there.
+#
+# So a candidate is only ever accepted as LAST_GOOD_TAG if it's an exact
+# match for OUR GHCR repo: "ghcr.io/<owner>/vending-api:<tag>", built from
+# the same $IMAGE_OWNER deploy.yml already passes in (same default as
+# docker-compose.yml's own `${IMAGE_OWNER:-torikulislamhira}`). This
+# single prefix+regex check rejects every bad case without needing a
+# separate "is it a digest" branch: a locally-built image never starts
+# with "ghcr.io/" at all; a digest reference
+# ("ghcr.io/.../vending-api@sha256:...") has "@" immediately after the
+# image name where the prefix below requires a literal ":", so the prefix
+# match itself already fails; and even a combined tag+digest reference
+# ("...vending-api:tag@sha256:...") would still get caught by
+# is_valid_tag's character class, which has no "@" in it.
+GHCR_OWNER="${IMAGE_OWNER:-torikulislamhira}"
+GHCR_API_PREFIX="ghcr.io/${GHCR_OWNER}/vending-api:"
+
 ROLLBACK_AVAILABLE=true
+LAST_GOOD_TAG=""
+
 if [ -f "$PREVIOUS_TAG_FILE" ]; then
-  LAST_GOOD_TAG=$(cat "$PREVIOUS_TAG_FILE")
-else
-  RUNNING_API_IMAGE=$($DOCKER_CMD inspect -f '{{.Config.Image}}' vending-api 2>/dev/null || true)
-  if [ -n "$RUNNING_API_IMAGE" ]; then
-    LAST_GOOD_TAG="${RUNNING_API_IMAGE##*:}"
-    echo "ℹ️  No recorded previous_tag yet — using the currently running image's tag ('$LAST_GOOD_TAG') as the rollback target."
+  RECORDED_TAG=$(cat "$PREVIOUS_TAG_FILE")
+  if is_valid_tag "$RECORDED_TAG"; then
+    LAST_GOOD_TAG="$RECORDED_TAG"
   else
-    LAST_GOOD_TAG=""
-    ROLLBACK_AVAILABLE=false
-    echo "⚠️  No recorded previous_tag and no running vending-api container — this looks like the first-ever deploy on this VPS. Rollback is UNAVAILABLE: if this deploy's health check fails below, it will stop for manual investigation instead of attempting a rollback that has nothing real to fall back to."
+    echo "⚠️  $PREVIOUS_TAG_FILE contains '$RECORDED_TAG', which doesn't look like a valid image tag — ignoring it and checking what's actually running instead."
   fi
 fi
+
+if [ -z "$LAST_GOOD_TAG" ]; then
+  # No usable recorded tag (file missing, or its content failed
+  # validation above) — see if the currently running container is
+  # already one of our real GHCR images.
+  RUNNING_API_IMAGE=$($DOCKER_CMD inspect -f '{{.Config.Image}}' vending-api 2>/dev/null || true)
+  if [[ "$RUNNING_API_IMAGE" == "$GHCR_API_PREFIX"* ]]; then
+    CANDIDATE_TAG="${RUNNING_API_IMAGE#"$GHCR_API_PREFIX"}"
+    if is_valid_tag "$CANDIDATE_TAG"; then
+      LAST_GOOD_TAG="$CANDIDATE_TAG"
+      echo "ℹ️  No usable recorded previous_tag — using the currently running image's tag ('$LAST_GOOD_TAG') as the rollback target."
+    fi
+  fi
+fi
+
+if [ -z "$LAST_GOOD_TAG" ]; then
+  ROLLBACK_AVAILABLE=false
+  echo "⚠️  No usable previous tag found — no valid previous_tag recorded, and the currently running image isn't one of our GHCR tags (likely still on the old locally-built flow, or this is the first-ever deploy on this VPS). Rollback is UNAVAILABLE: if this deploy's health check fails below, it will stop for manual investigation instead of attempting a rollback that has nothing real to fall back to."
+fi
+
 export IMAGE_TAG="${IMAGE_TAG:-latest}"
 
 # --no-deps: never touch db/nginx here, even though they're declared
@@ -201,7 +241,7 @@ if roll_out; then
   echo "✅ '$IMAGE_TAG' is healthy and reachable through nginx."
   echo "$IMAGE_TAG" > "$PREVIOUS_TAG_FILE"
 elif [ "$ROLLBACK_AVAILABLE" = false ]; then
-  echo "🛑 '$IMAGE_TAG' failed its health/nginx check, and there is no known-good tag to roll back to (first deploy on this VPS). Containers may be left in a broken state — investigate immediately, e.g.:"
+  echo "🛑 '$IMAGE_TAG' failed its health/nginx check, and there is no known-good tag to roll back to (no valid previous_tag, and nothing currently running is one of our GHCR images). Containers may be left in a broken state — investigate immediately, e.g.:"
   echo "   $COMPOSE_CMD logs --tail=100 api web"
   exit 1
 else
