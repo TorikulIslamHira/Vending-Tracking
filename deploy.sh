@@ -33,7 +33,7 @@ echo "=========================================="
 echo "🚀 Bee Novelty Vending Deployment Script"
 echo "=========================================="
 
-echo "🔍 0/5 Verifying required environment configuration..."
+echo "🔍 0/4 Verifying required environment configuration..."
 if [ ! -f .env ]; then
   echo "❌ No .env file found in $(pwd)."
   echo "   Copy .env.production.example to .env and fill in real values, or"
@@ -64,7 +64,19 @@ if [ -n "$MISSING_VARS" ]; then
   exit 1
 fi
 
-echo "📥 1/5 Synchronizing latest changes from GitHub..."
+# GHCR_TOKEN/GHCR_ACTOR are only set when deploy.yml invokes this script —
+# they're the deploy job's own short-lived GITHUB_TOKEN, passed over SSH the
+# same way GH_PAT already is. A manual run on the VPS with no GHCR_TOKEN set
+# just skips the login and relies on whatever session docker already has.
+if [ -n "${GHCR_TOKEN:-}" ]; then
+  echo "🔑 Logging in to ghcr.io..."
+  echo "$GHCR_TOKEN" | $DOCKER_CMD login ghcr.io -u "${GHCR_ACTOR:-x-access-token}" --password-stdin
+  # Always log back out, however this script exits — a lingering ghcr.io
+  # session on a shared VPS user outlives the ephemeral token's job.
+  trap '$DOCKER_CMD logout ghcr.io >/dev/null 2>&1 || true' EXIT
+fi
+
+echo "📥 1/4 Synchronizing latest changes from GitHub..."
 # This repo is private. When run via the CI/CD workflow, GIT_AUTH_HEADER is
 # already exported into this process's environment (built from the GH_PAT
 # repository secret) — reuse it here rather than embedding a token in the
@@ -78,52 +90,53 @@ else
 fi
 git reset --hard origin/main
 
-echo "🛑 2/5 Stopping existing containers to free server RAM..."
-$COMPOSE_CMD down --remove-orphans || true
-
-echo "🧹 Freeing disk space before the build (prevents ENOSPC mid-build)..."
-# `docker system prune -af --volumes` is deliberately NOT used: --volumes
-# removes every volume Docker considers unused, and right after the `down`
-# above, the named postgres_data volume (docker-compose.yml) briefly has no
-# attached container — exactly the state --volumes would delete it in. That
-# risk isn't worth it for build-cache cleanup, so this only ever touches
-# images and the builder cache, never volumes.
-#
-# Also deliberately plain `-f` (dangling only), NOT `-af` (all unused): right
-# after `down` above, every image — including nginx:alpine, postgres:16-alpine,
-# and last deploy's own app images — briefly has zero running containers, so
-# `-a` would consider all of them "unused" and delete them too. That was
-# happening every single deploy, forcing a full re-pull of nginx/postgres and
-# a full rebuild of the app images from scratch each time, for no actual disk
-# benefit (leftover untagged layers from a rebuild are already dangling, so
-# plain -f still cleans those up).
+# No images are built on the VPS any more (see .github/workflows/deploy.yml's
+# `build` job) — api/web are pre-built on GitHub's runners and pushed to
+# GHCR, so this step is now a pull-and-roll instead of a 20-30 minute
+# on-VPS build. `image prune -f` only removes dangling (untagged) layers —
+# every sha-tagged image stays cached locally under its own tag, which is
+# exactly what makes the rollback below fast.
 $DOCKER_CMD image prune -f || true
 
-# The builder cache (BuildKit's cache mounts, e.g. the pnpm store — see the
-# Dockerfiles) is usually worth keeping: wiping it on every deploy would
-# force a full dependency re-download from the registry each time. Only
-# clear it when disk space is actually tight, so the common case still gets
-# fast incremental builds and ENOSPC still can't happen when it matters.
-AVAILABLE_GB=$(df --output=avail -B1G / 2>/dev/null | tail -n1 | tr -d ' ')
-if [ -n "$AVAILABLE_GB" ] && [ "$AVAILABLE_GB" -lt 5 ]; then
-  echo "⚠️  Only ${AVAILABLE_GB}GB free on / — also clearing the Docker build cache..."
-  $DOCKER_CMD builder prune -af || true
+DEPLOY_STATE_DIR="$HOME/deploy-state"
+mkdir -p "$DEPLOY_STATE_DIR"
+PREVIOUS_TAG_FILE="$DEPLOY_STATE_DIR/previous_tag"
+
+# The tag that was running *before* this deploy — what a failed health check
+# below rolls back to. Defaults to "latest" on a brand-new VPS with no prior
+# recorded deploy.
+LAST_GOOD_TAG=$(cat "$PREVIOUS_TAG_FILE" 2>/dev/null || echo "latest")
+export IMAGE_TAG="${IMAGE_TAG:-latest}"
+
+echo "🐳 2/4 Pulling image tag '$IMAGE_TAG' and rolling out api/web..."
+$COMPOSE_CMD pull web api
+
+# --no-deps: never touch db/nginx here, even though they're declared
+# dependencies — they keep running unchanged unless their own config
+# changed. --wait: block until the new containers report healthy (see the
+# `healthcheck:` blocks in docker-compose.yml) before this line returns, so
+# the old containers keep serving the whole time and downtime is just the
+# container-swap itself (~10s), not a build.
+if $COMPOSE_CMD up -d --no-deps --wait api web; then
+  echo "✅ api/web healthy on '$IMAGE_TAG'."
+  echo "$IMAGE_TAG" > "$PREVIOUS_TAG_FILE"
+else
+  echo "❌ api/web did not become healthy on '$IMAGE_TAG' — rolling back to '$LAST_GOOD_TAG'..."
+  export IMAGE_TAG="$LAST_GOOD_TAG"
+  $COMPOSE_CMD pull web api || true
+  if $COMPOSE_CMD up -d --no-deps --wait api web; then
+    echo "⚠️  Rolled back to '$LAST_GOOD_TAG'. The failed deploy still needs investigating."
+  else
+    echo "🛑 Rollback to '$LAST_GOOD_TAG' also failed to become healthy — manual intervention required."
+  fi
+  exit 1
 fi
 
-echo "💾 Disk space after cleanup:"
-df -h / 2>/dev/null | tail -n1 || true
-
-echo "🐳 3/5 Rebuilding and starting Docker containers..."
-export DOCKER_BUILDKIT=1
-export COMPOSE_DOCKER_CLI_BUILD=1
-
-# Build images sequentially to keep RAM footprint low
-$COMPOSE_CMD build --parallel=false
-$COMPOSE_CMD up -d
-
-echo "🗄️ 4/5 Synchronizing database schema (Drizzle db push)..."
-# Wait 5 seconds for PostgreSQL container to become ready
-sleep 5
+echo "🗄️ 3/4 Synchronizing database schema (Drizzle db push)..."
+# No sleep-and-hope wait for Postgres here: the `--wait` above already
+# blocked until api's own /health check passed, and /health runs a real
+# `SELECT 1` against the database — so the DB connection is already proven
+# live by the time this line runs.
 # Invoke drizzle-kit's binary directly rather than through `pnpm run` / `pnpm
 # --filter`: pnpm wraps every `run` with a dependency-status check that tries
 # to reach the npm registry and write to /app, which fails under the api
@@ -144,7 +157,7 @@ else
   exit 1
 fi
 
-echo "🔑 5/5 Provisioning/repairing the Super Admin account..."
+echo "🔑 4/4 Provisioning/repairing the Super Admin account..."
 # Runs the already-compiled dist/seed.js directly (plain `node`, no pnpm/tsx
 # wrapper — same reasoning as the drizzle-kit invocation above). Reads
 # SUPER_ADMIN_EMAIL/SUPER_ADMIN_PASSWORD from the container's own environment

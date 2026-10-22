@@ -1,0 +1,19 @@
+# Local-dev override — Compose loads this automatically alongside
+# docker-compose.yml whenever you run `docker compose ...` with no `-f` (no
+# effect on the VPS, which invokes `-f docker-compose.yml` explicitly and
+# never has this file). Restores `build:` so `api`/`web` build from source
+# instead of pulling the GHCR image docker-compose.yml now points at.
+services:
+  api:
+    build:
+      context: .
+      dockerfile: apps/api/Dockerfile
+    image: vending-api:local
+
+  web:
+    build:
+      context: .
+      dockerfile: apps/web/Dockerfile
+      args:
+        NEXT_PUBLIC_GOOGLE_MAPS_API_KEY: ${NEXT_PUBLIC_GOOGLE_MAPS_API_KEY:-}
+    image: vending-web:local
