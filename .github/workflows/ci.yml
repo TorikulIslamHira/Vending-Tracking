@@ -51,16 +51,18 @@ jobs:
       - name: Lint
         run: pnpm run lint
 
-      # --if-present: apps/web has no test script at all yet, and
-      # apps/api's only exists on a different branch. Neither is treated
-      # as a CI failure for not having one — but the moment either package
-      # gains a `test` script, this starts running it with no workflow
-      # edit needed.
+      # --if-present goes before the script name — it's one of `pnpm run`'s
+      # own options (see `pnpm help run`: "Usage: pnpm run <command>
+      # [<args>...]"), not an argument to pass through to the script
+      # itself. apps/web has no test script at all yet, and apps/api's
+      # only exists on a different branch. Neither is treated as a CI
+      # failure for not having one — but the moment either package gains a
+      # `test` script, this starts running it with no workflow edit needed.
       - name: Test apps/web
-        run: pnpm --filter @vending/web run test --if-present
+        run: pnpm --filter @vending/web run --if-present test
 
       - name: Test apps/api
-        run: pnpm --filter @vending/api run test --if-present
+        run: pnpm --filter @vending/api run --if-present test
 
       - name: Build apps/web
         run: pnpm --filter @vending/web run build
