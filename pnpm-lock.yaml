@@ -304,6 +304,9 @@ importers:
       node-cron:
         specifier: ^4.6.0
         version: 4.6.0
+      sharp:
+        specifier: ^0.35.5
+        version: 0.35.5(@types/node@22.20.1)
     devDependencies:
       '@types/bcryptjs':
         specifier: ^3.0.0
@@ -4937,8 +4940,7 @@ snapshots:
 
   '@humanwhocodes/retry@0.4.3': {}
 
-  '@img/colour@1.1.0':
-    optional: true
+  '@img/colour@1.1.0': {}
 
   '@img/sharp-darwin-arm64@0.35.5':
     optionalDependencies:
@@ -6330,8 +6332,7 @@ snapshots:
   destr@2.0.5:
     optional: true
 
-  detect-libc@2.1.2:
-    optional: true
+  detect-libc@2.1.2: {}
 
   detect-node-es@1.1.0: {}
 
@@ -8132,7 +8133,6 @@ snapshots:
       '@img/sharp-win32-ia32': 0.35.5
       '@img/sharp-win32-x64': 0.35.5
       '@types/node': 22.20.1
-    optional: true
 
   shebang-command@2.0.0:
     dependencies:

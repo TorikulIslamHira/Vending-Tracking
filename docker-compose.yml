@@ -55,6 +55,12 @@ services:
       GDRIVE_BACKUP_FOLDER_ID_CSV: ${GDRIVE_BACKUP_FOLDER_ID_CSV:-}
     ports:
       - "127.0.0.1:3001:3001"
+    volumes:
+      # Issue/repair photos — named volume so they survive `up -d` recreating
+      # this container on every deploy. Path must match uploads.controller.ts's
+      # __dirname-resolved ISSUES_UPLOAD_DIR exactly. Shared with
+      # docker-compose.green.yml so blue/green see the same photos.
+      - uploads_data:/app/apps/api/uploads
     depends_on:
       db:
         condition: service_healthy
@@ -116,6 +122,8 @@ services:
 
 volumes:
   postgres_data:
+    driver: local
+  uploads_data:
     driver: local
 
 networks:

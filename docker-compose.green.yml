@@ -38,6 +38,10 @@
 # container name. Confirm the real name on your VPS with `docker network ls`
 # if your project directory isn't named exactly "Vending-Tracking" (Compose
 # derives the network name from the project directory by default).
+#
+# `uploads_data` below is pinned the same way and for the same reason: green's
+# api container must see the exact same issue/repair photos blue's does, not
+# a fresh project-scoped volume of its own.
 
 services:
   api:
@@ -50,6 +54,11 @@ services:
   web:
     container_name: vending-web-green
     ports: !reset []
+
+volumes:
+  uploads_data:
+    external: true
+    name: vending-tracking_uploads_data
 
 networks:
   vending-network:

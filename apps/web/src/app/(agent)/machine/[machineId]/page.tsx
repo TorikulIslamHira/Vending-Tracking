@@ -11,7 +11,7 @@ import { api as apiClient } from "@/lib/api";
 import { useAuthStore } from "@/store/useAuthStore";
 import { useCurrency } from "@/hooks/useTenantSettings";
 import { useResolveIssue, useUpdateMachineKeyNumber, useMachineIssues } from "@/hooks/useMachines";
-import { uploadIssuePhoto, resolveUploadUrl } from "@/lib/uploads";
+import { uploadIssuePhoto, resolveUploadUrl, compressPhoto } from "@/lib/uploads";
 import { toast } from "sonner";
 import {
   Card,
@@ -62,6 +62,26 @@ const ATTENTION_PRESETS = ["Malfunction", "Key Lost", "Locker Broken"] as const;
 // few phrases out every visit.
 const QUICK_NOTE_OPTIONS = ["All Ok", "Routine Collection", "Cleaned"] as const;
 
+// History-timeline photos point at files on the API's uploads volume —
+// older rows can outlive their file (a pre-volume deploy, manual cleanup),
+// so this degrades to a placeholder instead of a broken-image icon.
+function HistoryPhoto({ src, alt, className }: { src: string; alt: string; className: string }) {
+  const [failed, setFailed] = useState(false);
+  if (failed) {
+    return (
+      <div
+        className={`${className} flex items-center justify-center bg-muted/40 text-[10px] text-muted-foreground font-medium`}
+      >
+        Photo unavailable
+      </div>
+    );
+  }
+  return (
+    // eslint-disable-next-line @next/next/no-img-element
+    <img src={src} alt={alt} className={className} onError={() => setFailed(true)} />
+  );
+}
+
 export default function MachineOperationPage() {
   const params = useParams();
   const router = useRouter();
@@ -92,6 +112,7 @@ export default function MachineOperationPage() {
   // Task 1: Issue-report photo upload state
   const [issuePhotoPreviewUrl, setIssuePhotoPreviewUrl] = useState<string | null>(null);
   const [uploadedIssuePhotoUrl, setUploadedIssuePhotoUrl] = useState<string | null>(null);
+  const [isCompressingIssuePhoto, setIsCompressingIssuePhoto] = useState(false);
   const [isUploadingIssuePhoto, setIsUploadingIssuePhoto] = useState(false);
 
   // Task 2: "Mark as Repaired" modal state
@@ -99,6 +120,7 @@ export default function MachineOperationPage() {
   const [resolveNote, setResolveNote] = useState("");
   const [repairPhotoPreviewUrl, setRepairPhotoPreviewUrl] = useState<string | null>(null);
   const [uploadedRepairPhotoUrl, setUploadedRepairPhotoUrl] = useState<string | null>(null);
+  const [isCompressingRepairPhoto, setIsCompressingRepairPhoto] = useState(false);
   const [isUploadingRepairPhoto, setIsUploadingRepairPhoto] = useState(false);
   const resolveIssueMutation = useResolveIssue();
 
@@ -347,9 +369,12 @@ export default function MachineOperationPage() {
     e.target.value = "";
     if (!file) return;
     setIssuePhotoPreviewUrl(URL.createObjectURL(file));
+    setIsCompressingIssuePhoto(true);
+    const compressed = await compressPhoto(file);
+    setIsCompressingIssuePhoto(false);
     setIsUploadingIssuePhoto(true);
     try {
-      const url = await uploadIssuePhoto(file);
+      const url = await uploadIssuePhoto(compressed);
       setUploadedIssuePhotoUrl(url);
     } catch {
       toast.error("Failed to upload photo");
@@ -369,9 +394,12 @@ export default function MachineOperationPage() {
     e.target.value = "";
     if (!file) return;
     setRepairPhotoPreviewUrl(URL.createObjectURL(file));
+    setIsCompressingRepairPhoto(true);
+    const compressed = await compressPhoto(file);
+    setIsCompressingRepairPhoto(false);
     setIsUploadingRepairPhoto(true);
     try {
-      const url = await uploadIssuePhoto(file);
+      const url = await uploadIssuePhoto(compressed);
       setUploadedRepairPhotoUrl(url);
     } catch {
       toast.error("Failed to upload photo");
@@ -692,9 +720,12 @@ export default function MachineOperationPage() {
                               alt="Issue photo preview"
                               className="w-full h-full object-cover"
                             />
-                            {isUploadingIssuePhoto && (
-                              <div className="absolute inset-0 bg-black/50 flex items-center justify-center">
+                            {(isCompressingIssuePhoto || isUploadingIssuePhoto) && (
+                              <div className="absolute inset-0 bg-black/50 flex flex-col items-center justify-center gap-1">
                                 <Loader2 className="h-5 w-5 animate-spin text-white" />
+                                <span className="text-[9px] font-semibold text-white">
+                                  {isCompressingIssuePhoto ? "Compressing..." : "Uploading..."}
+                                </span>
                               </div>
                             )}
                             <button
@@ -712,7 +743,6 @@ export default function MachineOperationPage() {
                             <input
                               type="file"
                               accept="image/*"
-                              capture="environment"
                               className="hidden"
                               onChange={handleIssuePhotoSelect}
                             />
@@ -877,8 +907,7 @@ export default function MachineOperationPage() {
                         )}
 
                         {photoUrl && (
-                          // eslint-disable-next-line @next/next/no-img-element
-                          <img
+                          <HistoryPhoto
                             src={photoUrl}
                             alt={isReported ? "Reported issue photo" : "Proof of repair photo"}
                             className="w-full max-w-[200px] rounded-lg border border-border/40 object-cover"
@@ -1055,9 +1084,12 @@ export default function MachineOperationPage() {
                     alt="Proof of repair preview"
                     className="w-full h-full object-cover"
                   />
-                  {isUploadingRepairPhoto && (
-                    <div className="absolute inset-0 bg-black/50 flex items-center justify-center">
+                  {(isCompressingRepairPhoto || isUploadingRepairPhoto) && (
+                    <div className="absolute inset-0 bg-black/50 flex flex-col items-center justify-center gap-1">
                       <Loader2 className="h-5 w-5 animate-spin text-white" />
+                      <span className="text-[9px] font-semibold text-white">
+                        {isCompressingRepairPhoto ? "Compressing..." : "Uploading..."}
+                      </span>
                     </div>
                   )}
                   <button
@@ -1075,7 +1107,6 @@ export default function MachineOperationPage() {
                   <input
                     type="file"
                     accept="image/*"
-                    capture="environment"
                     className="hidden"
                     onChange={handleRepairPhotoSelect}
                   />
@@ -1104,7 +1135,9 @@ export default function MachineOperationPage() {
             </Button>
             <Button
               className="w-full h-11 text-xs font-bold rounded-xl bg-emerald-600 hover:bg-emerald-700 text-white"
-              disabled={resolveIssueMutation.isPending || isUploadingRepairPhoto}
+              disabled={
+                resolveIssueMutation.isPending || isCompressingRepairPhoto || isUploadingRepairPhoto
+              }
               onClick={handleResolveIssue}
             >
               {resolveIssueMutation.isPending ? (

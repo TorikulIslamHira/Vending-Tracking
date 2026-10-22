@@ -1,8 +1,15 @@
 import { FastifyReply, FastifyRequest } from "fastify";
-import { createWriteStream, mkdirSync } from "fs";
-import { pipeline } from "stream/promises";
+// Side-effect import: this is what actually declares `request.file()` on
+// FastifyRequest's type. The main `tsc` build only gets away without it
+// because server.ts (which does import this) happens to share the same
+// compilation unit — a narrower one (e.g. this file's own test file,
+// compiled in isolation by ts-node) would otherwise fail to typecheck
+// `request.file()` below.
+import "@fastify/multipart";
+import { mkdir, writeFile } from "fs/promises";
 import path from "path";
 import crypto from "crypto";
+import sharp from "sharp";
 
 // Resolves to apps/api/uploads/issues regardless of whether this runs from
 // src/modules/uploads (tsx/dev) or dist/modules/uploads (compiled) — both
@@ -17,7 +24,17 @@ const ALLOWED_MIME_TYPES = new Map([
   ["image/heif", ".heif"],
 ]);
 
+// sharp's bundled libvips can't decode HEIC/HEIF (the HEVC codec it'd need
+// is patent-encumbered and excluded from sharp's prebuilt binaries), so
+// those are stored as-is — same as before this controller started
+// processing images at all. iOS Safari/WebKit decodes HEIC natively, so
+// apps/web's client-side compression (lib/uploads.ts) already converts most
+// of these to JPEG before they ever reach here.
+const UNPROCESSABLE_MIME_TYPES = new Set(["image/heic", "image/heif"]);
+
 const MAX_FILE_SIZE_BYTES = 8 * 1024 * 1024; // 8MB — a phone camera photo comfortably fits
+const MAX_DIMENSION = 1600;
+const JPEG_QUALITY = 80;
 
 /**
  * Accepts a single multipart image upload (issue-report or proof-of-repair
@@ -26,10 +43,17 @@ const MAX_FILE_SIZE_BYTES = 8 * 1024 * 1024; // 8MB — a phone camera photo com
  * — the frontend prefixes this with its own API base URL when rendering an
  * <img>, the same way it already does for every other API call.
  *
- * Local-disk storage only (see the branch's storage-approach decision):
- * works with zero external credentials for local dev, but the container
- * filesystem is ephemeral — a persistent Docker volume must be added before
- * this ever ships to production, or uploaded photos won't survive a redeploy.
+ * Safety net behind the client-side compression apps/web already does:
+ * auto-rotates, downscales to a 1600px box, strips metadata, and
+ * re-encodes as JPEG. Resaved through sharp strips EXIF/ICC by default
+ * (only `.withMetadata()` would keep it) — no separate strip step needed.
+ * Falls back to saving the original bytes untouched whenever sharp can't
+ * process the input (HEIC/HEIF, or any other decode failure) rather than
+ * failing the upload.
+ *
+ * Persisted to the `uploads_data` Docker volume (docker-compose.yml) so
+ * photos survive a container recreate — the path above must keep matching
+ * that volume's mount point exactly.
  */
 export async function uploadIssuePhotoHandler(
   request: FastifyRequest,
@@ -57,23 +81,46 @@ export async function uploadIssuePhotoHandler(
       });
     }
 
-    mkdirSync(ISSUES_UPLOAD_DIR, { recursive: true });
-
-    const filename = `${crypto.randomUUID()}${extension}`;
-    const filePath = path.join(ISSUES_UPLOAD_DIR, filename);
-
-    await pipeline(file.file, createWriteStream(filePath));
-
-    // @fastify/multipart aborts the stream (file.file.truncated) rather than
-    // throwing when a file exceeds the configured limit — check explicitly
-    // so an oversized upload reports a clean 413, not a silently truncated photo.
-    if (file.file.truncated) {
-      return reply.status(413).send({
-        statusCode: 413,
-        error: "Payload Too Large",
-        message: `Photo exceeds the ${MAX_FILE_SIZE_BYTES / (1024 * 1024)}MB limit.`,
-      });
+    let buffer: Buffer;
+    try {
+      buffer = await file.toBuffer();
+    } catch (err: any) {
+      if (err?.code === "FST_REQ_FILE_TOO_LARGE") {
+        return reply.status(413).send({
+          statusCode: 413,
+          error: "Payload Too Large",
+          message: `Photo exceeds the ${MAX_FILE_SIZE_BYTES / (1024 * 1024)}MB limit.`,
+        });
+      }
+      throw err;
     }
+
+    let outputBuffer = buffer;
+    let outputExtension = extension;
+    if (!UNPROCESSABLE_MIME_TYPES.has(file.mimetype)) {
+      try {
+        outputBuffer = await sharp(buffer)
+          .rotate()
+          .resize({
+            width: MAX_DIMENSION,
+            height: MAX_DIMENSION,
+            fit: "inside",
+            withoutEnlargement: true,
+          })
+          .jpeg({ quality: JPEG_QUALITY })
+          .toBuffer();
+        outputExtension = ".jpg";
+      } catch {
+        // Not a decodable image despite its declared mimetype — store the
+        // original bytes rather than fail the upload.
+      }
+    }
+
+    await mkdir(ISSUES_UPLOAD_DIR, { recursive: true });
+
+    const filename = `${crypto.randomUUID()}${outputExtension}`;
+    const filePath = path.join(ISSUES_UPLOAD_DIR, filename);
+    await writeFile(filePath, outputBuffer);
 
     return reply.send({
       statusCode: 200,
