@@ -1,5 +1,6 @@
 import { GoogleAuth } from "google-auth-library";
 import { drive } from "@googleapis/drive";
+import { readFileSync } from "fs";
 
 /**
  * Reads the Google service-account credentials from either
@@ -25,8 +26,7 @@ function loadServiceAccountCredentials(): Record<string, any> | null {
   const path = process.env.GOOGLE_SERVICE_ACCOUNT_JSON_PATH;
   if (path) {
     try {
-      // eslint-disable-next-line @typescript-eslint/no-var-requires
-      return require(path);
+      return JSON.parse(readFileSync(path, "utf-8"));
     } catch {
       return null;
     }

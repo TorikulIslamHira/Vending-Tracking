@@ -951,8 +951,8 @@ export default function MachineOperationPage() {
                   <span>Shopkeeper Bank Payment</span>
                 </DialogTitle>
                 <DialogDescription className="text-xs text-muted-foreground">
-                  This store is paid by bank transfer — confirm it's already been sent, or set when
-                  it's expected.
+                  This store is paid by bank transfer — confirm it&apos;s already been sent, or set when
+                  it&apos;s expected.
                 </DialogDescription>
               </DialogHeader>
               <div className="py-3 space-y-3">
