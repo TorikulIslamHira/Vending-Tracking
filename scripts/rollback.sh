@@ -18,17 +18,41 @@ if [ -z "$TAG" ]; then
 fi
 
 if docker ps >/dev/null 2>&1; then
+  DOCKER_CMD="docker"
   COMPOSE_CMD="docker compose"
 elif sudo -n docker ps >/dev/null 2>&1 || sudo docker ps >/dev/null 2>&1; then
+  DOCKER_CMD="sudo docker"
   COMPOSE_CMD="sudo docker compose"
 else
+  DOCKER_CMD="docker"
   COMPOSE_CMD="docker compose"
 fi
+
+# Same reload as deploy.sh: nginx.conf is a bind mount, so if you checked
+# out a different commit before rolling back, the running nginx process
+# still has whatever config it loaded last until told to reload. `nginx -t`
+# first so a broken config fails this script instead of taking nginx down;
+# never recreates the nginx container, only reloads it (or starts it with
+# --no-deps if it wasn't running at all).
+reload_nginx() {
+  if $DOCKER_CMD inspect -f '{{.State.Running}}' vending-nginx 2>/dev/null | grep -q true; then
+    if $DOCKER_CMD exec vending-nginx nginx -t; then
+      $DOCKER_CMD exec vending-nginx nginx -s reload
+    else
+      echo "🛑 nginx -t failed on the current config — NOT reloading (would drop the working one)."
+      return 1
+    fi
+  else
+    echo "⚠️  vending-nginx is not running — starting it (--no-deps, nothing else touched)..."
+    $COMPOSE_CMD up -d --no-deps nginx
+  fi
+}
 
 echo "⏪ Rolling back api/web to '$TAG'..."
 export IMAGE_TAG="$TAG"
 if $COMPOSE_CMD pull web api \
   && $COMPOSE_CMD up -d --no-deps --wait api web \
+  && reload_nginx \
   && curl -fsS -o /dev/null http://localhost/login \
   && curl -fsS -o /dev/null http://localhost/api/v1/health; then
   mkdir -p "$HOME/deploy-state"

@@ -125,9 +125,34 @@ export IMAGE_TAG="${IMAGE_TAG:-latest}"
 # service while the new container boots, not true zero-downtime. The
 # blue-green flow in docker-compose.green.yml exists for when that gap
 # actually matters.
+#
+# nginx.conf is a bind mount (docker-compose.yml), not baked into the
+# nginx:alpine image — a commit that changes it lands the new file on disk
+# via the git reset above, but the *running* nginx process keeps the config
+# it already loaded until it's told to reload. `nginx -t` first: never
+# reload a config that doesn't even parse, which would otherwise take the
+# whole site down instead of just failing this deploy. The nginx container
+# itself is never recreated here — reload, not restart/up, and only
+# `up -d --no-deps nginx` (never touching api/web/db) if it's not even
+# running.
+reload_nginx() {
+  if $DOCKER_CMD inspect -f '{{.State.Running}}' vending-nginx 2>/dev/null | grep -q true; then
+    if $DOCKER_CMD exec vending-nginx nginx -t; then
+      $DOCKER_CMD exec vending-nginx nginx -s reload
+    else
+      echo "🛑 nginx -t failed on the new config — NOT reloading (would drop the working one)."
+      return 1
+    fi
+  else
+    echo "⚠️  vending-nginx is not running — starting it (--no-deps, nothing else touched)..."
+    $COMPOSE_CMD up -d --no-deps nginx
+  fi
+}
+
 roll_out() {
   $COMPOSE_CMD pull web api \
     && $COMPOSE_CMD up -d --no-deps --wait api web \
+    && reload_nginx \
     && curl -fsS -o /dev/null http://localhost/login \
     && curl -fsS -o /dev/null http://localhost/api/v1/health
 }

@@ -77,6 +77,12 @@ jobs:
           tags: |
             ghcr.io/${{ steps.vars.outputs.owner }}/vending-api:${{ steps.vars.outputs.image_tag }}
             ghcr.io/${{ steps.vars.outputs.owner }}/vending-api:latest
+          # Links the GHCR package to this repo (shows up under the repo's
+          # own Packages tab, gives it a package settings page at all) —
+          # without this a package pushed by a workflow still exists but
+          # has no visible connection back to where it came from.
+          labels: |
+            org.opencontainers.image.source=https://github.com/${{ github.repository }}
           cache-from: type=gha,scope=api
           cache-to: type=gha,mode=max,scope=api
 
@@ -92,6 +98,8 @@ jobs:
           tags: |
             ghcr.io/${{ steps.vars.outputs.owner }}/vending-web:${{ steps.vars.outputs.image_tag }}
             ghcr.io/${{ steps.vars.outputs.owner }}/vending-web:latest
+          labels: |
+            org.opencontainers.image.source=https://github.com/${{ github.repository }}
           cache-from: type=gha,scope=web
           cache-to: type=gha,mode=max,scope=web
 
