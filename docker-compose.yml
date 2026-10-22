@@ -27,8 +27,9 @@ services:
   #
   # Pulled pre-built from GHCR (see .github/workflows/deploy.yml) rather than
   # built here — building on the VPS's 2 cores/~1GB RAM is what used to make
-  # every deploy take 20-30 minutes. `docker-compose.override.yml` restores
-  # `build:` for local dev, where Compose auto-merges it over this file.
+  # every deploy take 20-30 minutes. `docker-compose.dev.yml` restores
+  # `build:` for local dev — pass it explicitly with -f, it's deliberately
+  # not named docker-compose.override.yml so Compose never auto-loads it.
   api:
     image: ghcr.io/${IMAGE_OWNER:-torikulislamhira}/vending-api:${IMAGE_TAG:-latest}
     container_name: vending-api

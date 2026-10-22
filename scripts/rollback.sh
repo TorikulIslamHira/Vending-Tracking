@@ -17,15 +17,18 @@ if [ -z "$TAG" ]; then
   exit 1
 fi
 
+# -f docker-compose.yml pinned explicitly, same reasoning as deploy.sh:
+# never let Compose's default file-discovery auto-merge anything else
+# that happens to be sitting in this directory.
 if docker ps >/dev/null 2>&1; then
   DOCKER_CMD="docker"
-  COMPOSE_CMD="docker compose"
+  COMPOSE_CMD="docker compose -f docker-compose.yml"
 elif sudo -n docker ps >/dev/null 2>&1 || sudo docker ps >/dev/null 2>&1; then
   DOCKER_CMD="sudo docker"
-  COMPOSE_CMD="sudo docker compose"
+  COMPOSE_CMD="sudo docker compose -f docker-compose.yml"
 else
   DOCKER_CMD="docker"
-  COMPOSE_CMD="docker compose"
+  COMPOSE_CMD="docker compose -f docker-compose.yml"
 fi
 
 # Same reload as deploy.sh: nginx.conf is a bind mount, so if you checked
