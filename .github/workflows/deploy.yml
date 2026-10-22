@@ -4,6 +4,12 @@ on:
   push:
     branches:
       - main
+  # So a PR actually exercises the build (image build only, never pushed —
+  # see the `gate` step below) instead of this workflow only ever running
+  # on main. `on.push.branches: [main]` already means a non-PR push to any
+  # other branch never triggers this workflow at all; this adds the one
+  # other case that's expected to.
+  pull_request: {}
   workflow_dispatch: {}
 
 jobs:
@@ -16,6 +22,7 @@ jobs:
     outputs:
       image_tag: ${{ steps.vars.outputs.image_tag }}
       owner: ${{ steps.vars.outputs.owner }}
+      should_publish: ${{ steps.gate.outputs.should_publish }}
 
     steps:
       - name: Checkout Codebase
@@ -30,11 +37,30 @@ jobs:
           echo "owner=$(echo '${{ github.repository_owner }}' | tr '[:upper:]' '[:lower:]')" >> "$GITHUB_OUTPUT"
           echo "image_tag=sha-$(echo '${{ github.sha }}' | cut -c1-7)" >> "$GITHUB_OUTPUT"
 
+      # A single positive allow-list, computed once, reused by every step
+      # below that must never run for a PR (or any other future trigger
+      # type) — deliberately NOT `github.event_name != 'pull_request'`.
+      # That phrasing is a denylist: it defaults to "allowed" for every
+      # event type that exists today AND any trigger added to `on:` later,
+      # so adding e.g. a `schedule:` trigger down the line would silently
+      # start pushing images and deploying unless someone remembered to
+      # also update this exact condition everywhere it's copied. An
+      # allow-list defaults closed instead — a new trigger type is simply
+      # not in it until someone deliberately adds it here.
+      - name: "Gate: push images / deploy only for main (push or workflow_dispatch)"
+        id: gate
+        run: |
+          if [ "${{ github.ref }}" = "refs/heads/main" ] && { [ "${{ github.event_name }}" = "push" ] || [ "${{ github.event_name }}" = "workflow_dispatch" ]; }; then
+            echo "should_publish=true" >> "$GITHUB_OUTPUT"
+          else
+            echo "should_publish=false" >> "$GITHUB_OUTPUT"
+          fi
+
       - name: Set up Docker Buildx
         uses: docker/setup-buildx-action@v3
 
       - name: Log in to GHCR
-        if: github.event_name != 'pull_request'
+        if: steps.gate.outputs.should_publish == 'true'
         uses: docker/login-action@v3
         with:
           registry: ghcr.io
@@ -47,7 +73,7 @@ jobs:
           context: .
           file: apps/api/Dockerfile
           platforms: linux/amd64
-          push: ${{ github.event_name != 'pull_request' }}
+          push: ${{ steps.gate.outputs.should_publish == 'true' }}
           tags: |
             ghcr.io/${{ steps.vars.outputs.owner }}/vending-api:${{ steps.vars.outputs.image_tag }}
             ghcr.io/${{ steps.vars.outputs.owner }}/vending-api:latest
@@ -60,7 +86,7 @@ jobs:
           context: .
           file: apps/web/Dockerfile
           platforms: linux/amd64
-          push: ${{ github.event_name != 'pull_request' }}
+          push: ${{ steps.gate.outputs.should_publish == 'true' }}
           build-args: |
             NEXT_PUBLIC_GOOGLE_MAPS_API_KEY=${{ secrets.NEXT_PUBLIC_GOOGLE_MAPS_API_KEY }}
           tags: |
@@ -69,10 +95,10 @@ jobs:
           cache-from: type=gha,scope=web
           cache-to: type=gha,mode=max,scope=web
 
-      # Only on an actual push/dispatch to main: a build-only PR run never
-      # pushed anything, so there's nothing new to prune for.
+      # Only after an actual push/dispatch to main: a build-only PR run
+      # never pushed anything, so there's nothing new to prune for.
       - name: Prune old api package versions (keep last 5)
-        if: github.event_name != 'pull_request' && github.ref == 'refs/heads/main'
+        if: steps.gate.outputs.should_publish == 'true'
         uses: actions/delete-package-versions@v5
         with:
           package-name: vending-api
@@ -80,7 +106,7 @@ jobs:
           min-versions-to-keep: 5
 
       - name: Prune old web package versions (keep last 5)
-        if: github.event_name != 'pull_request' && github.ref == 'refs/heads/main'
+        if: steps.gate.outputs.should_publish == 'true'
         uses: actions/delete-package-versions@v5
         with:
           package-name: vending-web
@@ -90,7 +116,7 @@ jobs:
   deploy:
     name: Deploy to Production VPS
     needs: build
-    if: github.event_name != 'pull_request' && github.ref == 'refs/heads/main'
+    if: needs.build.outputs.should_publish == 'true'
     runs-on: ubuntu-latest
     permissions:
       contents: read

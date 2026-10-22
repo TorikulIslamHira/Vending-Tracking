@@ -27,9 +27,14 @@ fi
 
 echo "⏪ Rolling back api/web to '$TAG'..."
 export IMAGE_TAG="$TAG"
-$COMPOSE_CMD pull web api
-$COMPOSE_CMD up -d --no-deps --wait api web
-
-mkdir -p "$HOME/deploy-state"
-echo "$TAG" > "$HOME/deploy-state/previous_tag"
-echo "✅ Rolled back to '$TAG'."
+if $COMPOSE_CMD pull web api \
+  && $COMPOSE_CMD up -d --no-deps --wait api web \
+  && curl -fsS -o /dev/null http://localhost/login \
+  && curl -fsS -o /dev/null http://localhost/api/v1/health; then
+  mkdir -p "$HOME/deploy-state"
+  echo "$TAG" > "$HOME/deploy-state/previous_tag"
+  echo "✅ Rolled back to '$TAG' and confirmed reachable through nginx."
+else
+  echo "🛑 Rollback to '$TAG' failed its health/nginx check — investigate before trying another tag."
+  exit 1
+fi

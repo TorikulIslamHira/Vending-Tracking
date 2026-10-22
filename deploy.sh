@@ -108,26 +108,41 @@ PREVIOUS_TAG_FILE="$DEPLOY_STATE_DIR/previous_tag"
 LAST_GOOD_TAG=$(cat "$PREVIOUS_TAG_FILE" 2>/dev/null || echo "latest")
 export IMAGE_TAG="${IMAGE_TAG:-latest}"
 
-echo "🐳 2/4 Pulling image tag '$IMAGE_TAG' and rolling out api/web..."
-$COMPOSE_CMD pull web api
-
 # --no-deps: never touch db/nginx here, even though they're declared
 # dependencies — they keep running unchanged unless their own config
-# changed. --wait: block until the new containers report healthy (see the
-# `healthcheck:` blocks in docker-compose.yml) before this line returns, so
-# the old containers keep serving the whole time and downtime is just the
-# container-swap itself (~10s), not a build.
-if $COMPOSE_CMD up -d --no-deps --wait api web; then
-  echo "✅ api/web healthy on '$IMAGE_TAG'."
+# changed. --wait blocks until the new containers report healthy (see the
+# `healthcheck:` blocks in docker-compose.yml), then the curls re-check the
+# same thing through nginx's actual public path — a container's own
+# healthcheck only proves Docker can reach it directly (curl from inside);
+# it says nothing about whether nginx's upstream resolution works.
+#
+# Honest downtime note: this is NOT the zero-downtime blue-green swap
+# docker-compose.green.yml does (a second container built up alongside the
+# first, cut over, then the old one torn down). `up -d --no-deps` on the
+# SAME project stops the old api/web container, removes it, then creates
+# and starts the new one in its place — sequential, not parallel. Expect a
+# genuine ~10-30s gap where nginx gets connection-refused/502 on that
+# service while the new container boots, not true zero-downtime. The
+# blue-green flow in docker-compose.green.yml exists for when that gap
+# actually matters.
+roll_out() {
+  $COMPOSE_CMD pull web api \
+    && $COMPOSE_CMD up -d --no-deps --wait api web \
+    && curl -fsS -o /dev/null http://localhost/login \
+    && curl -fsS -o /dev/null http://localhost/api/v1/health
+}
+
+echo "🐳 2/4 Pulling image tag '$IMAGE_TAG', rolling out api/web, and verifying through nginx..."
+if roll_out; then
+  echo "✅ '$IMAGE_TAG' is healthy and reachable through nginx."
   echo "$IMAGE_TAG" > "$PREVIOUS_TAG_FILE"
 else
-  echo "❌ api/web did not become healthy on '$IMAGE_TAG' — rolling back to '$LAST_GOOD_TAG'..."
+  echo "❌ '$IMAGE_TAG' failed its health/nginx check — rolling back to '$LAST_GOOD_TAG'..."
   export IMAGE_TAG="$LAST_GOOD_TAG"
-  $COMPOSE_CMD pull web api || true
-  if $COMPOSE_CMD up -d --no-deps --wait api web; then
+  if roll_out; then
     echo "⚠️  Rolled back to '$LAST_GOOD_TAG'. The failed deploy still needs investigating."
   else
-    echo "🛑 Rollback to '$LAST_GOOD_TAG' also failed to become healthy — manual intervention required."
+    echo "🛑 Rollback to '$LAST_GOOD_TAG' also failed — manual intervention required."
   fi
   exit 1
 fi

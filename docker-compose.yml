@@ -93,12 +93,16 @@ services:
     depends_on:
       api:
         condition: service_healthy
+    # start_period/retries are generous on purpose: a cold `next start` on
+    # this VPS's 2 cores can take well over 15s, and a healthcheck that
+    # gives up before the process is even ready would make --wait (and the
+    # through-nginx check in deploy.sh) fail a perfectly good deploy.
     healthcheck:
       test: ["CMD", "wget", "-qO-", "http://127.0.0.1:3000/login"]
       interval: 10s
       timeout: 5s
-      start_period: 15s
-      retries: 3
+      start_period: 40s
+      retries: 10
     restart: unless-stopped
     networks:
       - vending-network
