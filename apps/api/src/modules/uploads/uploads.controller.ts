@@ -47,9 +47,11 @@ const JPEG_QUALITY = 80;
  * auto-rotates, downscales to a 1600px box, strips metadata, and
  * re-encodes as JPEG. Resaved through sharp strips EXIF/ICC by default
  * (only `.withMetadata()` would keep it) — no separate strip step needed.
- * Falls back to saving the original bytes untouched whenever sharp can't
- * process the input (HEIC/HEIF, or any other decode failure) rather than
- * failing the upload.
+ * HEIC/HEIF is stored unprocessed on purpose (see UNPROCESSABLE_MIME_TYPES
+ * below — sharp can't decode it at all). Anything else sharp fails to
+ * decode is rejected outright with a 400 — never saved raw: a file whose
+ * bytes don't match its declared mimetype isn't something to silently
+ * persist under a trusted-looking URL.
  *
  * Persisted to the `uploads_data` Docker volume (docker-compose.yml) so
  * photos survive a container recreate — the path above must keep matching
@@ -95,9 +97,14 @@ export async function uploadIssuePhotoHandler(
       throw err;
     }
 
-    let outputBuffer = buffer;
+    let outputBuffer: Buffer;
     let outputExtension = extension;
-    if (!UNPROCESSABLE_MIME_TYPES.has(file.mimetype)) {
+    if (UNPROCESSABLE_MIME_TYPES.has(file.mimetype)) {
+      // HEIC/HEIF: sharp's bundled libvips can't decode this at all (see
+      // UNPROCESSABLE_MIME_TYPES above) — storing as-is is the designed
+      // behavior here, not a failure path.
+      outputBuffer = buffer;
+    } else {
       try {
         outputBuffer = await sharp(buffer)
           .rotate()
@@ -111,8 +118,15 @@ export async function uploadIssuePhotoHandler(
           .toBuffer();
         outputExtension = ".jpg";
       } catch {
-        // Not a decodable image despite its declared mimetype — store the
-        // original bytes rather than fail the upload.
+        // The file's bytes don't actually decode as the image type it
+        // claimed to be (corrupted, truncated, mismatched mimetype,
+        // etc.) — reject outright rather than silently persisting
+        // unvalidated raw bytes under a trusted-looking /uploads/ URL.
+        return reply.status(400).send({
+          statusCode: 400,
+          error: "Bad Request",
+          message: "The uploaded file could not be processed as a valid image.",
+        });
       }
     }
 
