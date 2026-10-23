@@ -357,7 +357,7 @@ function QRToolPage() {
   };
 
   return (
-    <div className="space-y-4 pb-12 font-sans">
+    <div className="p-4 space-y-4 pb-12 font-sans">
       {/* One unified QR flow instead of two disconnected pages: a Field
           Agent only ever sees Scan (their sole reason to be here), while an
           Admin gets a mode switcher — the same "single flow" the Owner

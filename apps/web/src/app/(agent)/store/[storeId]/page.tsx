@@ -32,7 +32,7 @@ export default function AgentStoreMachinePickerPage() {
   const isLoading = isStoreLoading || isMachinesLoading;
 
   return (
-    <div className="space-y-4 pb-12 font-sans">
+    <div className="p-4 space-y-4 pb-12 font-sans">
       {/* Top Header & Back Navigation */}
       <div className="flex items-center gap-3">
         <Button

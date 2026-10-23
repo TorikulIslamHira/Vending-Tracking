@@ -3,65 +3,24 @@
 import React from "react";
 import Link from "next/link";
 import { usePathname } from "next/navigation";
+import { useAuthStore } from "@/store/useAuthStore";
+import { useUsers } from "@/hooks/useUsers";
 import { defaultThemeConfig } from "@/config/theme";
 import { cn } from "@/lib/utils";
-import {
-  LayoutDashboard,
-  Server,
-  PackageOpen,
-  ClipboardList,
-  Coins,
-  Settings,
-  Sparkles,
-} from "lucide-react";
-
-interface NavItem {
-  title: string;
-  href: string;
-  icon: React.ComponentType<{ className?: string }>;
-  badge?: string;
-}
-
-const navItems: NavItem[] = [
-  {
-    title: "Overview",
-    href: "/",
-    icon: LayoutDashboard,
-  },
-  {
-    title: "Vending Machines",
-    href: "/machines",
-    icon: Server,
-  },
-  {
-    title: "Packet Master",
-    href: "/packets",
-    icon: PackageOpen,
-  },
-  {
-    title: "Inventory Logs",
-    href: "/inventory-logs",
-    icon: ClipboardList,
-  },
-  {
-    title: "Cash Tracking",
-    href: "/cash",
-    icon: Coins,
-  },
-  {
-    title: "Settings & Branding",
-    href: "/settings",
-    icon: Settings,
-  },
-];
+import { Sparkles } from "lucide-react";
+import { NAV_ITEMS, getActiveNavHref } from "./navConfig";
 
 export function Sidebar() {
   const pathname = usePathname();
+  const { user } = useAuthStore();
+  const { data: appUsers = [] } = useUsers();
+  const isRootAdmin = appUsers.find((u) => u.id === user?.id)?.isRootAdmin ?? false;
+  const activeHref = getActiveNavHref(pathname);
+  const items = NAV_ITEMS.filter((item) => !item.rootOnly || isRootAdmin);
 
   return (
-    <aside className="hidden md:flex h-screen w-64 flex-col border-r border-border/50 bg-card/70 backdrop-blur-xl shrink-0">
-      {/* Brand / Logo Header */}
-      <div className="flex h-16 items-center gap-3 border-b border-border/50 px-6">
+    <aside className="hidden md:flex h-full w-64 flex-col border-r border-border/50 bg-card/70 backdrop-blur-xl shrink-0">
+      <div className="flex h-16 items-center gap-3 border-b border-border/50 px-6 shrink-0">
         <div className="flex h-9 w-9 items-center justify-center rounded-xl bg-primary text-primary-foreground shadow-sm shadow-primary/30">
           <Sparkles className="h-5 w-5" />
         </div>
@@ -75,10 +34,9 @@ export function Sidebar() {
         </div>
       </div>
 
-      {/* Navigation Links */}
-      <nav className="flex-1 space-y-1.5 p-4">
-        {navItems.map((item) => {
-          const isActive = pathname === item.href;
+      <nav className="flex-1 overflow-y-auto space-y-1.5 p-4">
+        {items.map((item) => {
+          const isActive = item.href === activeHref;
           const Icon = item.icon;
 
           return (
@@ -93,19 +51,13 @@ export function Sidebar() {
               )}
             >
               <Icon className="h-4 w-4 shrink-0" />
-              <span>{item.title}</span>
-              {item.badge && (
-                <span className="ml-auto rounded-full bg-primary/20 px-2 py-0.5 text-[10px] font-semibold text-primary">
-                  {item.badge}
-                </span>
-              )}
+              <span>{item.label}</span>
             </Link>
           );
         })}
       </nav>
 
-      {/* Tenant Status Footer */}
-      <div className="border-t border-border/50 p-4">
+      <div className="border-t border-border/50 p-4 shrink-0">
         <div className="rounded-xl bg-accent/40 border border-border/40 p-3 text-xs">
           <p className="font-semibold text-foreground">SaaS Multi-Tenant Mode</p>
           <p className="mt-0.5 text-[11px] text-muted-foreground">

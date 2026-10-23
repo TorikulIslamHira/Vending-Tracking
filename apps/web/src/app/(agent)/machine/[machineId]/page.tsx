@@ -484,7 +484,7 @@ export default function MachineOperationPage() {
   }
 
   return (
-    <div className="space-y-4 pb-4">
+    <div className="p-4 space-y-4">
       {/* Top Header & Back Navigation */}
       <div className="flex items-center gap-3">
         <Button
