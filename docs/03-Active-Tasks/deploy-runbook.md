@@ -183,25 +183,32 @@ This is a **one-time** step, done once right after the first deploy that introdu
 ## 3. Rollback
 
 - **Automatic**: `deploy.sh` already rolls back on a failed health check — see §1. Nothing to run
-  manually in that case.
+  manually in that case. As of the rollback-safety fix, it (and everything below) refuses to roll
+  back to `latest` — only an immutable `sha-xxxxxxx` tag is ever accepted, since `latest` is a
+  floating pointer our own build job overwrites on every push and may already point at the exact
+  broken image you're trying to get away from.
 - **Manual, later** (the new tag looked healthy at deploy time but turned out broken in practice):
   ```bash
   # (on the VPS, via SSH, from the app directory)
   scripts/rollback.sh sha-abc1234
-  # or: scripts/rollback.sh latest
   # see ~/deploy-state/previous_tag for the last known-good tag, if one was recorded
   ```
-- **Manual fallback to the pre-GHCR flow**, if the new pull-deploy flow itself is broken and you
-  need the site back up now:
+- **If `scripts/rollback.sh` itself won't run** (e.g. the script changed and is the thing that's
+  broken) — do the same thing it does, by hand, with a *known-good `sha-xxxxxxx` tag*, never
+  `latest`:
   ```bash
   # (on the VPS, via SSH, from the app directory)
-  git checkout 9436352 -- deploy.sh docker-compose.yml nginx/nginx.conf docker-compose.green.yml
-  ./deploy.sh
+  export IMAGE_TAG=sha-<known-good-short-sha>
+  docker compose -f docker-compose.yml pull web api
+  docker compose -f docker-compose.yml up -d --no-deps --wait api web
   ```
-  That commit is the last one before any GHCR/nginx/photo work — slower (builds on the VPS,
-  20-30 min) but it's the known-good path. Afterward, decide how to get back to the tip of `main`
-  (`git reset --hard origin/main` once the underlying issue is fixed, or whatever the team's normal
-  flow is).
+  **Do not** fall back to reverting `deploy.sh`/`docker-compose.yml` to an old pre-GHCR commit and
+  re-running it — that flow runs `docker compose down --remove-orphans` unconditionally (tearing
+  down `db` and `nginx` too, not just `api`/`web`) and then rebuilds on the VPS from scratch
+  (20-30 min). It's slower, touches services that don't need touching, and leaves the repo in a
+  manually-reverted state that's easy to forget about. **Never run `docker compose down -v`** or
+  remove any named volume (`postgres_data`, `uploads_data`) as part of any rollback, under any
+  circumstance.
 
 ## 4. Downtime — be honest about this
 
@@ -212,3 +219,33 @@ parallel create-then-cutover that `docker-compose.green.yml`'s blue-green flow d
 container boots. `db` and `nginx` themselves are never touched by this rolling update at all. If a
 deploy ever needs genuinely zero downtime, use the blue-green flow in `docker-compose.green.yml`
 instead — this runbook's §1-3 don't provide that.
+
+## 5. Lessons from #84 and #85
+
+**(a) nginx reload can silently serve a stale config.** `nginx.conf` is a single-file bind mount;
+`git reset --hard` replaces it by writing a new file and renaming it into place (a new inode), but
+the already-running container's mount keeps pointing at the old, now-unlinked inode. `nginx -s
+reload` re-reads *that* — reports success, changes nothing. `reload_nginx()` in both `deploy.sh`
+and `scripts/rollback.sh` now compares `sha256sum` of the host file against the one inside the
+container first: identical → reload in place as before; different → `docker restart vending-nginx`
+(which re-resolves the mount) instead, and waits for `nginx -t` to pass before continuing.
+
+**(b) A stale/revoked `GH_PAT` 401s even on a public repo.** GitHub returns 401 for an invalid
+token regardless of whether the repo actually needs auth — there's no "oh, this repo is public,
+ignore the bad token" fallback on GitHub's side. Both the clone and fetch steps in `deploy.yml` now
+retry once without the auth header on failure, with a clear warning, before giving up; `GIT_TERMINAL_PROMPT=0`
+is also set so a bad credential fails fast instead of hanging on an unanswerable interactive prompt.
+
+**(c) The first GHCR deploy on a VPS has `ROLLBACK_AVAILABLE=false` if nothing valid is already
+running.** This isn't a bug to fix later — see §1's note on it. If that specific deploy's health
+check fails, there is genuinely nothing to automatically roll back to yet; it stops for manual
+investigation on purpose rather than attempting a rollback to nothing.
+
+**(d) "Re-run failed jobs" is only unambiguously safe when the failure happened *before* any
+`docker compose` command ran** — e.g. the git-auth/clone step or the GHCR login: nothing on the VPS
+changed yet, so restarting from scratch is a clean retry. Once `docker compose pull`/`up` has
+already succeeded earlier in the same run (for instance, the DB sync or Super Admin step is what
+actually failed), re-running from scratch re-executes those already-succeeded steps too — pull/up/
+reload/health-checks are all effectively idempotent against containers already on the target tag,
+but `drizzle-kit push --force` (the DB sync step) is not something to blindly re-trigger without
+first checking what state the earlier partial run left the schema in.
