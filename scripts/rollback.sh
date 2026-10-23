@@ -3,7 +3,9 @@
 # tag. Run on the VPS, from the app directory (same place deploy.sh runs).
 #
 #   scripts/rollback.sh sha-abc1234
-#   scripts/rollback.sh latest
+#
+# "latest" is deliberately not a valid target here — see is_immutable_tag
+# below.
 #
 # deploy.sh already does this automatically when a deploy's own health check
 # fails — this script is for rolling back later, e.g. the new tag looked
@@ -20,17 +22,35 @@ is_valid_tag() {
   [[ "$1" =~ $TAG_REGEX ]]
 }
 
+# A rollback target also has to be *immutable*. "latest" is a floating
+# pointer our own build job overwrites on every push — by the time you're
+# reaching for a rollback, "latest" may well already point at the exact
+# broken image you're trying to get away from. Only our own
+# "sha-<7-hex>" format is accepted.
+is_immutable_tag() {
+  [[ "$1" =~ ^sha-[0-9a-f]{7,40}$ ]]
+}
+
 TAG="$1"
 if [ -z "$TAG" ]; then
-  echo "Usage: scripts/rollback.sh <image-tag>"
+  echo "Usage: scripts/rollback.sh <sha-tag>"
   echo "  (see ~/deploy-state/previous_tag for the last known-good tag)"
   exit 1
 fi
 
 if ! is_valid_tag "$TAG"; then
   echo "🛑 '$TAG' doesn't look like a valid image tag — refusing to roll back to it."
-  echo "   Expected a plain tag like 'sha-abc1234' or 'latest', not a full image"
-  echo "   reference or a @sha256:... digest."
+  echo "   Expected a plain tag like 'sha-abc1234', not a full image reference"
+  echo "   or a @sha256:... digest."
+  exit 1
+fi
+
+if ! is_immutable_tag "$TAG"; then
+  echo "🛑 '$TAG' is not an immutable sha-xxxxxxx tag — refusing to roll back to it."
+  echo "   'latest' (and anything else that isn't 'sha-<7+ hex chars>') is a"
+  echo "   floating tag: it gets overwritten by the next push, so it's not a"
+  echo "   safe, pinned rollback target. Use the exact sha-<short> tag of the"
+  echo "   known-good build instead (see ~/deploy-state/previous_tag)."
   exit 1
 fi
 

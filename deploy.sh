@@ -126,6 +126,19 @@ is_valid_tag() {
   [[ "$1" =~ $TAG_REGEX ]]
 }
 
+# A rollback target additionally has to be *immutable* — our own build
+# job only ever produces "sha-<7-hex>" (immutable, pinned to one exact
+# image) and "latest" (a floating pointer that gets overwritten by every
+# future push). Rolling back to "latest" isn't a rollback at all: by the
+# time a deploy's health check has failed, "latest" in the registry
+# already points at that same failed build (the build job pushes both
+# tags together), so "rolling back" to it just re-pulls the identical
+# broken image. Required everywhere a rollback target gets accepted,
+# below and in scripts/rollback.sh.
+is_immutable_tag() {
+  [[ "$1" =~ ^sha-[0-9a-f]{7,40}$ ]]
+}
+
 # The tag that was running *before* this deploy — what a failed health
 # check below rolls back to.
 #
@@ -159,10 +172,10 @@ LAST_GOOD_TAG=""
 
 if [ -f "$PREVIOUS_TAG_FILE" ]; then
   RECORDED_TAG=$(cat "$PREVIOUS_TAG_FILE")
-  if is_valid_tag "$RECORDED_TAG"; then
+  if is_valid_tag "$RECORDED_TAG" && is_immutable_tag "$RECORDED_TAG"; then
     LAST_GOOD_TAG="$RECORDED_TAG"
   else
-    echo "⚠️  $PREVIOUS_TAG_FILE contains '$RECORDED_TAG', which doesn't look like a valid image tag — ignoring it and checking what's actually running instead."
+    echo "⚠️  $PREVIOUS_TAG_FILE contains '$RECORDED_TAG', which isn't a valid immutable sha-xxxxxxx tag — ignoring it and checking what's actually running instead."
   fi
 fi
 
@@ -173,9 +186,11 @@ if [ -z "$LAST_GOOD_TAG" ]; then
   RUNNING_API_IMAGE=$($DOCKER_CMD inspect -f '{{.Config.Image}}' vending-api 2>/dev/null || true)
   if [[ "$RUNNING_API_IMAGE" == "$GHCR_API_PREFIX"* ]]; then
     CANDIDATE_TAG="${RUNNING_API_IMAGE#"$GHCR_API_PREFIX"}"
-    if is_valid_tag "$CANDIDATE_TAG"; then
+    if is_valid_tag "$CANDIDATE_TAG" && is_immutable_tag "$CANDIDATE_TAG"; then
       LAST_GOOD_TAG="$CANDIDATE_TAG"
       echo "ℹ️  No usable recorded previous_tag — using the currently running image's tag ('$LAST_GOOD_TAG') as the rollback target."
+    elif [ -n "$CANDIDATE_TAG" ]; then
+      echo "⚠️  Currently running image is tagged '$CANDIDATE_TAG', which isn't an immutable sha-xxxxxxx tag — refusing it as a rollback target."
     fi
   fi
 fi
