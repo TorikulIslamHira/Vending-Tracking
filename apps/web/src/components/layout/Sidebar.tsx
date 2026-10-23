@@ -16,7 +16,9 @@ export function Sidebar() {
   const { data: appUsers = [] } = useUsers();
   const isRootAdmin = appUsers.find((u) => u.id === user?.id)?.isRootAdmin ?? false;
   const activeHref = getActiveNavHref(pathname);
-  const items = NAV_ITEMS.filter((item) => !item.rootOnly || isRootAdmin);
+  const items = NAV_ITEMS.filter(
+    (item) => (!item.rootOnly || isRootAdmin) && !item.moreOnly
+  );
 
   return (
     <aside className="hidden md:flex h-full w-64 flex-col border-r border-border/50 bg-card/70 backdrop-blur-xl shrink-0">

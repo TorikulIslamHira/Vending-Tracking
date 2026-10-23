@@ -6,18 +6,69 @@ import { useRouter } from "next/navigation";
 import { useAuthStore } from "@/store/useAuthStore";
 import { useUsers } from "@/hooks/useUsers";
 import { toast } from "sonner";
+import { cn } from "@/lib/utils";
 import { Button } from "@/components/ui/button";
-import {
-  Settings as SettingsIcon,
-  Store,
-  Truck,
-  Users,
-  Coins,
-  LogOut,
-  ChevronRight,
-  ShieldAlert,
-  Contact,
-} from "lucide-react";
+import { NAV_ITEMS } from "@/components/layout/navConfig";
+import { Settings as SettingsIcon, LogOut, ChevronRight } from "lucide-react";
+
+// Supplementary copy/color for the hub grid below — keyed by href, not a
+// second nav list. navConfig.ts stays the only source of truth for which
+// destinations exist and where they go; this only adds a description and
+// an accent color for items that appear here.
+const ITEM_META: Record<string, { description: string; color: string }> = {
+  "/scan": {
+    description: "Scan a machine QR to restock or collect cash",
+    color: "bg-blue-500/15 text-blue-600 dark:text-blue-400",
+  },
+  "/stores": {
+    description: "Browse stores & manage assigned machines",
+    color: "bg-blue-500/15 text-blue-600 dark:text-blue-400",
+  },
+  "/stores/owners": {
+    description: "Contact details for auditing & communication",
+    color: "bg-violet-500/15 text-violet-600 dark:text-violet-400",
+  },
+  "/machines": {
+    description: "View all hardware, status & balances",
+    color: "bg-emerald-500/15 text-emerald-600 dark:text-emerald-400",
+  },
+  "/browse": {
+    description: "Explore stores & machines without a QR scan",
+    color: "bg-sky-500/15 text-sky-600 dark:text-sky-400",
+  },
+  "/packets": {
+    description: "Manage packet configurations & pricing",
+    color: "bg-indigo-500/15 text-indigo-600 dark:text-indigo-400",
+  },
+  "/cash": {
+    description: "Audit physical cash collections & discrepancies",
+    color: "bg-amber-500/15 text-amber-600 dark:text-amber-400",
+  },
+  "/inventory-logs": {
+    description: "Audit trail of inventory changes",
+    color: "bg-cyan-500/15 text-cyan-600 dark:text-cyan-400",
+  },
+  "/history": {
+    description: "Your recent scan & restock activity",
+    color: "bg-teal-500/15 text-teal-600 dark:text-teal-400",
+  },
+  "/users": {
+    description: "Roles, permissions & access control",
+    color: "bg-secondary/15 text-secondary",
+  },
+  "/assignments": {
+    description: "Assign machines to field staff",
+    color: "bg-orange-500/15 text-orange-600 dark:text-orange-400",
+  },
+  "/audit-log": {
+    description: "Sensitive actions — visible to you only",
+    color: "bg-rose-500/15 text-rose-600 dark:text-rose-400",
+  },
+  "/profile": {
+    description: "Your account details",
+    color: "bg-slate-500/15 text-slate-600 dark:text-slate-400",
+  },
+};
 
 export default function MobileSettingsPage() {
   const router = useRouter();
@@ -84,127 +135,43 @@ export default function MobileSettingsPage() {
         </h2>
 
         <div className="space-y-2">
-          <Link
-            href="/stores"
-            className="flex items-center justify-between p-3.5 rounded-2xl bg-card border border-border/50 hover:bg-accent/40 active:scale-[0.98] transition-all shadow-xs"
-          >
-            <div className="flex items-center gap-3">
-              <div className="h-9 w-9 rounded-xl bg-blue-500/15 flex items-center justify-center text-blue-600 dark:text-blue-400">
-                <Store className="h-4 w-4" />
-              </div>
-              <div>
-                <span className="font-bold text-xs text-foreground block">
-                  Fleet Directory
-                </span>
-                <span className="text-[11px] text-muted-foreground">
-                  Browse stores & manage assigned machines
-                </span>
-              </div>
-            </div>
-            <ChevronRight className="h-4 w-4 text-muted-foreground" />
-          </Link>
-
-          <Link
-            href="/stores/owners"
-            className="flex items-center justify-between p-3.5 rounded-2xl bg-card border border-border/50 hover:bg-accent/40 active:scale-[0.98] transition-all shadow-xs"
-          >
-            <div className="flex items-center gap-3">
-              <div className="h-9 w-9 rounded-xl bg-violet-500/15 flex items-center justify-center text-violet-600 dark:text-violet-400">
-                <Contact className="h-4 w-4" />
-              </div>
-              <div>
-                <span className="font-bold text-xs text-foreground block">
-                  Store Owner Information
-                </span>
-                <span className="text-[11px] text-muted-foreground">
-                  Contact details for auditing & communication
-                </span>
-              </div>
-            </div>
-            <ChevronRight className="h-4 w-4 text-muted-foreground" />
-          </Link>
-
-          <Link
-            href="/machines"
-            className="flex items-center justify-between p-3.5 rounded-2xl bg-card border border-border/50 hover:bg-accent/40 active:scale-[0.98] transition-all shadow-xs"
-          >
-            <div className="flex items-center gap-3">
-              <div className="h-9 w-9 rounded-xl bg-emerald-500/15 flex items-center justify-center text-emerald-600 dark:text-emerald-400">
-                <Truck className="h-4 w-4" />
-              </div>
-              <div>
-                <span className="font-bold text-xs text-foreground block">
-                  Machine Fleet Master
-                </span>
-                <span className="text-[11px] text-muted-foreground">
-                  View all hardware, status & balances
-                </span>
-              </div>
-            </div>
-            <ChevronRight className="h-4 w-4 text-muted-foreground" />
-          </Link>
-
-          <Link
-            href="/cash"
-            className="flex items-center justify-between p-3.5 rounded-2xl bg-card border border-border/50 hover:bg-accent/40 active:scale-[0.98] transition-all shadow-xs"
-          >
-            <div className="flex items-center gap-3">
-              <div className="h-9 w-9 rounded-xl bg-amber-500/15 flex items-center justify-center text-amber-600 dark:text-amber-400">
-                <Coins className="h-4 w-4" />
-              </div>
-              <div>
-                <span className="font-bold text-xs text-foreground block">
-                  Cash Collection Ledger
-                </span>
-                <span className="text-[11px] text-muted-foreground">
-                  Audit physical cash collections & discrepancies
-                </span>
-              </div>
-            </div>
-            <ChevronRight className="h-4 w-4 text-muted-foreground" />
-          </Link>
-
-          <Link
-            href="/users"
-            className="flex items-center justify-between p-3.5 rounded-2xl bg-card border border-border/50 hover:bg-accent/40 active:scale-[0.98] transition-all shadow-xs"
-          >
-            <div className="flex items-center gap-3">
-              <div className="h-9 w-9 rounded-xl bg-secondary/15 flex items-center justify-center text-secondary">
-                <Users className="h-4 w-4" />
-              </div>
-              <div>
-                <span className="font-bold text-xs text-foreground block">
-                  User Management
-                </span>
-                <span className="text-[11px] text-muted-foreground">
-                  Roles, permissions & access control
-                </span>
-              </div>
-            </div>
-            <ChevronRight className="h-4 w-4 text-muted-foreground" />
-          </Link>
-
-          {currentUserIsRoot && (
-            <Link
-              href="/audit-log"
-              className="flex items-center justify-between p-3.5 rounded-2xl bg-card border border-border/50 hover:bg-accent/40 active:scale-[0.98] transition-all shadow-xs"
-            >
-              <div className="flex items-center gap-3">
-                <div className="h-9 w-9 rounded-xl bg-rose-500/15 flex items-center justify-center text-rose-600 dark:text-rose-400">
-                  <ShieldAlert className="h-4 w-4" />
+          {NAV_ITEMS.filter(
+            (item) =>
+              !["/dashboard", "/reports", "/settings"].includes(item.href) &&
+              (!item.rootOnly || currentUserIsRoot)
+          ).map((item) => {
+            const Icon = item.icon;
+            const meta = ITEM_META[item.href];
+            return (
+              <Link
+                key={item.href}
+                href={item.href}
+                className="flex items-center justify-between p-3.5 rounded-2xl bg-card border border-border/50 hover:bg-accent/40 active:scale-[0.98] transition-all shadow-xs"
+              >
+                <div className="flex items-center gap-3">
+                  <div
+                    className={cn(
+                      "h-9 w-9 rounded-xl flex items-center justify-center",
+                      meta?.color ?? "bg-secondary/15 text-secondary"
+                    )}
+                  >
+                    <Icon className="h-4 w-4" />
+                  </div>
+                  <div>
+                    <span className="font-bold text-xs text-foreground block">
+                      {item.label}
+                    </span>
+                    {meta?.description && (
+                      <span className="text-[11px] text-muted-foreground">
+                        {meta.description}
+                      </span>
+                    )}
+                  </div>
                 </div>
-                <div>
-                  <span className="font-bold text-xs text-foreground block">
-                    Admin Audit Log
-                  </span>
-                  <span className="text-[11px] text-muted-foreground">
-                    Sensitive actions — visible to you only
-                  </span>
-                </div>
-              </div>
-              <ChevronRight className="h-4 w-4 text-muted-foreground" />
-            </Link>
-          )}
+                <ChevronRight className="h-4 w-4 text-muted-foreground" />
+              </Link>
+            );
+          })}
         </div>
       </div>
 
