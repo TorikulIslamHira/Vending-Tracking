@@ -221,20 +221,48 @@ export IMAGE_TAG="${IMAGE_TAG:-latest}"
 # actually matters.
 #
 # nginx.conf is a bind mount (docker-compose.yml), not baked into the
-# nginx:alpine image — a commit that changes it lands the new file on disk
-# via the git reset above, but the *running* nginx process keeps the config
-# it already loaded until it's told to reload. `nginx -t` first: never
-# reload a config that doesn't even parse, which would otherwise take the
-# whole site down instead of just failing this deploy. The nginx container
-# itself is never recreated here — reload, not restart/up, and only
-# `up -d --no-deps nginx` (never touching api/web/db) if it's not even
-# running.
+# nginx:alpine image. The *content* landing on disk via the git reset
+# above is not the same thing as the *running* container seeing it: a
+# single-file bind mount is resolved against a specific inode at the
+# moment Docker sets it up, and `git reset --hard` replaces the file by
+# writing a new one and renaming it into place — a new inode. The
+# container's mount keeps pointing at the old, now-unlinked-but-still-
+# resident inode, so `nginx -s reload` happily re-reads it and reports
+# success while actually still serving the PREVIOUS config. (This is the
+# literal cause behind deploy #84's /api/v1/health 404: nginx.conf had
+# changed on disk, the reload "worked," and it was still routing against
+# the old file.) A plain reload is only safe when the host and
+# in-container config are actually byte-identical — compare them first:
 reload_nginx() {
   if $DOCKER_CMD inspect -f '{{.State.Running}}' vending-nginx 2>/dev/null | grep -q true; then
-    if $DOCKER_CMD exec vending-nginx nginx -t; then
-      $DOCKER_CMD exec vending-nginx nginx -s reload
+    HOST_CONF_SHA=$(sha256sum nginx/nginx.conf | awk '{print $1}')
+    CONTAINER_CONF_SHA=$($DOCKER_CMD exec vending-nginx sha256sum /etc/nginx/nginx.conf 2>/dev/null | awk '{print $1}')
+
+    if [ -n "$CONTAINER_CONF_SHA" ] && [ "$HOST_CONF_SHA" = "$CONTAINER_CONF_SHA" ]; then
+      echo "🔁 nginx.conf unchanged (sha256 $HOST_CONF_SHA) — reloading in place."
+      if $DOCKER_CMD exec vending-nginx nginx -t; then
+        $DOCKER_CMD exec vending-nginx nginx -s reload
+      else
+        echo "🛑 nginx -t failed on the current config — NOT reloading (would drop the working one)."
+        return 1
+      fi
     else
-      echo "🛑 nginx -t failed on the new config — NOT reloading (would drop the working one)."
+      # Bind mount is stale (or the checksum couldn't be read at all) —
+      # a reload can't fix this, only re-establishing the mount can.
+      # `restart` keeps the container (and its image/name) exactly as-is,
+      # it just stops and starts the process, which re-resolves the bind
+      # mount against whatever inode nginx.conf currently has.
+      echo "🔁 nginx.conf is stale in the running container (host sha ${HOST_CONF_SHA:-?}, container sha ${CONTAINER_CONF_SHA:-unreadable}) — a reload would keep serving the old bind-mounted inode. Restarting vending-nginx instead..."
+      $DOCKER_CMD restart vending-nginx
+      for i in $(seq 1 15); do
+        if $DOCKER_CMD inspect -f '{{.State.Running}}' vending-nginx 2>/dev/null | grep -q true \
+          && $DOCKER_CMD exec vending-nginx nginx -t >/dev/null 2>&1; then
+          echo "✅ vending-nginx restarted and nginx -t passes on the new config."
+          return 0
+        fi
+        sleep 1
+      done
+      echo "🛑 vending-nginx did not come back up healthy within 15s of restarting."
       return 1
     fi
   else

@@ -68,18 +68,39 @@ else
   COMPOSE_CMD="docker compose -f docker-compose.yml"
 fi
 
-# Same reload as deploy.sh: nginx.conf is a bind mount, so if you checked
-# out a different commit before rolling back, the running nginx process
-# still has whatever config it loaded last until told to reload. `nginx -t`
-# first so a broken config fails this script instead of taking nginx down;
-# never recreates the nginx container, only reloads it (or starts it with
-# --no-deps if it wasn't running at all).
+# Same reload as deploy.sh (see its reload_nginx() for the full writeup):
+# nginx.conf is a single-file bind mount resolved to a specific inode when
+# Docker sets it up. If you checked out a different commit before rolling
+# back, the file on disk has a NEW inode, but the running container's
+# mount still points at the OLD one — `nginx -s reload` would silently
+# keep serving stale config and report success. Compare checksums first;
+# only reload in place when they actually match, restart the container
+# (which re-resolves the bind mount) when they don't.
 reload_nginx() {
   if $DOCKER_CMD inspect -f '{{.State.Running}}' vending-nginx 2>/dev/null | grep -q true; then
-    if $DOCKER_CMD exec vending-nginx nginx -t; then
-      $DOCKER_CMD exec vending-nginx nginx -s reload
+    HOST_CONF_SHA=$(sha256sum nginx/nginx.conf | awk '{print $1}')
+    CONTAINER_CONF_SHA=$($DOCKER_CMD exec vending-nginx sha256sum /etc/nginx/nginx.conf 2>/dev/null | awk '{print $1}')
+
+    if [ -n "$CONTAINER_CONF_SHA" ] && [ "$HOST_CONF_SHA" = "$CONTAINER_CONF_SHA" ]; then
+      echo "🔁 nginx.conf unchanged (sha256 $HOST_CONF_SHA) — reloading in place."
+      if $DOCKER_CMD exec vending-nginx nginx -t; then
+        $DOCKER_CMD exec vending-nginx nginx -s reload
+      else
+        echo "🛑 nginx -t failed on the current config — NOT reloading (would drop the working one)."
+        return 1
+      fi
     else
-      echo "🛑 nginx -t failed on the current config — NOT reloading (would drop the working one)."
+      echo "🔁 nginx.conf is stale in the running container (host sha ${HOST_CONF_SHA:-?}, container sha ${CONTAINER_CONF_SHA:-unreadable}) — restarting vending-nginx instead of reloading..."
+      $DOCKER_CMD restart vending-nginx
+      for i in $(seq 1 15); do
+        if $DOCKER_CMD inspect -f '{{.State.Running}}' vending-nginx 2>/dev/null | grep -q true \
+          && $DOCKER_CMD exec vending-nginx nginx -t >/dev/null 2>&1; then
+          echo "✅ vending-nginx restarted and nginx -t passes on the new config."
+          return 0
+        fi
+        sleep 1
+      done
+      echo "🛑 vending-nginx did not come back up healthy within 15s of restarting."
       return 1
     fi
   else
