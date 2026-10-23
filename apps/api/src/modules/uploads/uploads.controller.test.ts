@@ -61,6 +61,18 @@ test("downscales a large image and produces a smaller file", async () => {
   }
 });
 
+test("rejects a file sharp can't decode with 400, and saves nothing", async () => {
+  const reply = mockReply();
+  await uploadIssuePhotoHandler(
+    mockRequest("image/jpeg", async () => Buffer.from("this is not actually a jpeg")),
+    reply
+  );
+
+  assert.equal(reply.statusCode, 400);
+  assert.equal(reply.body?.data?.url, undefined, "no file should have been saved");
+  await cleanupSavedFile(reply);
+});
+
 test("rejects an unsupported mime type with 400", async () => {
   const reply = mockReply();
   await uploadIssuePhotoHandler(

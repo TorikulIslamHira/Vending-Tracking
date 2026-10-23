@@ -3,7 +3,9 @@
 # tag. Run on the VPS, from the app directory (same place deploy.sh runs).
 #
 #   scripts/rollback.sh sha-abc1234
-#   scripts/rollback.sh latest
+#
+# "latest" is deliberately not a valid target here — see is_immutable_tag
+# below.
 #
 # deploy.sh already does this automatically when a deploy's own health check
 # fails — this script is for rolling back later, e.g. the new tag looked
@@ -20,17 +22,35 @@ is_valid_tag() {
   [[ "$1" =~ $TAG_REGEX ]]
 }
 
+# A rollback target also has to be *immutable*. "latest" is a floating
+# pointer our own build job overwrites on every push — by the time you're
+# reaching for a rollback, "latest" may well already point at the exact
+# broken image you're trying to get away from. Only our own
+# "sha-<7-hex>" format is accepted.
+is_immutable_tag() {
+  [[ "$1" =~ ^sha-[0-9a-f]{7,40}$ ]]
+}
+
 TAG="$1"
 if [ -z "$TAG" ]; then
-  echo "Usage: scripts/rollback.sh <image-tag>"
+  echo "Usage: scripts/rollback.sh <sha-tag>"
   echo "  (see ~/deploy-state/previous_tag for the last known-good tag)"
   exit 1
 fi
 
 if ! is_valid_tag "$TAG"; then
   echo "🛑 '$TAG' doesn't look like a valid image tag — refusing to roll back to it."
-  echo "   Expected a plain tag like 'sha-abc1234' or 'latest', not a full image"
-  echo "   reference or a @sha256:... digest."
+  echo "   Expected a plain tag like 'sha-abc1234', not a full image reference"
+  echo "   or a @sha256:... digest."
+  exit 1
+fi
+
+if ! is_immutable_tag "$TAG"; then
+  echo "🛑 '$TAG' is not an immutable sha-xxxxxxx tag — refusing to roll back to it."
+  echo "   'latest' (and anything else that isn't 'sha-<7+ hex chars>') is a"
+  echo "   floating tag: it gets overwritten by the next push, so it's not a"
+  echo "   safe, pinned rollback target. Use the exact sha-<short> tag of the"
+  echo "   known-good build instead (see ~/deploy-state/previous_tag)."
   exit 1
 fi
 
@@ -48,18 +68,39 @@ else
   COMPOSE_CMD="docker compose -f docker-compose.yml"
 fi
 
-# Same reload as deploy.sh: nginx.conf is a bind mount, so if you checked
-# out a different commit before rolling back, the running nginx process
-# still has whatever config it loaded last until told to reload. `nginx -t`
-# first so a broken config fails this script instead of taking nginx down;
-# never recreates the nginx container, only reloads it (or starts it with
-# --no-deps if it wasn't running at all).
+# Same reload as deploy.sh (see its reload_nginx() for the full writeup):
+# nginx.conf is a single-file bind mount resolved to a specific inode when
+# Docker sets it up. If you checked out a different commit before rolling
+# back, the file on disk has a NEW inode, but the running container's
+# mount still points at the OLD one — `nginx -s reload` would silently
+# keep serving stale config and report success. Compare checksums first;
+# only reload in place when they actually match, restart the container
+# (which re-resolves the bind mount) when they don't.
 reload_nginx() {
   if $DOCKER_CMD inspect -f '{{.State.Running}}' vending-nginx 2>/dev/null | grep -q true; then
-    if $DOCKER_CMD exec vending-nginx nginx -t; then
-      $DOCKER_CMD exec vending-nginx nginx -s reload
+    HOST_CONF_SHA=$(sha256sum nginx/nginx.conf | awk '{print $1}')
+    CONTAINER_CONF_SHA=$($DOCKER_CMD exec vending-nginx sha256sum /etc/nginx/nginx.conf 2>/dev/null | awk '{print $1}')
+
+    if [ -n "$CONTAINER_CONF_SHA" ] && [ "$HOST_CONF_SHA" = "$CONTAINER_CONF_SHA" ]; then
+      echo "🔁 nginx.conf unchanged (sha256 $HOST_CONF_SHA) — reloading in place."
+      if $DOCKER_CMD exec vending-nginx nginx -t; then
+        $DOCKER_CMD exec vending-nginx nginx -s reload
+      else
+        echo "🛑 nginx -t failed on the current config — NOT reloading (would drop the working one)."
+        return 1
+      fi
     else
-      echo "🛑 nginx -t failed on the current config — NOT reloading (would drop the working one)."
+      echo "🔁 nginx.conf is stale in the running container (host sha ${HOST_CONF_SHA:-?}, container sha ${CONTAINER_CONF_SHA:-unreadable}) — restarting vending-nginx instead of reloading..."
+      $DOCKER_CMD restart vending-nginx
+      for i in $(seq 1 15); do
+        if $DOCKER_CMD inspect -f '{{.State.Running}}' vending-nginx 2>/dev/null | grep -q true \
+          && $DOCKER_CMD exec vending-nginx nginx -t >/dev/null 2>&1; then
+          echo "✅ vending-nginx restarted and nginx -t passes on the new config."
+          return 0
+        fi
+        sleep 1
+      done
+      echo "🛑 vending-nginx did not come back up healthy within 15s of restarting."
       return 1
     fi
   else

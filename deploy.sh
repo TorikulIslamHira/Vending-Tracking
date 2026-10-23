@@ -126,6 +126,19 @@ is_valid_tag() {
   [[ "$1" =~ $TAG_REGEX ]]
 }
 
+# A rollback target additionally has to be *immutable* — our own build
+# job only ever produces "sha-<7-hex>" (immutable, pinned to one exact
+# image) and "latest" (a floating pointer that gets overwritten by every
+# future push). Rolling back to "latest" isn't a rollback at all: by the
+# time a deploy's health check has failed, "latest" in the registry
+# already points at that same failed build (the build job pushes both
+# tags together), so "rolling back" to it just re-pulls the identical
+# broken image. Required everywhere a rollback target gets accepted,
+# below and in scripts/rollback.sh.
+is_immutable_tag() {
+  [[ "$1" =~ ^sha-[0-9a-f]{7,40}$ ]]
+}
+
 # The tag that was running *before* this deploy — what a failed health
 # check below rolls back to.
 #
@@ -159,10 +172,10 @@ LAST_GOOD_TAG=""
 
 if [ -f "$PREVIOUS_TAG_FILE" ]; then
   RECORDED_TAG=$(cat "$PREVIOUS_TAG_FILE")
-  if is_valid_tag "$RECORDED_TAG"; then
+  if is_valid_tag "$RECORDED_TAG" && is_immutable_tag "$RECORDED_TAG"; then
     LAST_GOOD_TAG="$RECORDED_TAG"
   else
-    echo "⚠️  $PREVIOUS_TAG_FILE contains '$RECORDED_TAG', which doesn't look like a valid image tag — ignoring it and checking what's actually running instead."
+    echo "⚠️  $PREVIOUS_TAG_FILE contains '$RECORDED_TAG', which isn't a valid immutable sha-xxxxxxx tag — ignoring it and checking what's actually running instead."
   fi
 fi
 
@@ -173,9 +186,11 @@ if [ -z "$LAST_GOOD_TAG" ]; then
   RUNNING_API_IMAGE=$($DOCKER_CMD inspect -f '{{.Config.Image}}' vending-api 2>/dev/null || true)
   if [[ "$RUNNING_API_IMAGE" == "$GHCR_API_PREFIX"* ]]; then
     CANDIDATE_TAG="${RUNNING_API_IMAGE#"$GHCR_API_PREFIX"}"
-    if is_valid_tag "$CANDIDATE_TAG"; then
+    if is_valid_tag "$CANDIDATE_TAG" && is_immutable_tag "$CANDIDATE_TAG"; then
       LAST_GOOD_TAG="$CANDIDATE_TAG"
       echo "ℹ️  No usable recorded previous_tag — using the currently running image's tag ('$LAST_GOOD_TAG') as the rollback target."
+    elif [ -n "$CANDIDATE_TAG" ]; then
+      echo "⚠️  Currently running image is tagged '$CANDIDATE_TAG', which isn't an immutable sha-xxxxxxx tag — refusing it as a rollback target."
     fi
   fi
 fi
@@ -206,20 +221,48 @@ export IMAGE_TAG="${IMAGE_TAG:-latest}"
 # actually matters.
 #
 # nginx.conf is a bind mount (docker-compose.yml), not baked into the
-# nginx:alpine image — a commit that changes it lands the new file on disk
-# via the git reset above, but the *running* nginx process keeps the config
-# it already loaded until it's told to reload. `nginx -t` first: never
-# reload a config that doesn't even parse, which would otherwise take the
-# whole site down instead of just failing this deploy. The nginx container
-# itself is never recreated here — reload, not restart/up, and only
-# `up -d --no-deps nginx` (never touching api/web/db) if it's not even
-# running.
+# nginx:alpine image. The *content* landing on disk via the git reset
+# above is not the same thing as the *running* container seeing it: a
+# single-file bind mount is resolved against a specific inode at the
+# moment Docker sets it up, and `git reset --hard` replaces the file by
+# writing a new one and renaming it into place — a new inode. The
+# container's mount keeps pointing at the old, now-unlinked-but-still-
+# resident inode, so `nginx -s reload` happily re-reads it and reports
+# success while actually still serving the PREVIOUS config. (This is the
+# literal cause behind deploy #84's /api/v1/health 404: nginx.conf had
+# changed on disk, the reload "worked," and it was still routing against
+# the old file.) A plain reload is only safe when the host and
+# in-container config are actually byte-identical — compare them first:
 reload_nginx() {
   if $DOCKER_CMD inspect -f '{{.State.Running}}' vending-nginx 2>/dev/null | grep -q true; then
-    if $DOCKER_CMD exec vending-nginx nginx -t; then
-      $DOCKER_CMD exec vending-nginx nginx -s reload
+    HOST_CONF_SHA=$(sha256sum nginx/nginx.conf | awk '{print $1}')
+    CONTAINER_CONF_SHA=$($DOCKER_CMD exec vending-nginx sha256sum /etc/nginx/nginx.conf 2>/dev/null | awk '{print $1}')
+
+    if [ -n "$CONTAINER_CONF_SHA" ] && [ "$HOST_CONF_SHA" = "$CONTAINER_CONF_SHA" ]; then
+      echo "🔁 nginx.conf unchanged (sha256 $HOST_CONF_SHA) — reloading in place."
+      if $DOCKER_CMD exec vending-nginx nginx -t; then
+        $DOCKER_CMD exec vending-nginx nginx -s reload
+      else
+        echo "🛑 nginx -t failed on the current config — NOT reloading (would drop the working one)."
+        return 1
+      fi
     else
-      echo "🛑 nginx -t failed on the new config — NOT reloading (would drop the working one)."
+      # Bind mount is stale (or the checksum couldn't be read at all) —
+      # a reload can't fix this, only re-establishing the mount can.
+      # `restart` keeps the container (and its image/name) exactly as-is,
+      # it just stops and starts the process, which re-resolves the bind
+      # mount against whatever inode nginx.conf currently has.
+      echo "🔁 nginx.conf is stale in the running container (host sha ${HOST_CONF_SHA:-?}, container sha ${CONTAINER_CONF_SHA:-unreadable}) — a reload would keep serving the old bind-mounted inode. Restarting vending-nginx instead..."
+      $DOCKER_CMD restart vending-nginx
+      for i in $(seq 1 15); do
+        if $DOCKER_CMD inspect -f '{{.State.Running}}' vending-nginx 2>/dev/null | grep -q true \
+          && $DOCKER_CMD exec vending-nginx nginx -t >/dev/null 2>&1; then
+          echo "✅ vending-nginx restarted and nginx -t passes on the new config."
+          return 0
+        fi
+        sleep 1
+      done
+      echo "🛑 vending-nginx did not come back up healthy within 15s of restarting."
       return 1
     fi
   else
