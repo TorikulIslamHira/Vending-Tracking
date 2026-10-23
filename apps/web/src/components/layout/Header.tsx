@@ -15,14 +15,8 @@ import {
   DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu";
 import { User, LogOut, Shield, Building2, LogIn, Sparkles } from "lucide-react";
-import { MobileNavSheet } from "./MobileNavSheet";
 
-export interface HeaderProps {
-  /** Whether there's a nav to reveal — false for guests and PRESENTATION. */
-  showNav: boolean;
-}
-
-export function Header({ showNav }: HeaderProps) {
+export function Header() {
   const { user, isAuthenticated, logout } = useAuthStore();
   const router = useRouter();
   const pathname = usePathname();
@@ -35,7 +29,6 @@ export function Header({ showNav }: HeaderProps) {
   return (
     <header className="shrink-0 flex h-16 w-full items-center justify-between gap-3 border-b bg-card/80 px-4 sm:px-6 pt-[env(safe-area-inset-top)] print:hidden">
       <div className="flex items-center gap-2 min-w-0">
-        {showNav && <MobileNavSheet />}
         <div className="flex h-8 w-8 items-center justify-center rounded-lg bg-primary text-primary-foreground shadow-sm shrink-0">
           <Sparkles className="h-4 w-4" />
         </div>
