@@ -129,6 +129,14 @@ jobs:
     permissions:
       contents: read
       packages: read
+    # Job-scoped, not workflow-scoped, so PR runs (which never reach this
+    # job at all — see the `if:` above) are completely unaffected; this
+    # only ever serializes actual VPS deploys. cancel-in-progress: false
+    # because canceling a deploy mid-rollout (mid `docker compose up`,
+    # mid schema sync) is worse than a second push just waiting its turn.
+    concurrency:
+      group: deploy-production
+      cancel-in-progress: false
 
     steps:
       - name: Checkout Codebase
