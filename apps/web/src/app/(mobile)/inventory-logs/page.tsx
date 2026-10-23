@@ -193,7 +193,7 @@ export default function MobileInventoryLogsPage() {
   });
 
   return (
-    <div className="w-full px-4 py-4 space-y-4 font-sans">
+    <div className="w-full space-y-4 font-sans">
       {/* 1. Top Navigation Bar with Back Button — sticky against <main> */}
       <div className="flex items-center justify-between sticky top-0 z-20 -mx-4 px-4 pb-3 pt-[calc(0.75rem+env(safe-area-inset-top))] bg-card/95 backdrop-blur-md border-b border-border/40">
         <button

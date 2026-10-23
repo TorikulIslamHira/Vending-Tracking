@@ -147,7 +147,7 @@ function RegisterMachineForm() {
   const currentStore = storesList.find((s) => s.id === watchedStoreId);
 
   return (
-    <div className="w-full px-4 py-4 space-y-5">
+    <div className="w-full space-y-5">
       {/* Top Header with Back Navigation — sticky against the scrollable <main> */}
       <div className="flex items-center gap-2 sticky top-0 z-20 -mx-4 px-4 pb-3 pt-[calc(0.75rem+env(safe-area-inset-top))] bg-card/95 backdrop-blur-md border-b border-border/40">
         <button

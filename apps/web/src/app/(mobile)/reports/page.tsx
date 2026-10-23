@@ -311,7 +311,7 @@ export default function ReportsPage() {
   };
 
   return (
-    <div className="w-full px-4 py-4 space-y-4">
+    <div className="w-full space-y-4">
       {/* Top Header — sticky against the scrollable <main>, not the page */}
       <div className="flex items-center justify-between sticky top-0 z-20 -mx-4 px-4 pb-3 pt-[calc(0.75rem+env(safe-area-inset-top))] bg-card/95 backdrop-blur-md border-b border-border/40">
         <div className="space-y-0.5">
