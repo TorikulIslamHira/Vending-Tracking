@@ -46,3 +46,5 @@ Overview of the Multi-Tenant Vending Machine SaaS platform monorepo structure, c
 - [[2026-08-25-logs|📝 AI Changelogs (2026-08-25)]] (`04-AI-Changelogs/`)
 - [[2026-08-26-logs|📝 AI Changelogs (2026-08-26)]] (`04-AI-Changelogs/`)
 - [[2026-09-07-logs|📝 AI Changelogs (2026-09-07) — Security, RBAC & VCB Hardening]] (`04-AI-Changelogs/`)
+- [[2026-10-22-logs|📝 AI Changelogs (2026-10-22) — AI Rule Files, Dead Code, Capacitor & CI Hardening]] (`04-AI-Changelogs/`)
+- [[security-analysis|🔒 Security Analysis — Drizzle SQLi Advisory & Migration Baseline Plan]] (`03-Active-Tasks/`)

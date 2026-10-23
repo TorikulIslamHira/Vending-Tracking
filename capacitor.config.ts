@@ -31,7 +31,19 @@ const config: CapacitorConfig = {
   webDir: 'public',
   server: {
     url: 'https://bee.adlyco.org',
-    cleartext: true,
+    // The production server.url is HTTPS-only, so cleartext (plain http://)
+    // loading is never actually needed — leaving it true just widens the
+    // WebView's attack surface for no benefit. If a developer needs to
+    // point this at a local dev server during active development, that's
+    // a temporary edit to `url` above for that session, not something this
+    // flag should stay on for.
+    cleartext: false,
+    // Explicit allowlist instead of relying on Capacitor's implicit
+    // default (only server.url's own hostname is navigable without this
+    // array) — self-documenting, and this is the only domain the app is
+    // ever supposed to navigate to; nginx reverse-proxies /api/ on the
+    // same origin, so no second hostname is needed here.
+    allowNavigation: ['bee.adlyco.org'],
   },
   // Note: there is no `bundledWebRuntime` option in Capacitor 8 (this repo's
   // installed version) — it was a Capacitor 2.x config key, removed for

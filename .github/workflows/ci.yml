@@ -1,0 +1,71 @@
+name: CI Checks
+
+on:
+  pull_request: {}
+  push:
+    branches-ignore:
+      - main
+
+permissions:
+  contents: read
+
+jobs:
+  checks:
+    name: Typecheck, Lint, Test, Build
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Set up Node
+        uses: actions/setup-node@v4
+        with:
+          node-version: 22
+
+      # Reads the exact pinned version from package.json's "packageManager"
+      # field automatically — no version number duplicated here to drift
+      # out of sync with that pin.
+      - name: Enable Corepack
+        run: corepack enable
+
+      - name: Install dependencies
+        run: pnpm install --frozen-lockfile
+
+      # apps/web and apps/api both resolve workspace package types from
+      # dist/ (each package.json's "types" field points there, not at
+      # source) — these have to be built before typecheck/build can
+      # resolve them. @vending/database is only needed by apps/api; built
+      # for both here anyway since it's one extra fast `tsc` and keeping
+      # this step identical regardless of which app runs next is simpler
+      # than two different filter lists.
+      - name: Build workspace packages
+        run: pnpm --filter @vending/shared-types --filter @vending/validation --filter @vending/database run build
+
+      - name: Typecheck apps/web
+        run: pnpm --filter @vending/web run typecheck
+
+      - name: Typecheck apps/api
+        run: pnpm --filter @vending/api run typecheck
+
+      - name: Lint
+        run: pnpm run lint
+
+      # --if-present goes before the script name — it's one of `pnpm run`'s
+      # own options (see `pnpm help run`: "Usage: pnpm run <command>
+      # [<args>...]"), not an argument to pass through to the script
+      # itself. apps/web has no test script at all yet, and apps/api's
+      # only exists on a different branch. Neither is treated as a CI
+      # failure for not having one — but the moment either package gains a
+      # `test` script, this starts running it with no workflow edit needed.
+      - name: Test apps/web
+        run: pnpm --filter @vending/web run --if-present test
+
+      - name: Test apps/api
+        run: pnpm --filter @vending/api run --if-present test
+
+      - name: Build apps/web
+        run: pnpm --filter @vending/web run build
+
+      - name: Build apps/api
+        run: pnpm --filter @vending/api run build
