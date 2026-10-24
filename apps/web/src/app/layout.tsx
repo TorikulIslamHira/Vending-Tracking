@@ -15,13 +15,20 @@ export const metadata: Metadata = {
   // Chrome-style install prompt either) — these are the meta tags Safari
   // actually reads instead. apple-touch-icon itself needs no entry here:
   // the app/apple-icon.png convention file already auto-generates that
-  // link tag. "black-translucent" draws content under the status bar for
-  // an edge-to-edge standalone app, matching viewportFit: "cover" below —
-  // every sticky/fixed header already pads itself with
-  // env(safe-area-inset-top) for exactly this.
+  // link tag.
+  //
+  // statusBarStyle: "default" (not "black-translucent") — "default" lays
+  // content out in the normal safe rectangle, below the status bar and
+  // above the home indicator, with the OS reserving that space itself.
+  // "black-translucent" draws content *under* the status bar instead,
+  // which only looks right paired with viewportFit: "cover" below (real
+  // non-zero safe-area insets) — together they caused real devices to
+  // double up: the shared Header already padded itself for the notch,
+  // and every page's own sticky header padded for it again, producing
+  // large blank gaps top and bottom. Reverting both here.
   appleWebApp: {
     capable: true,
-    statusBarStyle: "black-translucent",
+    statusBarStyle: "default",
     title: "Bee Vending",
   },
 };
@@ -41,11 +48,15 @@ export const viewport: Viewport = {
   maximumScale: 1,
   userScalable: false,
   interactiveWidget: "resizes-content",
-  // "cover" is what actually makes env(safe-area-inset-*) resolve to
-  // non-zero values at all (iOS Safari/WKWebView ignore it without this) —
-  // every sticky header, the app Header, Sidebar and BottomNav already
-  // assume it, but it was never set, so that CSS has been a no-op.
-  viewportFit: "cover",
+  // No viewportFit: "cover" (reverted — see appleWebApp comment above for
+  // why). Without it, env(safe-area-inset-*) resolves to 0 in the
+  // installed-PWA-via-Safari context, which is what the app's safe-area
+  // CSS originally assumed before PR #8. Note this does NOT reach the
+  // Capacitor native shell: capacitor.config.ts's StatusBar.overlaysWebView
+  // is a native-level setting independent of this HTML meta tag, so
+  // env(safe-area-inset-*) can still be non-zero there regardless — the
+  // double-padding fix in Header/page sticky headers below matters for
+  // that context specifically, not just this one.
 };
 
 export default function RootLayout({
