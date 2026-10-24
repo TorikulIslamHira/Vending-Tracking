@@ -5,11 +5,25 @@ import { Toaster } from "@/components/ui/toast";
 import { QueryProvider } from "@/components/providers/QueryProvider";
 import { KeyboardAvoidingProvider } from "@/components/providers/KeyboardAvoidingProvider";
 import { NativeSplashScreenProvider } from "@/components/providers/NativeSplashScreenProvider";
+import { ServiceWorkerRegistrar } from "@/components/providers/ServiceWorkerRegistrar";
 import defaultThemeConfig from "@/config/theme";
 
 export const metadata: Metadata = {
   title: `${defaultThemeConfig.appName} - Operator & Admin Dashboard`,
   description: "Enterprise Multi-Tenant Vending Machine SaaS Management Platform",
+  // iOS has no notion of a web app manifest for "Add to Home Screen" (no
+  // Chrome-style install prompt either) — these are the meta tags Safari
+  // actually reads instead. apple-touch-icon itself needs no entry here:
+  // the app/apple-icon.png convention file already auto-generates that
+  // link tag. "black-translucent" draws content under the status bar for
+  // an edge-to-edge standalone app, matching viewportFit: "cover" below —
+  // every sticky/fixed header already pads itself with
+  // env(safe-area-inset-top) for exactly this.
+  appleWebApp: {
+    capable: true,
+    statusBarStyle: "black-translucent",
+    title: "Bee Vending",
+  },
 };
 
 // maximumScale/userScalable=false, at the user's explicit request, disable
@@ -27,6 +41,11 @@ export const viewport: Viewport = {
   maximumScale: 1,
   userScalable: false,
   interactiveWidget: "resizes-content",
+  // "cover" is what actually makes env(safe-area-inset-*) resolve to
+  // non-zero values at all (iOS Safari/WKWebView ignore it without this) —
+  // every sticky header, the app Header, Sidebar and BottomNav already
+  // assume it, but it was never set, so that CSS has been a no-op.
+  viewportFit: "cover",
 };
 
 export default function RootLayout({
@@ -71,6 +90,7 @@ export default function RootLayout({
               <KeyboardAvoidingProvider>
                 {children}
                 <Toaster position="top-right" richColors />
+                <ServiceWorkerRegistrar />
               </KeyboardAvoidingProvider>
             </NativeSplashScreenProvider>
           </QueryProvider>
