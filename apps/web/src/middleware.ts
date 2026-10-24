@@ -15,6 +15,12 @@ const PUBLIC_FILE_EXTENSIONS = [
   ".woff",
   ".woff2",
   ".ttf",
+  // app/manifest.ts is a generated route, not a real file in public/, but
+  // it still needs to be reachable with no auth-token cookie at all — the
+  // browser fetches it (via the <link rel="manifest"> every page,
+  // including /login, already gets auto-injected) to decide whether the
+  // page is installable, which has to work before anyone's logged in.
+  ".webmanifest",
 ];
 
 // Every page in the (mobile) route group — admin fleet/user/report tooling
@@ -66,6 +72,12 @@ export function middleware(request: NextRequest) {
 
   // 3. Check public auth pages
   const isAuthPage = pathname === "/login" || pathname === "/forgot-password";
+  // /offline is public too, but unlike the auth pages it never redirects
+  // *away* even when already authenticated (see step 4) — the service
+  // worker (public/sw.js) needs to fetch it with no auth-token cookie at
+  // all to precache it at install time, and it must still render as-is if
+  // an authenticated user's connection actually drops mid-navigation.
+  const isPublicPage = isAuthPage || pathname === "/offline";
 
   // 4. If logged-in user visits auth pages, redirect to their actual home
   if (isAuthPage && token) {
@@ -73,7 +85,7 @@ export function middleware(request: NextRequest) {
   }
 
   // 5. Strict Route Protection: if unauthenticated user accesses protected route, redirect to /login
-  if (!isAuthPage && !token) {
+  if (!isPublicPage && !token) {
     if (pathname === "/") {
       return NextResponse.redirect(new URL("/login", request.url));
     }
