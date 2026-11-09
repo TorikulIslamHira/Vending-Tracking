@@ -2,6 +2,12 @@
 
 Multi-tenant vending machine fleet management platform: field-agent restock/cash-collection workflows, admin fleet management, and financial reconciliation reporting.
 
+## Screenshots
+
+![Sign in screen](docs/vt-sign-in.png)
+
+![Marketing site](docs/vt-landing.png)
+
 ## Tech Stack
 
 - **API**: Fastify + TypeScript, `apps/api`
